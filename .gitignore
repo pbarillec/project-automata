@@ -1,0 +1,20 @@
+.godot/
+.godot_user/
+.import/
+
+# Godot export/build outputs
+build/
+builds/
+dist/
+exports/
+*.apk
+*.aab
+*.ipa
+*.pck
+
+# Local/editor noise
+*.tmp
+*.temp
+*.log
+Thumbs.db
+Desktop.ini
