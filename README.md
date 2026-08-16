@@ -2,7 +2,7 @@
 
 Godot 4.6.3 bootstrap for Project Automata.
 
-This repository currently contains only the AUT-001 project skeleton. It is intentionally limited to a loadable Godot project, approved directory boundaries, and a minimal main scene used for smoke validation.
+This repository currently contains the AUT-001 project skeleton and AUT-002 test runner bootstrap. It is intentionally limited to a loadable Godot project, approved directory boundaries, a minimal main scene, and automated smoke validation.
 
 ## Requirements
 
@@ -37,6 +37,27 @@ Start the configured main scene and exit after it loads:
 
 ```powershell
 & 'C:\dev\tools\godot-4.6.3\Godot_v4.6.3-stable_win64_console.exe' --headless --path . -- --automata-smoke-exit
+```
+
+## Automated Checks
+
+Run the GUT test suite:
+
+```powershell
+.\tools\ci\test.ps1
+```
+
+Run the current aggregate check:
+
+```powershell
+.\tools\ci\check.ps1
+```
+
+The wrappers resolve Godot from `GODOT_BIN`, then from the local factory tools directory, then from `PATH`.
+If local PowerShell policy blocks script execution, run the same wrapper with process-scoped bypass:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\ci\test.ps1
 ```
 
 ## Scope Notes
