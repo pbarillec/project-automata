@@ -1,0 +1,15 @@
+{
+	"schemaVersion": 1,
+	"economyVersion": "economy-aut-003-fixture",
+	"producers": [
+		{
+			"id": "fixture_fabricator",
+			"displayName": "Fixture Fabricator",
+			"eraId": "fixture_workshop",
+			"baseCost": 10.0,
+			"costGrowth": 1.14,
+			"baseProductionPerLevel": 1.0,
+			"sortOrder": 0
+		}
+	]
+}

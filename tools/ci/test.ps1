@@ -57,5 +57,28 @@ if ($importExit -ne 0) {
 }
 
 Write-Host "Running GUT tests with $Godot"
-& $Godot @GodotArgs
-exit $LASTEXITCODE
+$gutOutput = & $Godot @GodotArgs 2>&1
+$gutExit = $LASTEXITCODE
+$gutOutputLines = @($gutOutput | ForEach-Object { $_.ToString() })
+$gutOutputLines | ForEach-Object { Write-Host $_ }
+
+if ($gutExit -ne 0) {
+    exit $gutExit
+}
+
+$gutOutputText = $gutOutputLines -join [Environment]::NewLine
+$testDiscoveryFailurePatterns = @(
+    "Parse Error",
+    "Failed to load script",
+    "could not be loaded",
+    "Ignoring script .* because it does not extend GutTest"
+)
+
+foreach ($pattern in $testDiscoveryFailurePatterns) {
+    if ($gutOutputText -match $pattern) {
+        Write-Error "GUT reported a test discovery/load failure matching pattern '$pattern'."
+        exit 1
+    }
+}
+
+exit 0
