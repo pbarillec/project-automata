@@ -1,0 +1,10 @@
+{
+	"schemaVersion": 1,
+	"economyVersion": "economy-aut-003-fixture",
+	"milestones": [
+		{
+			"level": 10,
+			"productionMultiplier": 2.0
+		}
+	]
+}
