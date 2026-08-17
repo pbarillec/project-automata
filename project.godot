@@ -13,9 +13,10 @@ config_version=5
 config/name="Project Automata"
 run/main_scene="res://scenes/app/main.tscn"
 config/features=PackedStringArray("4.6", "Mobile")
+config/icon="uid://cf3otpt3nhgnh"
 
 [rendering]
 
 renderer/rendering_method="mobile"
 renderer/rendering_method.mobile="mobile"
-
+textures/vram_compression/import_etc2_astc=true
