@@ -1,0 +1,17 @@
+{
+  "kind": "eras",
+  "schemaVersion": 1,
+  "contentVersion": "0.1.0-config-fixture",
+  "items": [
+    {
+      "id": "fixture_manual_workshop",
+      "order": 0,
+      "displayNameKey": "era.fixture_manual_workshop.name"
+    },
+    {
+      "id": "fixture_automated_factory",
+      "order": 1,
+      "displayNameKey": "era.fixture_automated_factory.name"
+    }
+  ]
+}

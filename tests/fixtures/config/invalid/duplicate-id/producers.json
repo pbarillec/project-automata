@@ -1,0 +1,25 @@
+{
+  "kind": "producers",
+  "schemaVersion": 1,
+  "contentVersion": "0.1.0-config-fixture",
+  "items": [
+    {
+      "id": "fixture_fabricator",
+      "displayNameKey": "producer.fixture_fabricator.name",
+      "eraId": "fixture_manual_workshop",
+      "baseCost": 10,
+      "costGrowth": 1.14,
+      "baseProductionPerSecond": 1,
+      "prerequisiteProducerIds": []
+    },
+    {
+      "id": "fixture_fabricator",
+      "displayNameKey": "producer.fixture_duplicate.name",
+      "eraId": "fixture_manual_workshop",
+      "baseCost": 20,
+      "costGrowth": 1.15,
+      "baseProductionPerSecond": 2,
+      "prerequisiteProducerIds": []
+    }
+  ]
+}

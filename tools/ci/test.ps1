@@ -34,7 +34,7 @@ try {
         }
     }
 
-    $nodeArgs = @('--test') + $testFiles
+    $nodeArgs = @('--disable-warning=MODULE_TYPELESS_PACKAGE_JSON', '--test') + $testFiles
     & node @nodeArgs
     exit $LASTEXITCODE
 }

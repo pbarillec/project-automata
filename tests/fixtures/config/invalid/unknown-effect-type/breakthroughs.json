@@ -1,0 +1,26 @@
+{
+  "kind": "breakthroughs",
+  "schemaVersion": 1,
+  "contentVersion": "0.1.0-config-fixture",
+  "items": [
+    {
+      "id": "fixture_basic_automation",
+      "displayNameKey": "breakthrough.fixture_basic_automation.name",
+      "cost": 250,
+      "prerequisites": {
+        "producerLevels": [
+          {
+            "producerId": "fixture_fabricator",
+            "level": 2
+          }
+        ],
+        "breakthroughIds": []
+      },
+      "effects": [
+        {
+          "type": "grantCurrency"
+        }
+      ]
+    }
+  ]
+}

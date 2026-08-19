@@ -1,0 +1,27 @@
+{
+  "kind": "producers",
+  "schemaVersion": 1,
+  "contentVersion": "0.1.0-config-fixture",
+  "items": [
+    {
+      "id": "fixture_fabricator",
+      "displayNameKey": "producer.fixture_fabricator.name",
+      "eraId": "fixture_missing_era",
+      "baseCost": 10,
+      "costGrowth": 1.14,
+      "baseProductionPerSecond": 1,
+      "prerequisiteProducerIds": []
+    },
+    {
+      "id": "fixture_assembly_station",
+      "displayNameKey": "producer.fixture_assembly_station.name",
+      "eraId": "fixture_manual_workshop",
+      "baseCost": 100,
+      "costGrowth": 1.15,
+      "baseProductionPerSecond": 8,
+      "prerequisiteProducerIds": [
+        "fixture_fabricator"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "kind": "producers",
+  "schemaVersion": 1,
+  "contentVersion": "0.1.0-config-fixture",
+  "items": [
+    {
+      "id": "fixture_fabricator"
+    }
+  ]
