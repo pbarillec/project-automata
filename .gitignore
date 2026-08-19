@@ -1,20 +1,32 @@
-.godot/
-.godot_user/
-.import/
+# Cocos Creator generated output
+/build/
+/temp/
+/library/
+/local/
+/.creator/
+/.cocos/
 
-# Godot export/build outputs
-build/
-builds/
-dist/
-exports/
-*.apk
-*.aab
-*.ipa
-*.pck
+# Legacy Godot caches that may exist locally after migration
+/.godot/
+/.godot_user/
+/.import/
+
+# Generated native/platform output. Project-owned native/engine stays trackable.
+/native/*
+!/native/engine/
+!/native/engine/**
 
 # Local/editor noise
 *.tmp
 *.temp
 *.log
+*.bak
 Thumbs.db
 Desktop.ini
+
+# Mobile signing secrets
+.env
+.env.*
+*.keystore
+*.jks
+*.p12

@@ -1,67 +1,53 @@
 # Project Automata
 
-Godot 4.6.3 bootstrap for Project Automata.
+Cocos Creator 3.8.8 baseline for Project Automata.
 
-This repository currently contains the AUT-001 project skeleton and AUT-002 test runner bootstrap. It is intentionally limited to a loadable Godot project, approved directory boundaries, a minimal main scene, and automated smoke validation.
+This repository is intentionally limited to the AUT-CX-001 bootstrap scope: Cocos project metadata, approved directory boundaries, and one minimal startup scene/component that proves the runtime can load.
 
 ## Requirements
 
-- Godot 4.6.3 Standard
-- GDScript
-- Mobile renderer
+- Cocos Creator 3.8.8
+- TypeScript
+- Standard mobile 3D project workflow
 
-The local Windows development environment currently uses:
+The expected local editor path is a normal Cocos Creator 3.8.8 installation. No absolute editor path is committed.
 
-```powershell
-C:\dev\tools\godot-4.6.3\Godot_v4.6.3-stable_win64.exe
-C:\dev\tools\godot-4.6.3\Godot_v4.6.3-stable_win64_console.exe
+## Open The Project
+
+Open this repository root in Cocos Dashboard or Cocos Creator 3.8.8. The startup scene is:
+
+```text
+assets/scenes/app/Main.scene
 ```
 
-These absolute paths are not required by committed project files.
+When the scene runs it should display:
 
-## Smoke Checks
-
-Confirm the Godot version:
-
-```powershell
-& 'C:\dev\tools\godot-4.6.3\Godot_v4.6.3-stable_win64_console.exe' --version
+```text
+Automata
+Runtime OK
 ```
 
-Load the project headlessly:
+The startup component logs exactly:
 
-```powershell
-& 'C:\dev\tools\godot-4.6.3\Godot_v4.6.3-stable_win64_console.exe' --headless --path . --quit
+```text
+AUTOMATA_RUNTIME_OK
 ```
 
-Start the configured main scene and exit after it loads:
+## Directory Policy
 
-```powershell
-& 'C:\dev\tools\godot-4.6.3\Godot_v4.6.3-stable_win64_console.exe' --headless --path . -- --automata-smoke-exit
-```
+- `assets/` contains Cocos-authored scenes, scripts, metadata, and future presentation assets.
+- `data/` is reserved for future authored game configuration. AUT-CX-001 does not add gameplay data or config loading.
+- `native/engine/` is reserved for project-owned native/engine source and must remain trackable.
+- `build/`, `temp/`, `library/`, `local/`, editor caches, and generated native/platform output are generated and must not be committed.
+- `tests/` and `tools/` are reserved for later tasks; this bootstrap does not claim a test framework, CI runner, or Android build automation.
 
-## Automated Checks
+## Current Smoke Check
 
-Run the GUT test suite:
+Manual runtime check in Cocos Creator 3.8.8:
 
-```powershell
-.\tools\ci\test.ps1
-```
-
-Run the current aggregate check:
-
-```powershell
-.\tools\ci\check.ps1
-```
-
-The wrappers resolve Godot from `GODOT_BIN`, then from the local factory tools directory, then from `PATH`.
-If local PowerShell policy blocks script execution, run the same wrapper with process-scoped bypass:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\ci\test.ps1
-```
-
-## Scope Notes
-
-- Gameplay, economy, progression, UI systems, platform plugins, monetization, and Android export setup are intentionally not implemented in AUT-001.
-- Generated Godot caches and build outputs are ignored by Git.
+1. Open the project root.
+2. Open `assets/scenes/app/Main.scene`.
+3. Press Preview.
+4. Confirm the scene displays `Automata` and `Runtime OK`.
+5. Confirm the console contains exactly `AUTOMATA_RUNTIME_OK` from `AppStartup`.
 
