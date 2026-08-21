@@ -20,10 +20,11 @@ The wrapper:
 - logs every major phase, child PID, periodic wait status, child exit, and timeout diagnostics;
 - launches Creator through `tools/ci/build_android.js`; the PowerShell script is only a compatibility shim;
 - runs Creator with an isolated `--home` profile and a writable mirrored JavaScript engine cache under `temp/ci`;
+- prefers the workspace Android SDK mirror at `temp/ci/android-sdk` when it contains API 36, otherwise uses `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or the normal local Android SDK path;
 - writes a temporary resolved Cocos build config under `temp/ci` with SDK, NDK, and Java paths filled in;
 - normalizes the generated Gradle `PROP_MIN_SDK_VERSION` to `23`;
 - removes older generated APKs so Gradle must leave a fresh artifact;
-- invokes the generated Gradle wrapper for `:ProjectAutomata:assembleDebug` offline with `GRADLE_USER_HOME=build/android/gradle-user`;
+- invokes the generated Gradle wrapper for `:ProjectAutomata:assembleDebug` with a workspace-local Gradle user home by default;
 - fails non-zero on generation failure, Gradle failure, missing APK, stale APK, empty APK, or failed 16 KB native-library inspection;
 - prints the produced debug APK path.
 
@@ -96,11 +97,15 @@ Observed for AUT-CX-004:
 - Copied Cocos Android template files can preserve old timestamps. In particular, `gradlew.bat` is required to exist, but it must not be used as freshness evidence.
 - The wrapper should not rewrite Windows `APPDATA`, `LOCALAPPDATA`, `USERPROFILE`, or `HOME` for Creator. Doing so can make Electron fail early with `Failed to get 'appData' path`. Use Creator's `--home` argument for the isolated Cocos profile instead.
 - A clean isolated Cocos profile has no External Programs preferences, so the wrapper must populate a temporary build config with the resolved Android SDK, NDK, Java home, and Java executable paths. Keep Android `inputSDK` disabled; that option enables Google Play input mapping dependencies and is not the switch for SDK path injection.
+- Restricted automation can deny execution from the user-profile Android SDK/NDK. When `temp/ci/android-sdk` exists with API 36 and NDK 25.2.9519653, the wrapper uses that workspace mirror so CMake and the NDK compiler execute from the repository workspace.
 - Creator may try to use the installed engine cache under `C:\ProgramData\cocos\editors\Creator\3.8.8`. The wrapper mirrors the JavaScript engine under `temp/ci/cocos-engine-3.8.8` and writes the isolated engine profile so cache writes stay in the repository workspace. Native engine registration still points at the installed Creator engine as expected for Cocos 3.8.8.
 - Long process control should not depend on nested PowerShell on this machine. `tools/ci/build_android.ps1` is only a compatibility launcher; `tools/ci/build_android.js` owns Creator, Gradle, APK, and ELF validation.
 - Creator and Gradle child stdout/stderr are teed live to the console and written under `temp/ci`. Cocos `logDest` is also printed and included in timeout diagnostics.
 - Creator generation and Gradle each have hard timeouts. On timeout, the wrapper prints the phase, child PID, elapsed time, and tail log lines, then terminates only the spawned process tree.
-- Gradle is invoked with `--offline`, `--no-problems-report`, and the generated local Gradle user home. This avoids network access and avoids stale locked generated `build/reports/problems` files from failing an otherwise successful debug APK build.
+- Gradle is invoked with `--no-problems-report` and workspace-local `GRADLE_USER_HOME=build/android/gradle-user` by default. This avoids failed lock-file writes under `%USERPROFILE%\.gradle` in restricted automation while still allowing normal dependency resolution from the configured repositories (`google()` and `mavenCentral()`).
+- The legacy repository-local flag remains accepted through `tools/ci/build_android.js --isolated-gradle-user-home` or `tools/ci/build_android.ps1 -IsolatedGradleUserHome`; it now matches the default behavior. The host Gradle user home is available explicitly through `tools/ci/build_android.js --standard-gradle-user-home` or `tools/ci/build_android.ps1 -StandardGradleUserHome`.
+- Cache-only Gradle verification is opt-in through `tools/ci/build_android.js --gradle-offline` or `tools/ci/build_android.ps1 -GradleOffline`. Use it only when all required artifacts are already present in the selected Gradle cache.
+- Generation uses a unique temporary Cocos profile. After generation evidence is found, the wrapper terminates Cocos processes tied to that profile so lingering Creator subprocesses cannot keep the validation command alive after Gradle completes.
 
 The wrapper therefore proves generation with deterministic Cocos output from `build/android` and/or the fresh `logDest` completion marker. If success evidence is present and the spawned Creator process is still alive, the wrapper terminates only that spawned Creator process before continuing to Gradle. If success evidence is missing, the same hang, exit code, or log exception is treated as a generation failure.
 

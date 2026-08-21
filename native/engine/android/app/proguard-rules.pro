@@ -17,6 +17,10 @@
 #}
 
 # Proguard Cocos2d-x-lite for release
+
+-keep class com.cocos.game.AutomataPlatformBridge {
+    public static *;
+}
 -keep public class com.cocos.** { *; }
 -dontwarn com.cocos.**
 

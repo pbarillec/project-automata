@@ -2,6 +2,9 @@ param(
     [string]$CocosCreatorPath = $env:COCOS_CREATOR_EXE,
     [int]$CocosTimeoutSeconds = 1200,
     [int]$GradleTimeoutSeconds = 1200,
+    [switch]$GradleOffline,
+    [switch]$IsolatedGradleUserHome,
+    [switch]$StandardGradleUserHome,
     [switch]$SkipGeneration
 )
 
@@ -20,6 +23,18 @@ if (-not [string]::IsNullOrWhiteSpace($CocosCreatorPath)) {
 
 if ($SkipGeneration) {
     $NodeArgs += '--skip-generation'
+}
+
+if ($GradleOffline) {
+    $NodeArgs += '--gradle-offline'
+}
+
+if ($IsolatedGradleUserHome) {
+    $NodeArgs += '--isolated-gradle-user-home'
+}
+
+if ($StandardGradleUserHome) {
+    $NodeArgs += '--standard-gradle-user-home'
 }
 
 & node @NodeArgs

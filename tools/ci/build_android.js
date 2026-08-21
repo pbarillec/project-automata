@@ -26,6 +26,8 @@ function parseArgs(argv) {
     cocosCreatorPath: process.env.COCOS_CREATOR_EXE || '',
     cocosTimeoutSeconds: 1200,
     gradleTimeoutSeconds: 1200,
+    gradleOffline: false,
+    standardGradleUserHome: false,
     skipGeneration: false,
   };
 
@@ -33,6 +35,12 @@ function parseArgs(argv) {
     const arg = argv[index];
     if (arg === '--skip-generation' || arg === '-SkipGeneration') {
       options.skipGeneration = true;
+    } else if (arg === '--gradle-offline' || arg === '-GradleOffline') {
+      options.gradleOffline = true;
+    } else if (arg === '--isolated-gradle-user-home' || arg === '-IsolatedGradleUserHome') {
+      options.standardGradleUserHome = false;
+    } else if (arg === '--standard-gradle-user-home' || arg === '-StandardGradleUserHome') {
+      options.standardGradleUserHome = true;
     } else if (arg === '--cocos-creator-path' || arg === '-CocosCreatorPath') {
       options.cocosCreatorPath = argv[++index] || '';
     } else if (arg === '--cocos-timeout-seconds' || arg === '-CocosTimeoutSeconds') {
@@ -133,6 +141,11 @@ function assertInside(parent, target) {
 }
 
 function resolveAndroidSdkPath() {
+  const workspaceSdk = path.join(repoRoot, 'temp', 'ci', 'android-sdk');
+  if (fs.existsSync(path.join(workspaceSdk, 'platforms', 'android-36'))) {
+    return workspaceSdk;
+  }
+
   if (process.env.ANDROID_HOME && process.env.ANDROID_HOME.trim()) {
     return process.env.ANDROID_HOME.trim();
   }
@@ -192,6 +205,11 @@ function resolveJavaPaths() {
   }
 
   return { javaHome: '', javaPath: '' };
+}
+
+function resolveStandardGradleUserHome() {
+  const userProfile = process.env.USERPROFILE?.trim() || os.homedir();
+  return path.join(userProfile, '.gradle');
 }
 
 function createResolvedCocosBuildConfig(logDir, sdkPath, ndkPath, javaHome, javaPath) {
@@ -398,6 +416,63 @@ async function stopSpawnedProcessTree(child, phase) {
   logPhase(`${phase}: child PID ${child.pid} did not report exit after taskkill; continuing after bounded wait`);
 }
 
+function psSingleQuoted(value) {
+  return `'${String(value).replace(/'/gu, "''")}'`;
+}
+
+function stopCocosProcessesForProfile(profileRoot, phase) {
+  const script = [
+    `$profileRoot = ${psSingleQuoted(profileRoot)}`,
+    "$matches = Get-CimInstance Win32_Process -Filter \"name = 'CocosCreator.exe'\" | Where-Object { $_.CommandLine -like \"*$profileRoot*\" }",
+    'foreach ($process in $matches) { Stop-Process -Id $process.ProcessId -Force }',
+    'Write-Output (($matches | Measure-Object).Count)',
+  ].join('; ');
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  const stoppedCount = Number.parseInt((result.stdout || '').trim(), 10) || 0;
+  if (stoppedCount > 0) {
+    logPhase(`${phase}: terminated ${stoppedCount} lingering Cocos process(es) for ${profileRoot}`);
+  }
+}
+
+function getCocosCreatorProcessIds() {
+  const script = "Get-Process CocosCreator -ErrorAction SilentlyContinue | ForEach-Object { $_.Id }";
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  return new Set((result.stdout || '')
+    .split(/\r?\n/u)
+    .map((line) => Number.parseInt(line.trim(), 10))
+    .filter((pid) => Number.isInteger(pid) && pid > 0));
+}
+
+function stopNewCocosProcesses(initialProcessIds, phase) {
+  const initial = [...initialProcessIds].join(',');
+  const script = [
+    `$initial = @(${initial})`,
+    "$matches = Get-Process CocosCreator -ErrorAction SilentlyContinue | Where-Object { $initial -notcontains [int]$_.Id }",
+    'foreach ($process in $matches) { Stop-Process -Id $process.Id -Force }',
+    'Write-Output (($matches | Measure-Object).Count)',
+  ].join('; ');
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  const stoppedCount = Number.parseInt((result.stdout || '').trim(), 10) || 0;
+  if (stoppedCount > 0) {
+    logPhase(`${phase}: terminated ${stoppedCount} new lingering Cocos process(es)`);
+  }
+}
+
 function wireLiveLog(child, streamName, logStream, consoleStream) {
   child[streamName].on('data', (chunk) => {
     logStream.write(chunk);
@@ -476,6 +551,7 @@ async function runCocosGeneration(options, startedAtMs, sdkPath, ndkPath, javaHo
   ];
 
   logPhase(`${phase}: launch ${options.cocosCreatorPath} ${cocosArgs.join(' ')}`);
+  const cocosProcessIdsBeforeLaunch = getCocosCreatorProcessIds();
   const child = spawn(
     options.cocosCreatorPath,
     cocosArgs,
@@ -542,6 +618,10 @@ async function runCocosGeneration(options, startedAtMs, sdkPath, ndkPath, javaHo
       await sleep(2000);
     }
   } finally {
+    stopCocosProcessesForProfile(cocosProfileRoot, phase);
+    stopNewCocosProcesses(cocosProcessIdsBeforeLaunch, phase);
+    child.stdout?.destroy();
+    child.stderr?.destroy();
     await Promise.all([closeStream(stdoutStream), closeStream(stderrStream)]);
   }
 
@@ -941,7 +1021,7 @@ function assertNativeLibraries16Kb(apkPath) {
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   logPhase(`start: repo=${repoRoot}`);
-  logPhase(`start: skipGeneration=${options.skipGeneration}; cocosTimeoutSeconds=${options.cocosTimeoutSeconds}; gradleTimeoutSeconds=${options.gradleTimeoutSeconds}`);
+  logPhase(`start: skipGeneration=${options.skipGeneration}; gradleOffline=${options.gradleOffline}; gradleUserHome=${options.standardGradleUserHome ? 'standard' : 'workspace'}; cocosTimeoutSeconds=${options.cocosTimeoutSeconds}; gradleTimeoutSeconds=${options.gradleTimeoutSeconds}`);
 
   if (!fileExists(options.cocosCreatorPath)) {
     fail(`Cocos Creator executable not found: ${options.cocosCreatorPath}`, 127);
@@ -1015,12 +1095,28 @@ async function main() {
   const gradleStartedAtMs = Date.now() - 1000;
   const gradleEnv = {
     ...process.env,
-    GRADLE_USER_HOME: path.join(buildRoot, 'gradle-user'),
+    GRADLE_USER_HOME: options.standardGradleUserHome
+      ? resolveStandardGradleUserHome()
+      : path.join(buildRoot, 'gradle-user'),
   };
+  const observedGradleUserHome = gradleEnv.GRADLE_USER_HOME;
+  logPhase(`Gradle build: user home ${observedGradleUserHome}${options.standardGradleUserHome ? ' (standard)' : ' (workspace)'}`);
+  const gradleArgs = [
+    '/d',
+    '/c',
+    gradleWrapper,
+    '--no-problems-report',
+    `:${gradleModule}:assembleDebug`,
+    '--no-daemon',
+    '--console=plain',
+  ];
+  if (options.gradleOffline) {
+    gradleArgs.splice(3, 0, '--offline');
+  }
   await runTimedLoggedChild({
     phase: 'Gradle build',
     command: 'cmd.exe',
-    args: ['/d', '/c', gradleWrapper, '--offline', '--no-problems-report', `:${gradleModule}:assembleDebug`, '--no-daemon', '--console=plain'],
+    args: gradleArgs,
     cwd: gradleProject,
     env: gradleEnv,
     timeoutSeconds: options.gradleTimeoutSeconds,
