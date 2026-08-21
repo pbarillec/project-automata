@@ -3,6 +3,7 @@
   "private": true,
   "uuid": "6b38d83e-7948-47aa-85a6-7ded96f14a62",
   "scripts": {
+    "android:build": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/ci/build_android.ps1",
     "validate:config": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/ci/validate_config.ps1",
     "test": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/ci/test.ps1",
     "check": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/ci/check.ps1"
