@@ -1,14 +1,15 @@
 {
   "kind": "producers",
   "schemaVersion": 1,
-  "contentVersion": "0.1.0-config-fixture",
+  "contentVersion": "0.1.0-aut-007",
   "items": [
     {
-      "id": "fixture_fabricator",
-      "displayNameKey": "producer.fixture_fabricator.name",
-      "eraId": "fixture_manual_workshop",
+      "id": "fabricator",
+      "name": "Fabricator",
+      "displayNameKey": "producer.fabricator.name",
+      "eraId": "manual_workshop",
       "costGrowth": 1.14,
-      "baseProductionPerSecond": 1,
+      "baseProductionPerLevel": 1,
       "prerequisiteProducerIds": []
     }
   ]

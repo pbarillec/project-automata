@@ -1,9 +1,9 @@
 {
   "kind": "producers",
   "schemaVersion": 1,
-  "contentVersion": "0.1.0-config-fixture",
+  "contentVersion": "0.1.0-aut-007",
   "items": [
     {
-      "id": "fixture_fabricator"
+      "id": "fabricator"
     }
   ]

@@ -74,6 +74,24 @@ async function sourcesWithInvalidFixture(fixtureName, fileName) {
         .sort((left, right) => left.filePath.localeCompare(right.filePath));
 }
 
+async function sourcesWithProducerItems(items) {
+    const validSources = await collectJsonSources(dataRoot);
+    const producerSource = {
+        filePath: 'data/economy/producers.json',
+        text: JSON.stringify({
+            kind: 'producers',
+            schemaVersion: 1,
+            contentVersion: '0.1.0-aut-007',
+            items,
+        }),
+    };
+
+    return validSources
+        .filter((source) => source.filePath !== producerSource.filePath)
+        .concat(producerSource)
+        .sort((left, right) => left.filePath.localeCompare(right.filePath));
+}
+
 async function expectDiagnostic(fixtureName, fileName, expected) {
     const { validateConfigSources, formatConfigDiagnostic } = await configModule();
     const result = validateConfigSources(await sourcesWithInvalidFixture(fixtureName, fileName));
@@ -90,12 +108,74 @@ test('valid representative multi-file config loads into typed repository', async
     const repository = loadGameConfigFromSources(await collectJsonSources(dataRoot));
 
     assert.equal(repository.schemaVersion, 1);
-    assert.equal(repository.contentVersion, '0.1.0-config-fixture');
-    assert.equal(repository.listEras().length, 2);
-    assert.equal(repository.listProducers().length, 2);
-    assert.equal(repository.listBreakthroughs().length, 1);
-    assert.equal(repository.getProducer('fixture_fabricator')?.baseCost, 10);
-    assert.equal(repository.getBreakthrough('fixture_basic_automation')?.effects[0].type, 'productionMultiplier');
+    assert.equal(repository.contentVersion, '0.1.0-aut-007');
+    assert.equal(repository.listEras().length, 3);
+    assert.equal(repository.listProducers().length, 5);
+    assert.equal(repository.listBreakthroughs().length, 0);
+    assert.equal(repository.getProducer('fabricator')?.baseCost, 10);
+});
+
+test('approved MVP producers match order, names, eras and economic baselines', async () => {
+    const { loadGameConfigFromSources } = await configModule();
+    const repository = loadGameConfigFromSources(await collectJsonSources(dataRoot));
+
+    assert.deepEqual(repository.listProducers().map((producer) => producer.id), [
+        'fabricator',
+        'assembly_station',
+        'robot_line',
+        'automated_cell',
+        'advanced_robotics_complex',
+    ]);
+
+    assert.deepEqual(repository.listProducers().map((producer) => ({
+        id: producer.id,
+        name: producer.name,
+        eraId: producer.eraId,
+        baseCost: producer.baseCost,
+        costGrowth: producer.costGrowth,
+        baseProductionPerLevel: producer.baseProductionPerLevel,
+    })), [
+        {
+            id: 'fabricator',
+            name: 'Fabricator',
+            eraId: 'manual_workshop',
+            baseCost: 10,
+            costGrowth: 1.14,
+            baseProductionPerLevel: 1,
+        },
+        {
+            id: 'assembly_station',
+            name: 'Assembly Station',
+            eraId: 'manual_workshop',
+            baseCost: 1500,
+            costGrowth: 1.15,
+            baseProductionPerLevel: 12,
+        },
+        {
+            id: 'robot_line',
+            name: 'Robot Line',
+            eraId: 'automated_factory',
+            baseCost: 50000,
+            costGrowth: 1.16,
+            baseProductionPerLevel: 150,
+        },
+        {
+            id: 'automated_cell',
+            name: 'Automated Cell',
+            eraId: 'automated_factory',
+            baseCost: 5000000,
+            costGrowth: 1.17,
+            baseProductionPerLevel: 2500,
+        },
+        {
+            id: 'advanced_robotics_complex',
+            name: 'Advanced Robotics Complex',
+            eraId: 'robotics_complex',
+            baseCost: 500000000,
+            costGrowth: 1.18,
+            baseProductionPerLevel: 500000,
+        },
+    ]);
 });
 
 test('validation stages are callable separately', async () => {
@@ -118,7 +198,7 @@ test('validation stages are callable separately', async () => {
 
     const repositoryResult = buildGameConfigRepository(structuralResult.value);
     assert.deepEqual(repositoryResult.diagnostics, []);
-    assert.equal(repositoryResult.value?.getEra('fixture_manual_workshop')?.order, 0);
+    assert.equal(repositoryResult.value?.getEra('manual_workshop')?.order, 0);
 });
 
 test('malformed JSON fails deterministically at parse stage', async () => {
@@ -141,7 +221,7 @@ test('duplicate IDs fail deterministically at structural stage', async () => {
     await expectDiagnostic('duplicate-id', 'producers.json', {
         stage: 'structural',
         code: 'CONFIG_DUPLICATE_ID',
-        messagePattern: /Duplicate producers id "fixture_fabricator"/,
+        messagePattern: /Duplicate producers id "fabricator"/,
     });
 });
 
@@ -149,7 +229,7 @@ test('unknown referenced IDs fail deterministically at cross-reference stage', a
     await expectDiagnostic('unknown-reference', 'producers.json', {
         stage: 'cross-reference',
         code: 'CONFIG_UNKNOWN_REFERENCE',
-        messagePattern: /Unknown era id "fixture_missing_era"/,
+        messagePattern: /Unknown era id "missing_era"/,
     });
 });
 
@@ -159,6 +239,48 @@ test('invalid semantic numeric values fail deterministically', async () => {
         code: 'CONFIG_INVALID_NUMBER',
         messagePattern: /baseCost must be greater than 0/,
     });
+});
+
+test('producer cost growth must be greater than 1', async () => {
+    const { validateConfigSources, formatConfigDiagnostic } = await configModule();
+    const result = validateConfigSources(await sourcesWithProducerItems([
+        {
+            id: 'fabricator',
+            name: 'Fabricator',
+            displayNameKey: 'producer.fabricator.name',
+            eraId: 'manual_workshop',
+            baseCost: 10,
+            costGrowth: 1,
+            baseProductionPerLevel: 1,
+            prerequisiteProducerIds: [],
+        },
+    ]));
+
+    assert.equal(result.value, undefined);
+    assert.equal(result.diagnostics[0].stage, 'semantic');
+    assert.equal(result.diagnostics[0].code, 'CONFIG_INVALID_NUMBER');
+    assert.match(formatConfigDiagnostic(result.diagnostics[0]), /costGrowth must be greater than 1/);
+});
+
+test('producer economic values must be finite and positive', async () => {
+    const { validateConfigSources, formatConfigDiagnostic } = await configModule();
+    const result = validateConfigSources(await sourcesWithProducerItems([
+        {
+            id: 'fabricator',
+            name: 'Fabricator',
+            displayNameKey: 'producer.fabricator.name',
+            eraId: 'manual_workshop',
+            baseCost: 10,
+            costGrowth: 1.14,
+            baseProductionPerLevel: 1e999,
+            prerequisiteProducerIds: [],
+        },
+    ]));
+
+    assert.equal(result.value, undefined);
+    assert.equal(result.diagnostics[0].stage, 'structural');
+    assert.equal(result.diagnostics[0].code, 'CONFIG_INVALID_TYPE');
+    assert.match(formatConfigDiagnostic(result.diagnostics[0]), /baseProductionPerLevel must be a finite number/);
 });
 
 test('representative prerequisite cycles fail deterministically', async () => {

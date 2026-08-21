@@ -1,26 +1,64 @@
 {
   "kind": "producers",
   "schemaVersion": 1,
-  "contentVersion": "0.1.0-config-fixture",
+  "contentVersion": "0.1.0-aut-007",
   "items": [
     {
-      "id": "fixture_fabricator",
-      "displayNameKey": "producer.fixture_fabricator.name",
-      "eraId": "fixture_manual_workshop",
+      "id": "fabricator",
+      "name": "Fabricator",
+      "displayNameKey": "producer.fabricator.name",
+      "eraId": "manual_workshop",
       "baseCost": 10,
       "costGrowth": 1.14,
-      "baseProductionPerSecond": 1,
+      "baseProductionPerLevel": 1,
       "prerequisiteProducerIds": []
     },
     {
-      "id": "fixture_assembly_station",
-      "displayNameKey": "producer.fixture_assembly_station.name",
-      "eraId": "fixture_manual_workshop",
-      "baseCost": 100,
+      "id": "assembly_station",
+      "name": "Assembly Station",
+      "displayNameKey": "producer.assembly_station.name",
+      "eraId": "manual_workshop",
+      "baseCost": 1500,
       "costGrowth": 1.15,
-      "baseProductionPerSecond": 8,
+      "baseProductionPerLevel": 12,
       "prerequisiteProducerIds": [
-        "fixture_fabricator"
+        "fabricator"
+      ]
+    },
+    {
+      "id": "robot_line",
+      "name": "Robot Line",
+      "displayNameKey": "producer.robot_line.name",
+      "eraId": "automated_factory",
+      "baseCost": 50000,
+      "costGrowth": 1.16,
+      "baseProductionPerLevel": 150,
+      "prerequisiteProducerIds": [
+        "assembly_station"
+      ]
+    },
+    {
+      "id": "automated_cell",
+      "name": "Automated Cell",
+      "displayNameKey": "producer.automated_cell.name",
+      "eraId": "automated_factory",
+      "baseCost": 5000000,
+      "costGrowth": 1.17,
+      "baseProductionPerLevel": 2500,
+      "prerequisiteProducerIds": [
+        "robot_line"
+      ]
+    },
+    {
+      "id": "advanced_robotics_complex",
+      "name": "Advanced Robotics Complex",
+      "displayNameKey": "producer.advanced_robotics_complex.name",
+      "eraId": "robotics_complex",
+      "baseCost": 500000000,
+      "costGrowth": 1.18,
+      "baseProductionPerLevel": 500000,
+      "prerequisiteProducerIds": [
+        "automated_cell"
       ]
     }
   ]

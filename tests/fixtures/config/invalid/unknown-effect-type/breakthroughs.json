@@ -1,16 +1,16 @@
 {
   "kind": "breakthroughs",
   "schemaVersion": 1,
-  "contentVersion": "0.1.0-config-fixture",
+  "contentVersion": "0.1.0-aut-007",
   "items": [
     {
-      "id": "fixture_basic_automation",
-      "displayNameKey": "breakthrough.fixture_basic_automation.name",
+      "id": "invalid_grant_currency",
+      "displayNameKey": "breakthrough.invalid_grant_currency.name",
       "cost": 250,
       "prerequisites": {
         "producerLevels": [
           {
-            "producerId": "fixture_fabricator",
+            "producerId": "fabricator",
             "level": 2
           }
         ],

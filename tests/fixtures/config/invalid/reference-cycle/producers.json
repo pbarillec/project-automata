@@ -1,28 +1,30 @@
 {
   "kind": "producers",
   "schemaVersion": 1,
-  "contentVersion": "0.1.0-config-fixture",
+  "contentVersion": "0.1.0-aut-007",
   "items": [
     {
-      "id": "fixture_fabricator",
-      "displayNameKey": "producer.fixture_fabricator.name",
-      "eraId": "fixture_manual_workshop",
+      "id": "fabricator",
+      "name": "Fabricator",
+      "displayNameKey": "producer.fabricator.name",
+      "eraId": "manual_workshop",
       "baseCost": 10,
       "costGrowth": 1.14,
-      "baseProductionPerSecond": 1,
+      "baseProductionPerLevel": 1,
       "prerequisiteProducerIds": [
-        "fixture_assembly_station"
+        "assembly_station"
       ]
     },
     {
-      "id": "fixture_assembly_station",
-      "displayNameKey": "producer.fixture_assembly_station.name",
-      "eraId": "fixture_manual_workshop",
-      "baseCost": 100,
+      "id": "assembly_station",
+      "name": "Assembly Station",
+      "displayNameKey": "producer.assembly_station.name",
+      "eraId": "manual_workshop",
+      "baseCost": 1500,
       "costGrowth": 1.15,
-      "baseProductionPerSecond": 8,
+      "baseProductionPerLevel": 12,
       "prerequisiteProducerIds": [
-        "fixture_fabricator"
+        "fabricator"
       ]
     }
   ]

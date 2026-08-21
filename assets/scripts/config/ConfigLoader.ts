@@ -23,11 +23,12 @@ export interface EraConfig {
 
 export interface ProducerConfig {
     id: string;
+    name: string;
     displayNameKey: string;
     eraId: string;
     baseCost: number;
     costGrowth: number;
-    baseProductionPerSecond: number;
+    baseProductionPerLevel: number;
     prerequisiteProducerIds: string[];
 }
 
@@ -415,29 +416,32 @@ function parseEraConfig(value: Record<string, unknown>, filePath: string, itemPa
 function parseProducerConfig(value: Record<string, unknown>, filePath: string, itemPath: string, diagnostics: ConfigDiagnostic[]): ProducerConfig | undefined {
     validateAllowedKeys('structural', filePath, itemPath, value, [
         'id',
+        'name',
         'displayNameKey',
         'eraId',
         'baseCost',
         'costGrowth',
-        'baseProductionPerSecond',
+        'baseProductionPerLevel',
         'prerequisiteProducerIds',
     ], diagnostics);
 
     const id = readString(value, 'id', filePath, itemPath, diagnostics);
+    const name = readString(value, 'name', filePath, itemPath, diagnostics);
     const displayNameKey = readString(value, 'displayNameKey', filePath, itemPath, diagnostics);
     const eraId = readString(value, 'eraId', filePath, itemPath, diagnostics);
     const baseCost = readNumber(value, 'baseCost', filePath, itemPath, diagnostics);
     const costGrowth = readNumber(value, 'costGrowth', filePath, itemPath, diagnostics);
-    const baseProductionPerSecond = readNumber(value, 'baseProductionPerSecond', filePath, itemPath, diagnostics);
+    const baseProductionPerLevel = readNumber(value, 'baseProductionPerLevel', filePath, itemPath, diagnostics);
     const prerequisiteProducerIds = readOptionalStringArray(value, 'prerequisiteProducerIds', filePath, itemPath, diagnostics);
 
     if (
         id === undefined ||
+        name === undefined ||
         displayNameKey === undefined ||
         eraId === undefined ||
         baseCost === undefined ||
         costGrowth === undefined ||
-        baseProductionPerSecond === undefined ||
+        baseProductionPerLevel === undefined ||
         prerequisiteProducerIds === undefined
     ) {
         return undefined;
@@ -445,11 +449,12 @@ function parseProducerConfig(value: Record<string, unknown>, filePath: string, i
 
     return {
         id,
+        name,
         displayNameKey,
         eraId,
         baseCost,
         costGrowth,
-        baseProductionPerSecond,
+        baseProductionPerLevel,
         prerequisiteProducerIds,
     };
 }
@@ -596,8 +601,8 @@ function validateSemanticNumbers(config: StructuredConfigSet, diagnostics: Confi
             if (producer.costGrowth <= 1) {
                 diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].costGrowth`, 'costGrowth must be greater than 1.'));
             }
-            if (producer.baseProductionPerSecond < 0) {
-                diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].baseProductionPerSecond`, 'baseProductionPerSecond must be greater than or equal to 0.'));
+            if (producer.baseProductionPerLevel <= 0) {
+                diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].baseProductionPerLevel`, 'baseProductionPerLevel must be greater than 0.'));
             }
         });
     }
