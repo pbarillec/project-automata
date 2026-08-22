@@ -110,8 +110,15 @@ test('deep clone produces independent nested collections', async () => {
     original.boosts.activeBoosts.fixture_overclock = {
         boostId: 'fixture_overclock',
         remainingSeconds: 30,
+        cooldownSeconds: 120,
         source: 'free',
         requestId: null,
+        effect: {
+            type: 'productionMultiplier',
+            multiplier: 2,
+        },
+        isSuspended: false,
+        suspendedByBoostId: null,
     };
 
     const clone = cloneGameState(original);

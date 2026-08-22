@@ -16,6 +16,8 @@ export type {
     RunStatisticsState,
     SettingsState,
     StateRecord,
+    TemporaryBoostEffectState,
+    TemporaryProductionMultiplierEffectState,
 } from './GameState.ts';
 
 export {

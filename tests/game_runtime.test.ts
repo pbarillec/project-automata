@@ -312,6 +312,36 @@ test('Worker Bot emits progression flag and first robot events from AUT-012 effe
     assert.equal(runtime.getStateSnapshot().run.progressionFlags.first_robot, true);
 });
 
+test('Free Overclock activation command enforces unlock, active and cooldown rules without mutation on failure', async () => {
+    const lockedRuntime = await createRuntime(await freshState());
+    assertRejectedWithoutMutation(lockedRuntime, { type: 'activateFreeOverclock' }, 'boost_locked');
+
+    const state = await freshState();
+    state.run.progressionFlags.first_robot = true;
+    const runtime = await createRuntime(state);
+
+    const activation = runtime.execute({ type: 'activateFreeOverclock' });
+    assert.equal(activation.ok, true);
+    assert.deepEqual(activation.events.map((event) => event.type), ['temporaryBoostActivated']);
+    assert.equal(runtime.getStateSnapshot().boosts.activeBoosts.free_overclock.remainingSeconds, 60);
+
+    assertRejectedWithoutMutation(runtime, { type: 'activateFreeOverclock' }, 'boost_already_active');
+
+    const expiration = runtime.execute({ type: 'advanceAutomation', elapsedSeconds: 60 });
+    assert.equal(expiration.ok, true);
+    assert.equal(expiration.events.filter((event) => event.type === 'temporaryBoostExpired').length, 1);
+    assert.equal(runtime.getStateSnapshot().boosts.cooldowns.free_overclock.remainingSeconds, 240);
+
+    assertRejectedWithoutMutation(runtime, { type: 'activateFreeOverclock' }, 'boost_on_cooldown');
+
+    const cooldown = runtime.execute({ type: 'advanceAutomation', elapsedSeconds: 240 });
+    assert.equal(cooldown.ok, true);
+    assert.equal(runtime.getStateSnapshot().boosts.cooldowns.free_overclock, undefined);
+
+    const reactivation = runtime.execute({ type: 'activateFreeOverclock' });
+    assert.equal(reactivation.ok, true);
+});
+
 test('construction and era effects emit descriptive events without duplicating Breakthrough effects', async () => {
     const state = await freshState();
     setProducerLevel(state, 'robot_line', 50);
@@ -366,6 +396,55 @@ test('runtime production query composes milestones and Breakthrough ModifierSet 
     runtime.execute({ type: 'purchaseBreakthrough', breakthroughId: 'auto_feeder' });
     assert.equal(runtime.getProductionPerSecond(), 37.5);
     assert.equal(runtime.calculateProductionForElapsedSeconds(2.5), 93.75);
+});
+
+test('runtime production query composes temporary boosts through ModifierSet', async () => {
+    const state = await freshState();
+    setProducerLevel(state, 'fabricator', 15);
+    state.run.industrialOutput = 1500;
+    state.run.progressionFlags.first_robot = true;
+    const runtime = await createRuntime(state);
+
+    runtime.execute({ type: 'purchaseBreakthrough', breakthroughId: 'auto_feeder' });
+    assert.equal(runtime.getProductionPerSecond(), 37.5);
+
+    const activation = runtime.execute({ type: 'activateFreeOverclock' });
+    assert.equal(activation.ok, true);
+    assert.equal(runtime.getProductionPerSecond(), 75);
+    assert.equal(runtime.calculateAutomationProductionForElapsedSeconds(120), 37.5 * 60 * 2 + 37.5 * 60);
+});
+
+test('runtime advances boosted automated production deterministically across active and cooldown boundaries', async () => {
+    const state = await freshState();
+    setProducerLevel(state, 'fabricator', 15);
+    state.run.industrialOutput = 1500;
+    state.run.progressionFlags.first_robot = true;
+    const singleStepRuntime = await createRuntime(state);
+    singleStepRuntime.execute({ type: 'purchaseBreakthrough', breakthroughId: 'auto_feeder' });
+    singleStepRuntime.execute({ type: 'activateFreeOverclock' });
+
+    const singleStep = singleStepRuntime.execute({ type: 'advanceAutomation', elapsedSeconds: 300 });
+    assert.equal(singleStep.ok, true);
+    assert.equal(singleStep.events.filter((event) => event.type === 'temporaryBoostExpired').length, 1);
+    assert.equal(singleStepRuntime.getStateSnapshot().run.industrialOutput, 37.5 * 60 * 2 + 37.5 * 240);
+    assert.deepEqual(singleStepRuntime.getStateSnapshot().boosts.activeBoosts, {});
+    assert.deepEqual(singleStepRuntime.getStateSnapshot().boosts.cooldowns, {});
+
+    const partitionedState = await freshState();
+    setProducerLevel(partitionedState, 'fabricator', 15);
+    partitionedState.run.industrialOutput = 1500;
+    partitionedState.run.progressionFlags.first_robot = true;
+    const partitionedRuntime = await createRuntime(partitionedState);
+    partitionedRuntime.execute({ type: 'purchaseBreakthrough', breakthroughId: 'auto_feeder' });
+    partitionedRuntime.execute({ type: 'activateFreeOverclock' });
+
+    for (const elapsedSeconds of [10, 20, 30, 90, 150]) {
+        const result = partitionedRuntime.execute({ type: 'advanceAutomation', elapsedSeconds });
+        assert.equal(result.ok, true);
+    }
+
+    assert.deepEqual(partitionedRuntime.getStateSnapshot().boosts, singleStepRuntime.getStateSnapshot().boosts);
+    assert.equal(partitionedRuntime.getStateSnapshot().run.industrialOutput, singleStepRuntime.getStateSnapshot().run.industrialOutput);
 });
 
 test('runtime modules stay pure TypeScript without Cocos, scene, UI, platform or native imports', async () => {

@@ -1,6 +1,10 @@
 export type DomainEvent =
     | IndustrialOutputChangedEvent
     | ProductionGrantedEvent
+    | TemporaryBoostActivatedEvent
+    | TemporaryBoostExpiredEvent
+    | TemporaryBoostSuspendedEvent
+    | TemporaryBoostResumedEvent
     | ProducerLevelsPurchasedEvent
     | ProducerConstructedEvent
     | ProducerMilestoneReachedEvent
@@ -23,6 +27,35 @@ export interface ProductionGrantedEvent {
     readonly type: 'productionGranted';
     readonly source: 'manual' | 'automation';
     readonly amount: number;
+}
+
+export interface TemporaryBoostActivatedEvent {
+    readonly type: 'temporaryBoostActivated';
+    readonly boostId: string;
+    readonly source: string;
+    readonly multiplier: number;
+    readonly durationSeconds: number;
+    readonly cooldownSeconds: number;
+    readonly requestId: string | null;
+}
+
+export interface TemporaryBoostExpiredEvent {
+    readonly type: 'temporaryBoostExpired';
+    readonly boostId: string;
+    readonly source: string;
+}
+
+export interface TemporaryBoostSuspendedEvent {
+    readonly type: 'temporaryBoostSuspended';
+    readonly boostId: string;
+    readonly suspendedByBoostId: string;
+    readonly remainingSeconds: number;
+}
+
+export interface TemporaryBoostResumedEvent {
+    readonly type: 'temporaryBoostResumed';
+    readonly boostId: string;
+    readonly remainingSeconds: number;
 }
 
 export interface ProducerLevelsPurchasedEvent {

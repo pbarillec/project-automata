@@ -1,5 +1,6 @@
 export type {
     AdvanceAutomationCommand,
+    ActivateFreeOverclockCommand,
     BuyMaxProducerLevelsCommand,
     BuyProducerLevelsCommand,
     CommandType,
@@ -21,4 +22,8 @@ export type {
     ProductionGrantedEvent,
     ProgressionFlagChangedEvent,
     RobotsBuiltThresholdReachedEvent,
+    TemporaryBoostActivatedEvent,
+    TemporaryBoostExpiredEvent,
+    TemporaryBoostResumedEvent,
+    TemporaryBoostSuspendedEvent,
 } from './Events.ts';

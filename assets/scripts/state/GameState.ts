@@ -67,13 +67,24 @@ export interface BoostState {
 export interface ActiveBoostState {
     boostId: string;
     remainingSeconds: number;
+    cooldownSeconds: number;
     source: string;
     requestId: string | null;
+    effect: TemporaryBoostEffectState;
+    isSuspended: boolean;
+    suspendedByBoostId: string | null;
 }
 
 export interface BoostCooldownState {
     remainingSeconds: number;
 }
+
+export interface TemporaryProductionMultiplierEffectState {
+    type: 'productionMultiplier';
+    multiplier: number;
+}
+
+export type TemporaryBoostEffectState = TemporaryProductionMultiplierEffectState;
 
 export interface MonetizationState {
     rewardedClaims: StateRecord<RewardedClaimState>;

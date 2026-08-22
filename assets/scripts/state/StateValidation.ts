@@ -225,12 +225,42 @@ function validateActiveBoostRecord(value: unknown, path: string, diagnostics: St
         if (!requirePlainObject(boost, itemPath, 'ActiveBoostState', diagnostics)) {
             continue;
         }
-        requireExactKeys(itemPath, boost, ['boostId', 'remainingSeconds', 'source', 'requestId'], diagnostics);
+        requireExactKeys(itemPath, boost, [
+            'boostId',
+            'remainingSeconds',
+            'cooldownSeconds',
+            'source',
+            'requestId',
+            'effect',
+            'isSuspended',
+            'suspendedByBoostId',
+        ], diagnostics);
         requireString(boost.boostId, `${itemPath}.boostId`, diagnostics);
-        requireNonNegativeFiniteNumber(boost.remainingSeconds, `${itemPath}.remainingSeconds`, diagnostics);
+        requirePositiveFiniteNumber(boost.remainingSeconds, `${itemPath}.remainingSeconds`, diagnostics);
+        requireNonNegativeFiniteNumber(boost.cooldownSeconds, `${itemPath}.cooldownSeconds`, diagnostics);
         requireString(boost.source, `${itemPath}.source`, diagnostics);
         validateNullableString(boost.requestId, `${itemPath}.requestId`, diagnostics);
+        validateTemporaryBoostEffect(boost.effect, `${itemPath}.effect`, diagnostics);
+        requireBoolean(boost.isSuspended, `${itemPath}.isSuspended`, diagnostics);
+        validateNullableString(boost.suspendedByBoostId, `${itemPath}.suspendedByBoostId`, diagnostics);
     }
+}
+
+function validateTemporaryBoostEffect(value: unknown, path: string, diagnostics: StateDiagnostic[]): void {
+    if (!requirePlainObject(value, path, 'TemporaryBoostEffectState', diagnostics)) {
+        return;
+    }
+
+    requireExactKeys(path, value, ['type', 'multiplier'], diagnostics);
+    if (value.type !== 'productionMultiplier') {
+        diagnostics.push(diagnostic(
+            'structural',
+            'STATE_INVALID_BOOST_EFFECT_TYPE',
+            `${path}.type`,
+            'Temporary boost effect type must be "productionMultiplier".',
+        ));
+    }
+    requirePositiveFiniteNumber(value.multiplier, `${path}.multiplier`, diagnostics);
 }
 
 function validateCooldownRecord(value: unknown, path: string, diagnostics: StateDiagnostic[]): void {
@@ -501,6 +531,12 @@ function requireNonNegativeInteger(value: unknown, path: string, diagnostics: St
 function requireNonNegativeFiniteNumber(value: unknown, path: string, diagnostics: StateDiagnostic[]): void {
     if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
         diagnostics.push(diagnostic('semantic', 'STATE_INVALID_NON_NEGATIVE_NUMBER', path, 'Expected a finite non-negative number.'));
+    }
+}
+
+function requirePositiveFiniteNumber(value: unknown, path: string, diagnostics: StateDiagnostic[]): void {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+        diagnostics.push(diagnostic('semantic', 'STATE_INVALID_POSITIVE_NUMBER', path, 'Expected a finite positive number.'));
     }
 }
 

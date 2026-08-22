@@ -30,6 +30,25 @@ export {
     purchaseBreakthrough,
 } from './Breakthroughs.ts';
 
+export {
+    FIRST_ROBOT_PROGRESSION_FLAG_ID,
+    FREE_OVERCLOCK_BOOST_ID,
+    FREE_OVERCLOCK_COOLDOWN_SECONDS,
+    FREE_OVERCLOCK_DURATION_SECONDS,
+    FREE_OVERCLOCK_MULTIPLIER,
+    TemporaryBoostInputError,
+    WORKER_BOT_BREAKTHROUGH_ID,
+    activateFreeOverclock,
+    activateTemporaryProductionBoost,
+    advanceTemporaryBoosts,
+    createTemporaryBoostModifierSet,
+    getEffectiveTemporaryProductionMultiplier,
+    getSecondsUntilNextTemporaryBoostTransition,
+    isFreeOverclockUnlocked,
+    resumeTemporaryBoost,
+    suspendTemporaryBoost,
+} from './TemporaryBoosts.ts';
+
 export type {
     EraTransitionResult,
 } from './EraProgression.ts';
@@ -46,3 +65,16 @@ export type {
     BreakthroughPurchaseUnknownResult,
     LockedBreakthroughRequirement,
 } from './Breakthroughs.ts';
+
+export type {
+    ActivateFreeOverclockResult,
+    AdvanceTemporaryBoostsResult,
+    TemporaryBoostActivatedEvent,
+    TemporaryBoostActivationStatus,
+    TemporaryBoostEvent,
+    TemporaryBoostExpiredEvent,
+    TemporaryBoostResumedEvent,
+    TemporaryBoostSuspendedEvent,
+    TemporaryBoostTransitionResult,
+    TemporaryBoostTransitionStatus,
+} from './TemporaryBoosts.ts';

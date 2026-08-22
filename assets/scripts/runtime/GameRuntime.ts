@@ -10,15 +10,19 @@ import {
     calculateMilestoneAdjustedProducerOutput,
     resolveCrossedProducerMilestones,
     resolveCrossedRobotsBuiltThresholds,
+    combineModifierSets,
     resolveEffectiveProducerProductionMultiplier,
 } from '../economy/index.ts';
 import {
     AUTOMATED_FACTORY_ERA_ID,
+    activateFreeOverclock,
+    advanceTemporaryBoosts,
     applyDefaultAutomationForConstructedProducer,
     applyEraTransition,
-    calculateAutomatedProductionForElapsedSeconds,
     calculateAutomatedProductionPerSecond,
     createBreakthroughModifierSet,
+    createTemporaryBoostModifierSet,
+    getSecondsUntilNextTemporaryBoostTransition,
     purchaseBreakthrough,
 } from '../progression/index.ts';
 import type { AutomationRunState, GameState, ProducerRunState } from '../state/GameState.ts';
@@ -42,6 +46,10 @@ export type CommandRejectionReason =
     | 'invalid_producer_id'
     | 'invalid_quantity'
     | 'invalid_elapsed_seconds'
+    | 'boost_locked'
+    | 'boost_already_active'
+    | 'boost_suspended'
+    | 'boost_on_cooldown'
     | 'locked_producer'
     | 'insufficient_balance'
     | 'no_affordable_levels'
@@ -94,7 +102,10 @@ export class GameRuntime {
     }
 
     calculateAutomationProductionForElapsedSeconds(elapsedSeconds: number): number {
-        return calculateAutomatedProductionForElapsedSeconds(this.repository, this.currentState, elapsedSeconds);
+        const draft = cloneGameState(this.currentState);
+        const previousAmount = draft.run.industrialOutput;
+        applyOnlineProductionAndBoostProgression(this.repository, draft, elapsedSeconds);
+        return draft.run.industrialOutput - previousAmount;
     }
 
     getRobotsBuiltPerSecond(): number {
@@ -103,6 +114,10 @@ export class GameRuntime {
 
     calculateRobotsBuiltForElapsedSeconds(elapsedSeconds: number): number {
         return calculateRobotsBuiltFromRobotLineElapsedSeconds(getRobotLineLevel(this.currentState), elapsedSeconds);
+    }
+
+    activateFreeOverclock(): CommandExecutionResult {
+        return this.execute({ type: 'activateFreeOverclock' });
     }
 
     advanceAutomation(elapsedSeconds: number): CommandExecutionResult {
@@ -169,6 +184,10 @@ function executeGameCommandInternal(
             return executeAdvanceAutomation(repository, state, parsedCommand.command);
         }
 
+        if (parsedCommand.command.type === 'activateFreeOverclock') {
+            return executeActivateFreeOverclock(state, parsedCommand.command);
+        }
+
         if (parsedCommand.command.type === 'buyProducerLevels') {
             return executeBuyProducerLevels(repository, state, parsedCommand.command);
         }
@@ -189,7 +208,10 @@ function executeGameCommandInternal(
 
 export function calculateCurrentProductionPerSecond(repository: GameConfigRepository, state: GameState): number {
     const milestones = repository.listMilestones();
-    const modifierSet = createBreakthroughModifierSet(repository, state);
+    const modifierSet = combineModifierSets([
+        createBreakthroughModifierSet(repository, state),
+        createTemporaryBoostModifierSet(state.boosts),
+    ]);
     let total = 0;
 
     for (const producer of repository.listProducers()) {
@@ -279,39 +301,15 @@ function executeAdvanceAutomation(
     state: GameState,
     command: GameCommand & { type: 'advanceAutomation' },
 ): InternalCommandExecutionResult {
-    const produced = calculateAutomatedProductionForElapsedSeconds(repository, state, command.elapsedSeconds);
-    const robotsBuilt = calculateRobotsBuiltFromRobotLineElapsedSeconds(getRobotLineLevel(state), command.elapsedSeconds);
     const draft = cloneGameState(state);
+    const productionAndBoostEvents = applyOnlineProductionAndBoostProgression(repository, draft, command.elapsedSeconds);
+    const robotsBuilt = calculateRobotsBuiltFromRobotLineElapsedSeconds(getRobotLineLevel(state), command.elapsedSeconds);
 
-    if (produced === 0 && robotsBuilt === 0) {
+    if (productionAndBoostEvents.length === 0 && robotsBuilt === 0) {
         return commit(command, draft, []);
     }
 
-    const events: DomainEvent[] = [];
-
-    const previousAmount = draft.run.industrialOutput;
-    if (produced > 0) {
-        draft.run.industrialOutput = addFinite(draft.run.industrialOutput, produced, 'industrialOutput');
-        draft.run.statistics.industrialOutputEarned = addFinite(
-            draft.run.statistics.industrialOutputEarned,
-            produced,
-            'run.statistics.industrialOutputEarned',
-        );
-        draft.lifetime.industrialOutputEarned = addFinite(
-            draft.lifetime.industrialOutputEarned,
-            produced,
-            'lifetime.industrialOutputEarned',
-        );
-
-        events.push(
-            {
-                type: 'productionGranted',
-                source: 'automation',
-                amount: produced,
-            },
-            industrialOutputChanged(previousAmount, draft.run.industrialOutput, 'automation_production'),
-        );
-    }
+    const events: DomainEvent[] = [...productionAndBoostEvents];
 
     if (robotsBuilt > 0) {
         const previousRobotsBuilt = draft.run.robotsBuilt;
@@ -330,6 +328,79 @@ function executeAdvanceAutomation(
     }
 
     return commit(command, draft, events);
+}
+
+function executeActivateFreeOverclock(
+    state: GameState,
+    command: GameCommand & { type: 'activateFreeOverclock' },
+): InternalCommandExecutionResult {
+    const result = activateFreeOverclock(state);
+
+    if (result.status !== 'activated') {
+        return reject(mapBoostActivationStatusToRejectionReason(result.status), createBoostActivationRejectionMessage(result.status), {
+            boostId: 'free_overclock',
+            remainingCooldownSeconds: result.remainingCooldownSeconds,
+        });
+    }
+
+    const draft = cloneGameState(state);
+    draft.boosts = result.boosts;
+
+    return commit(command, draft, result.events);
+}
+
+function applyOnlineProductionAndBoostProgression(
+    repository: GameConfigRepository,
+    draft: GameState,
+    elapsedSeconds: number,
+): DomainEvent[] {
+    let remainingSeconds = elapsedSeconds;
+    const events: DomainEvent[] = [];
+
+    while (remainingSeconds > 0) {
+        const nextBoostTransitionSeconds = getSecondsUntilNextTemporaryBoostTransition(draft.boosts);
+        const segmentSeconds = nextBoostTransitionSeconds === null
+            ? remainingSeconds
+            : Math.min(remainingSeconds, nextBoostTransitionSeconds);
+
+        if (segmentSeconds <= 0) {
+            break;
+        }
+
+        const productionPerSecond = calculateAutomatedProductionPerSecond(repository, draft);
+        const produced = calculateElapsedProduction(productionPerSecond, segmentSeconds);
+        if (produced > 0) {
+            const previousAmount = draft.run.industrialOutput;
+            draft.run.industrialOutput = addFinite(draft.run.industrialOutput, produced, 'industrialOutput');
+            draft.run.statistics.industrialOutputEarned = addFinite(
+                draft.run.statistics.industrialOutputEarned,
+                produced,
+                'run.statistics.industrialOutputEarned',
+            );
+            draft.lifetime.industrialOutputEarned = addFinite(
+                draft.lifetime.industrialOutputEarned,
+                produced,
+                'lifetime.industrialOutputEarned',
+            );
+
+            events.push(
+                {
+                    type: 'productionGranted',
+                    source: 'automation',
+                    amount: produced,
+                },
+                industrialOutputChanged(previousAmount, draft.run.industrialOutput, 'automation_production'),
+            );
+        }
+
+        const boostResult = advanceTemporaryBoosts(draft.boosts, segmentSeconds);
+        draft.boosts = boostResult.boosts;
+        events.push(...boostResult.events);
+
+        remainingSeconds = clampNegativeZero(remainingSeconds - segmentSeconds);
+    }
+
+    return events;
 }
 
 function executeManualProduce(state: GameState, command: GameCommand & { type: 'manualProduce' }): InternalCommandExecutionResult {
@@ -651,6 +722,10 @@ function parseGameCommand(command: unknown): { ok: true; command: GameCommand } 
         return { ok: true, command: { type: 'manualProduce' } };
     }
 
+    if (command.type === 'activateFreeOverclock') {
+        return { ok: true, command: { type: 'activateFreeOverclock' } };
+    }
+
     if (command.type === 'advanceAutomation') {
         if (typeof command.elapsedSeconds !== 'number' || !Number.isFinite(command.elapsedSeconds) || command.elapsedSeconds < 0) {
             return reject('invalid_elapsed_seconds', 'elapsedSeconds must be a non-negative finite number.');
@@ -759,6 +834,42 @@ function industrialOutputChanged(
         delta: newAmount - previousAmount,
         reason,
     };
+}
+
+function mapBoostActivationStatusToRejectionReason(
+    status: Exclude<ReturnType<typeof activateFreeOverclock>['status'], 'activated'>,
+): CommandRejectionReason {
+    if (status === 'locked') {
+        return 'boost_locked';
+    }
+
+    if (status === 'already_active') {
+        return 'boost_already_active';
+    }
+
+    if (status === 'suspended') {
+        return 'boost_suspended';
+    }
+
+    return 'boost_on_cooldown';
+}
+
+function createBoostActivationRejectionMessage(
+    status: Exclude<ReturnType<typeof activateFreeOverclock>['status'], 'activated'>,
+): string {
+    if (status === 'locked') {
+        return 'Free Overclock is locked.';
+    }
+
+    if (status === 'already_active') {
+        return 'Free Overclock is already active.';
+    }
+
+    if (status === 'suspended') {
+        return 'Free Overclock is suspended.';
+    }
+
+    return 'Free Overclock is on cooldown.';
 }
 
 function evaluateProducerConstructionLock(

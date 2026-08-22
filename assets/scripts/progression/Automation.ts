@@ -3,18 +3,23 @@ import {
     applyProductionMultiplier,
     calculateElapsedProduction,
     calculateMilestoneAdjustedProducerOutput,
+    combineModifierSets,
     resolveEffectiveProducerProductionMultiplier,
 } from '../economy/index.ts';
 import type { GameState } from '../state/GameState.ts';
 import { createBreakthroughModifierSet } from './Breakthroughs.ts';
 import { resolveEffectiveProducerAutomationState } from './AutomationState.ts';
+import { createTemporaryBoostModifierSet } from './TemporaryBoosts.ts';
 
 export function calculateAutomatedProductionPerSecond(
     repository: GameConfigRepository,
     state: GameState,
 ): number {
     const milestones = repository.listMilestones();
-    const modifierSet = createBreakthroughModifierSet(repository, state);
+    const modifierSet = combineModifierSets([
+        createBreakthroughModifierSet(repository, state),
+        createTemporaryBoostModifierSet(state.boosts),
+    ]);
     let total = 0;
 
     for (const producer of repository.listProducers()) {
