@@ -6,6 +6,7 @@ import type { GameState } from '../state/GameState.ts';
 import { cloneGameState } from '../state/StateClone.ts';
 import { createFreshGameState } from '../state/StateFactory.ts';
 import { SimulationMetricsCollector, type SimulationMetricsSnapshot } from './Metrics.ts';
+import type { SimulationStrategy, SimulationStrategyRunSummary } from './SimulationStrategy.ts';
 
 export interface HeadlessSimulatorOptions {
     readonly initialState?: GameState;
@@ -71,6 +72,13 @@ export class HeadlessSimulator {
         this.metrics.recordCommand(this.simulatedTimeSecondsValue, command, result, label);
         this.metrics.recordEvents(this.simulatedTimeSecondsValue, result.events);
         return result;
+    }
+
+    runStrategy(strategy: SimulationStrategy): SimulationStrategyRunSummary {
+        return strategy.run({
+            repository: this.repository,
+            simulator: this,
+        });
     }
 
     advanceTime(elapsedSeconds: number, label = 'advance_time'): CommandExecutionResult {
