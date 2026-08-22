@@ -20,6 +20,14 @@ export {
     isProductionApproximatelyEqual,
 } from './ProducerProduction.ts';
 
+export {
+    ProducerMilestoneInputError,
+    calculateCumulativeMilestoneMultiplier,
+    calculateMilestoneAdjustedProducerOutput,
+    calculateTotalMilestoneAdjustedProductionPerSecond,
+    resolveCrossedProducerMilestones,
+} from './ProducerMilestones.ts';
+
 export type {
     MaxAffordableProducerPurchase,
     ProducerPurchaseCost,
@@ -28,3 +36,7 @@ export type {
 export type {
     ProducerLevelMap,
 } from './ProducerProduction.ts';
+
+export type {
+    CrossedProducerMilestone,
+} from './ProducerMilestones.ts';

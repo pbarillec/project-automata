@@ -1,0 +1,12 @@
+{
+  "kind": "milestones",
+  "schemaVersion": 1,
+  "contentVersion": "0.1.0-aut-010",
+  "items": [
+    {
+      "id": "level_10",
+      "threshold": 10,
+      "productionMultiplier": 0
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 {
   "kind": "producers",
   "schemaVersion": 1,
-  "contentVersion": "0.1.0-aut-007",
+  "contentVersion": "0.1.0-aut-010",
   "items": [
     {
       "id": "fabricator",

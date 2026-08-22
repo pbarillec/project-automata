@@ -1,6 +1,6 @@
 export type ConfigStage = 'parse' | 'structural' | 'cross-reference' | 'semantic' | 'repository';
 
-export type ConfigFileKind = 'eras' | 'producers' | 'breakthroughs';
+export type ConfigFileKind = 'eras' | 'producers' | 'breakthroughs' | 'milestones';
 
 export interface ConfigFileSource {
     filePath: string;
@@ -30,6 +30,12 @@ export interface ProducerConfig {
     costGrowth: number;
     baseProductionPerLevel: number;
     prerequisiteProducerIds: string[];
+}
+
+export interface ProducerMilestoneConfig {
+    id: string;
+    threshold: number;
+    productionMultiplier: number;
 }
 
 export interface ProducerLevelRequirement {
@@ -68,6 +74,7 @@ export interface GameConfigRepositorySnapshot {
     eras: EraConfig[];
     producers: ProducerConfig[];
     breakthroughs: BreakthroughConfig[];
+    milestones: ProducerMilestoneConfig[];
 }
 
 interface ParsedConfigFile {
@@ -87,6 +94,7 @@ interface StructuredConfigSet {
     eras: ConfigEnvelope<'eras', EraConfig>[];
     producers: ConfigEnvelope<'producers', ProducerConfig>[];
     breakthroughs: ConfigEnvelope<'breakthroughs', BreakthroughConfig>[];
+    milestones: ConfigEnvelope<'milestones', ProducerMilestoneConfig>[];
 }
 
 interface StageResult<T> {
@@ -95,7 +103,7 @@ interface StageResult<T> {
 }
 
 const CONFIG_SCHEMA_VERSION = 1;
-const SUPPORTED_CONFIG_KINDS: ConfigFileKind[] = ['eras', 'producers', 'breakthroughs'];
+const SUPPORTED_CONFIG_KINDS: ConfigFileKind[] = ['eras', 'producers', 'breakthroughs', 'milestones'];
 const SUPPORTED_EFFECT_TYPES = ['productionMultiplier', 'unlockProducer'];
 const EMPTY_FILE_PATH = '<config>';
 
@@ -116,6 +124,7 @@ export class GameConfigRepository {
     private readonly eraById: Map<string, EraConfig>;
     private readonly producerById: Map<string, ProducerConfig>;
     private readonly breakthroughById: Map<string, BreakthroughConfig>;
+    private readonly milestoneById: Map<string, ProducerMilestoneConfig>;
 
     constructor(snapshot: GameConfigRepositorySnapshot) {
         this.schemaVersion = snapshot.schemaVersion;
@@ -123,6 +132,7 @@ export class GameConfigRepository {
         this.eraById = new Map(snapshot.eras.map((era) => [era.id, freezePlainObject(era)]));
         this.producerById = new Map(snapshot.producers.map((producer) => [producer.id, freezePlainObject(producer)]));
         this.breakthroughById = new Map(snapshot.breakthroughs.map((breakthrough) => [breakthrough.id, freezePlainObject(breakthrough)]));
+        this.milestoneById = new Map(snapshot.milestones.map((milestone) => [milestone.id, freezePlainObject(milestone)]));
     }
 
     getEra(id: string): EraConfig | undefined {
@@ -137,6 +147,10 @@ export class GameConfigRepository {
         return this.breakthroughById.get(id);
     }
 
+    getMilestone(id: string): ProducerMilestoneConfig | undefined {
+        return this.milestoneById.get(id);
+    }
+
     listEras(): EraConfig[] {
         return Array.from(this.eraById.values());
     }
@@ -147,6 +161,10 @@ export class GameConfigRepository {
 
     listBreakthroughs(): BreakthroughConfig[] {
         return Array.from(this.breakthroughById.values());
+    }
+
+    listMilestones(): ProducerMilestoneConfig[] {
+        return Array.from(this.milestoneById.values());
     }
 }
 
@@ -185,6 +203,7 @@ export function validateConfigStructure(parsedFiles: ParsedConfigFile[]): StageR
         eras: [],
         producers: [],
         breakthroughs: [],
+        milestones: [],
     };
     const idsByKind = new Map<ConfigFileKind, Map<string, string>>();
 
@@ -315,6 +334,7 @@ export function validateConfigSemantics(config: StructuredConfigSet): ConfigDiag
     validateContentVersionConsistency(config, diagnostics);
     validateSemanticNumbers(config, diagnostics);
     validateKnownEffectTypes(config, diagnostics);
+    validateMilestoneOrdering(config, diagnostics);
     validateReferenceCycles(config, diagnostics);
     return sortDiagnostics(diagnostics);
 }
@@ -334,6 +354,10 @@ export function buildGameConfigRepository(config: StructuredConfigSet): StageRes
         diagnostics.push(makeDiagnostic('repository', 'CONFIG_MISSING_KIND', EMPTY_FILE_PATH, '$.breakthroughs', 'Repository requires a breakthroughs config file.'));
     }
 
+    if (config.milestones.length === 0) {
+        diagnostics.push(makeDiagnostic('repository', 'CONFIG_MISSING_KIND', EMPTY_FILE_PATH, '$.milestones', 'Repository requires a milestones config file.'));
+    }
+
     if (diagnostics.length > 0) {
         return { value: undefined, diagnostics: sortDiagnostics(diagnostics) };
     }
@@ -345,6 +369,7 @@ export function buildGameConfigRepository(config: StructuredConfigSet): StageRes
         eras: config.eras.flatMap((envelope) => envelope.items),
         producers: config.producers.flatMap((envelope) => envelope.items),
         breakthroughs: config.breakthroughs.flatMap((envelope) => envelope.items),
+        milestones: config.milestones.flatMap((envelope) => envelope.items),
     });
 
     return { value: repository, diagnostics };
@@ -383,7 +408,7 @@ export function loadGameConfigFromSources(sources: ConfigFileSource[]): GameConf
     return result.value;
 }
 
-function parseConfigItem(kind: ConfigFileKind, value: unknown, filePath: string, itemPath: string, diagnostics: ConfigDiagnostic[]): EraConfig | ProducerConfig | BreakthroughConfig | undefined {
+function parseConfigItem(kind: ConfigFileKind, value: unknown, filePath: string, itemPath: string, diagnostics: ConfigDiagnostic[]): EraConfig | ProducerConfig | BreakthroughConfig | ProducerMilestoneConfig | undefined {
     if (!isPlainObject(value)) {
         diagnostics.push(makeDiagnostic('structural', 'CONFIG_EXPECTED_OBJECT', filePath, itemPath, 'Config item must be an object.'));
         return undefined;
@@ -397,7 +422,11 @@ function parseConfigItem(kind: ConfigFileKind, value: unknown, filePath: string,
         return parseProducerConfig(value, filePath, itemPath, diagnostics);
     }
 
-    return parseBreakthroughConfig(value, filePath, itemPath, diagnostics);
+    if (kind === 'breakthroughs') {
+        return parseBreakthroughConfig(value, filePath, itemPath, diagnostics);
+    }
+
+    return parseProducerMilestoneConfig(value, filePath, itemPath, diagnostics);
 }
 
 function parseEraConfig(value: Record<string, unknown>, filePath: string, itemPath: string, diagnostics: ConfigDiagnostic[]): EraConfig | undefined {
@@ -457,6 +486,19 @@ function parseProducerConfig(value: Record<string, unknown>, filePath: string, i
         baseProductionPerLevel,
         prerequisiteProducerIds,
     };
+}
+
+function parseProducerMilestoneConfig(value: Record<string, unknown>, filePath: string, itemPath: string, diagnostics: ConfigDiagnostic[]): ProducerMilestoneConfig | undefined {
+    validateAllowedKeys('structural', filePath, itemPath, value, ['id', 'threshold', 'productionMultiplier'], diagnostics);
+    const id = readString(value, 'id', filePath, itemPath, diagnostics);
+    const threshold = readNumber(value, 'threshold', filePath, itemPath, diagnostics);
+    const productionMultiplier = readNumber(value, 'productionMultiplier', filePath, itemPath, diagnostics);
+
+    if (id === undefined || threshold === undefined || productionMultiplier === undefined) {
+        return undefined;
+    }
+
+    return { id, threshold, productionMultiplier };
 }
 
 function parseBreakthroughConfig(value: Record<string, unknown>, filePath: string, itemPath: string, diagnostics: ConfigDiagnostic[]): BreakthroughConfig | undefined {
@@ -607,6 +649,17 @@ function validateSemanticNumbers(config: StructuredConfigSet, diagnostics: Confi
         });
     }
 
+    for (const envelope of config.milestones) {
+        envelope.items.forEach((milestone, index) => {
+            if (!Number.isInteger(milestone.threshold) || milestone.threshold <= 0) {
+                diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].threshold`, 'milestone threshold must be a positive integer.'));
+            }
+            if (milestone.productionMultiplier <= 0) {
+                diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].productionMultiplier`, 'milestone productionMultiplier must be greater than 0.'));
+            }
+        });
+    }
+
     for (const envelope of config.breakthroughs) {
         envelope.items.forEach((breakthrough, index) => {
             if (breakthrough.cost <= 0) {
@@ -636,6 +689,46 @@ function validateKnownEffectTypes(config: StructuredConfigSet, diagnostics: Conf
                     diagnostics.push(makeDiagnostic('semantic', 'CONFIG_UNKNOWN_EFFECT_TYPE', envelope.filePath, `$.items[${index}].effects[${effectIndex}].type`, `Unsupported effect type "${effect.type}".`));
                 }
             });
+        });
+    }
+}
+
+function validateMilestoneOrdering(config: StructuredConfigSet, diagnostics: ConfigDiagnostic[]): void {
+    const seenThresholds = new Map<number, { filePath: string; configPath: string }>();
+    let previousThreshold = Number.NEGATIVE_INFINITY;
+
+    for (const envelope of config.milestones) {
+        envelope.items.forEach((milestone, index) => {
+            const thresholdPath = `$.items[${index}].threshold`;
+            const duplicateThreshold = seenThresholds.get(milestone.threshold);
+
+            if (duplicateThreshold !== undefined) {
+                diagnostics.push(makeDiagnostic(
+                    'semantic',
+                    'CONFIG_DUPLICATE_MILESTONE_THRESHOLD',
+                    envelope.filePath,
+                    thresholdPath,
+                    `Duplicate milestone threshold ${milestone.threshold} also declared at ${duplicateThreshold.filePath} ${duplicateThreshold.configPath}.`,
+                ));
+            }
+            else {
+                seenThresholds.set(milestone.threshold, {
+                    filePath: envelope.filePath,
+                    configPath: thresholdPath,
+                });
+            }
+
+            if (milestone.threshold <= previousThreshold) {
+                diagnostics.push(makeDiagnostic(
+                    'semantic',
+                    'CONFIG_INVALID_ORDER',
+                    envelope.filePath,
+                    thresholdPath,
+                    'Milestone thresholds must be strictly ascending.',
+                ));
+            }
+
+            previousThreshold = milestone.threshold;
         });
     }
 }
@@ -724,7 +817,7 @@ function findCycles(graph: Map<string, string[]>): string[][] {
     }
 }
 
-function pushEnvelope(structured: StructuredConfigSet, envelope: ConfigEnvelope<ConfigFileKind, EraConfig | ProducerConfig | BreakthroughConfig>): void {
+function pushEnvelope(structured: StructuredConfigSet, envelope: ConfigEnvelope<ConfigFileKind, EraConfig | ProducerConfig | BreakthroughConfig | ProducerMilestoneConfig>): void {
     if (envelope.kind === 'eras') {
         structured.eras.push(envelope as ConfigEnvelope<'eras', EraConfig>);
         return;
@@ -735,7 +828,12 @@ function pushEnvelope(structured: StructuredConfigSet, envelope: ConfigEnvelope<
         return;
     }
 
-    structured.breakthroughs.push(envelope as ConfigEnvelope<'breakthroughs', BreakthroughConfig>);
+    if (envelope.kind === 'breakthroughs') {
+        structured.breakthroughs.push(envelope as ConfigEnvelope<'breakthroughs', BreakthroughConfig>);
+        return;
+    }
+
+    structured.milestones.push(envelope as ConfigEnvelope<'milestones', ProducerMilestoneConfig>);
 }
 
 function getAllEnvelopes(config: StructuredConfigSet): ConfigEnvelope<ConfigFileKind, unknown>[] {
@@ -743,6 +841,7 @@ function getAllEnvelopes(config: StructuredConfigSet): ConfigEnvelope<ConfigFile
         ...config.eras,
         ...config.producers,
         ...config.breakthroughs,
+        ...config.milestones,
     ].sort(compareEnvelope);
 }
 

@@ -81,7 +81,7 @@ async function sourcesWithProducerItems(items) {
         text: JSON.stringify({
             kind: 'producers',
             schemaVersion: 1,
-            contentVersion: '0.1.0-aut-007',
+            contentVersion: '0.1.0-aut-010',
             items,
         }),
     };
@@ -108,10 +108,11 @@ test('valid representative multi-file config loads into typed repository', async
     const repository = loadGameConfigFromSources(await collectJsonSources(dataRoot));
 
     assert.equal(repository.schemaVersion, 1);
-    assert.equal(repository.contentVersion, '0.1.0-aut-007');
+    assert.equal(repository.contentVersion, '0.1.0-aut-010');
     assert.equal(repository.listEras().length, 3);
     assert.equal(repository.listProducers().length, 5);
     assert.equal(repository.listBreakthroughs().length, 0);
+    assert.equal(repository.listMilestones().length, 4);
     assert.equal(repository.getProducer('fabricator')?.baseCost, 10);
 });
 
@@ -178,6 +179,34 @@ test('approved MVP producers match order, names, eras and economic baselines', a
     ]);
 });
 
+test('approved shared MVP milestones match Economy thresholds and production multipliers', async () => {
+    const { loadGameConfigFromSources } = await configModule();
+    const repository = loadGameConfigFromSources(await collectJsonSources(dataRoot));
+
+    assert.deepEqual(repository.listMilestones(), [
+        {
+            id: 'level_10',
+            threshold: 10,
+            productionMultiplier: 2,
+        },
+        {
+            id: 'level_25',
+            threshold: 25,
+            productionMultiplier: 2,
+        },
+        {
+            id: 'level_50',
+            threshold: 50,
+            productionMultiplier: 3,
+        },
+        {
+            id: 'level_100',
+            threshold: 100,
+            productionMultiplier: 5,
+        },
+    ]);
+});
+
 test('validation stages are callable separately', async () => {
     const {
         parseConfigSources,
@@ -199,6 +228,7 @@ test('validation stages are callable separately', async () => {
     const repositoryResult = buildGameConfigRepository(structuralResult.value);
     assert.deepEqual(repositoryResult.diagnostics, []);
     assert.equal(repositoryResult.value?.getEra('manual_workshop')?.order, 0);
+    assert.equal(repositoryResult.value?.getMilestone('level_100')?.productionMultiplier, 5);
 });
 
 test('malformed JSON fails deterministically at parse stage', async () => {
@@ -296,6 +326,38 @@ test('unknown effect types fail deterministically', async () => {
         stage: 'semantic',
         code: 'CONFIG_UNKNOWN_EFFECT_TYPE',
         messagePattern: /Unsupported effect type "grantCurrency"/,
+    });
+});
+
+test('duplicate milestone thresholds fail deterministically', async () => {
+    await expectDiagnostic('duplicate-milestone-threshold', 'milestones.json', {
+        stage: 'semantic',
+        code: 'CONFIG_DUPLICATE_MILESTONE_THRESHOLD',
+        messagePattern: /Duplicate milestone threshold 10/,
+    });
+});
+
+test('invalid milestone multipliers fail deterministically', async () => {
+    await expectDiagnostic('invalid-milestone-multiplier', 'milestones.json', {
+        stage: 'semantic',
+        code: 'CONFIG_INVALID_NUMBER',
+        messagePattern: /productionMultiplier must be greater than 0/,
+    });
+});
+
+test('invalid milestone ordering fails deterministically', async () => {
+    await expectDiagnostic('invalid-milestone-order', 'milestones.json', {
+        stage: 'semantic',
+        code: 'CONFIG_INVALID_ORDER',
+        messagePattern: /strictly ascending/,
+    });
+});
+
+test('malformed milestone records fail deterministically at structural stage', async () => {
+    await expectDiagnostic('malformed-milestone-record', 'milestones.json', {
+        stage: 'structural',
+        code: 'CONFIG_REQUIRED_FIELD',
+        messagePattern: /threshold is required/,
     });
 });
 
