@@ -140,6 +140,18 @@ function emptyPermanentUpgradesSource() {
     };
 }
 
+function prestigeSourceWithItems(items) {
+    return {
+        filePath: 'data/economy/prestige.json',
+        text: JSON.stringify({
+            kind: 'prestige',
+            schemaVersion: 1,
+            contentVersion: '0.1.0-aut-010',
+            items,
+        }),
+    };
+}
+
 async function expectDiagnostic(fixtureName, fileName, expected) {
     const { validateConfigSources, formatConfigDiagnostic } = await configModule();
     const result = validateConfigSources(await sourcesWithInvalidFixture(fixtureName, fileName));
@@ -162,6 +174,7 @@ test('valid representative multi-file config loads into typed repository', async
     assert.equal(repository.listBreakthroughs().length, 6);
     assert.equal(repository.listMilestones().length, 4);
     assert.equal(repository.listPermanentUpgrades().length, 8);
+    assert.equal(repository.getPrestigeConfig().p0PrestigePower, 100000000);
     assert.equal(repository.getProducer('fabricator')?.baseCost, 10);
 });
 
@@ -392,6 +405,35 @@ test('standard MVP breakthroughs intentionally exclude Robot Line construction a
     assert.equal(ids.includes('reboot_civilization'), false);
 });
 
+test('prestige config exposes finite positive P0 outside player state', async () => {
+    const { loadGameConfigFromSources } = await configModule();
+    const repository = loadGameConfigFromSources(await collectJsonSources(dataRoot));
+
+    assert.deepEqual(repository.getPrestigeConfig(), {
+        id: 'default',
+        p0PrestigePower: 100000000,
+    });
+});
+
+test('invalid prestige P0 values fail deterministic config validation', async () => {
+    const { validateConfigSources, formatConfigDiagnostic } = await configModule();
+    const validSources = await collectJsonSources(dataRoot);
+    const result = validateConfigSources(validSources
+        .filter((source) => source.filePath !== 'data/economy/prestige.json')
+        .concat(prestigeSourceWithItems([
+            {
+                id: 'default',
+                p0PrestigePower: 0,
+            },
+        ]))
+        .sort((left, right) => left.filePath.localeCompare(right.filePath)));
+
+    assert.equal(result.value, undefined);
+    assert.equal(result.diagnostics[0].stage, 'semantic');
+    assert.equal(result.diagnostics[0].code, 'CONFIG_INVALID_NUMBER');
+    assert.match(formatConfigDiagnostic(result.diagnostics[0]), /p0PrestigePower must be greater than 0/);
+});
+
 test('validation stages are callable separately', async () => {
     const {
         parseConfigSources,
@@ -414,6 +456,7 @@ test('validation stages are callable separately', async () => {
     assert.deepEqual(repositoryResult.diagnostics, []);
     assert.equal(repositoryResult.value?.getEra('manual_workshop')?.order, 0);
     assert.equal(repositoryResult.value?.getMilestone('level_100')?.productionMultiplier, 5);
+    assert.equal(repositoryResult.value?.getPrestigeConfig().id, 'default');
 });
 
 test('malformed JSON fails deterministically at parse stage', async () => {

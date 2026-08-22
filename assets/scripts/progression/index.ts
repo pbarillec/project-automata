@@ -22,6 +22,25 @@ export {
 } from './Automation.ts';
 
 export {
+    calculateDurableProductionPerSecond,
+    calculateOnlineAutomatedProductionPerSecond,
+    calculateOnlineProductionPerSecond,
+    calculateSustainedProductionPerSecond,
+} from './ProductionRates.ts';
+
+export {
+    AI_CORE_REWARD_COEFFICIENT,
+    PrestigeInputError,
+    calculateAiCoreReward,
+    calculateCurrentPrestigeEligibleProductionPerSecond,
+    calculateNextAiCoreProgress,
+    calculateRequiredPrestigePowerForAiCores,
+    calculateUpdatedPrestigePowerPeak,
+    createPrestigePreview,
+    readPrestigeConfig,
+} from './Prestige.ts';
+
+export {
     BreakthroughInputError,
     createBreakthroughModifierSet,
     evaluateBreakthroughEligibility,
@@ -76,6 +95,17 @@ export {
 export type {
     EraTransitionResult,
 } from './EraProgression.ts';
+
+export type {
+    ProductionRateOptions,
+    ProductionRateProducerScope,
+    ProductionRateTemporaryBoostMode,
+} from './ProductionRates.ts';
+
+export type {
+    NextAiCoreProgress,
+    PrestigePreview,
+} from './Prestige.ts';
 
 export type {
     BreakthroughEligibilityResult,

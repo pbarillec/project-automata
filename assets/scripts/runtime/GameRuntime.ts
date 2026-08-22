@@ -1,17 +1,13 @@
 import type { BreakthroughEffect, GameConfigRepository, ProducerConfig } from '../config/ConfigLoader.ts';
 import type { DomainEvent, GameCommand } from '../domain/index.ts';
 import {
-    applyProductionMultiplier,
     calculateElapsedProduction,
     calculateMaxAffordableProducerPurchase,
     calculateProducerPurchaseCost,
     calculateRobotsBuiltFromRobotLineElapsedSeconds,
     calculateRobotsBuiltPerSecond,
-    calculateMilestoneAdjustedProducerOutput,
-    resolveCrossedProducerMilestones,
     resolveCrossedRobotsBuiltThresholds,
-    combineModifierSets,
-    resolveEffectiveProducerProductionMultiplier,
+    resolveCrossedProducerMilestones,
 } from '../economy/index.ts';
 import {
     AUTOMATED_FACTORY_ERA_ID,
@@ -20,15 +16,14 @@ import {
     applyDefaultAutomationForConstructedProducer,
     applyEraTransition,
     calculateAutomatedProductionPerSecond,
-    createBreakthroughModifierSet,
-    createTemporaryBoostModifierSet,
+    calculateCurrentPrestigeEligibleProductionPerSecond,
+    calculateOnlineProductionPerSecond,
+    calculateUpdatedPrestigePowerPeak,
     getSecondsUntilNextTemporaryBoostTransition,
     purchaseBreakthrough,
-    createPermanentUpgradeModifierSet,
     applyNewProducerConstructionCostMultiplier,
     resolveEffectiveMajorRequirement,
     resolveNewProducerConstructionCostMultiplier,
-    resolvePermanentMilestonePowerBonus,
 } from '../progression/index.ts';
 import type { AutomationRunState, GameState, MetaState, ProducerRunState } from '../state/GameState.ts';
 import { cloneGameState, clonePlainData } from '../state/StateClone.ts';
@@ -212,23 +207,7 @@ function executeGameCommandInternal(
 }
 
 export function calculateCurrentProductionPerSecond(repository: GameConfigRepository, state: GameState): number {
-    const milestones = repository.listMilestones();
-    const milestonePowerBonus = resolvePermanentMilestonePowerBonus(repository, state.meta);
-    const modifierSet = combineModifierSets([
-        createBreakthroughModifierSet(repository, state),
-        createPermanentUpgradeModifierSet(repository, state),
-        createTemporaryBoostModifierSet(state.boosts),
-    ]);
-    let total = 0;
-
-    for (const producer of repository.listProducers()) {
-        const level = state.run.producers[producer.id]?.level ?? 0;
-        const milestoneAdjusted = calculateMilestoneAdjustedProducerOutput(producer, level, milestones, milestonePowerBonus);
-        const modifier = resolveEffectiveProducerProductionMultiplier(modifierSet, producer.id);
-        total = addFinite(total, applyProductionMultiplier(milestoneAdjusted, modifier), 'productionPerSecond');
-    }
-
-    return total;
+    return calculateOnlineProductionPerSecond(repository, state);
 }
 
 export function calculateCurrentRobotsBuiltPerSecond(state: GameState): number {
@@ -411,7 +390,7 @@ function executeAdvanceAutomation(
         }
     }
 
-    return commit(command, draft, events);
+    return commit(command, draft, events, repository);
 }
 
 function executeActivateFreeOverclock(
@@ -656,7 +635,7 @@ function applyProducerPurchase(
         });
     }
 
-    return commit(command, draft, events);
+    return commit(command, draft, events, repository);
 }
 
 function executePurchaseBreakthrough(
@@ -709,7 +688,7 @@ function executePurchaseBreakthrough(
             cost: result.cost,
         },
         ...createBreakthroughEffectEvents(beforeState, result.state, command.breakthroughId, breakthrough.effects),
-    ]);
+    ], repository);
 }
 
 function createBreakthroughEffectEvents(
@@ -876,8 +855,21 @@ function parseGameCommand(command: unknown): { ok: true; command: GameCommand } 
     });
 }
 
-function commit(command: GameCommand, draft: GameState, events: readonly DomainEvent[]): InternalCommandExecutionResult {
+function commit(
+    command: GameCommand,
+    draft: GameState,
+    events: readonly DomainEvent[],
+    repository?: GameConfigRepository,
+): InternalCommandExecutionResult {
     try {
+        if (repository !== undefined && shouldUpdatePrestigePowerPeak(command)) {
+            const currentEligibleProduction = calculateCurrentPrestigeEligibleProductionPerSecond(repository, draft);
+            draft.run.prestigePowerPeak = calculateUpdatedPrestigePowerPeak(
+                draft.run.prestigePowerPeak,
+                currentEligibleProduction,
+            );
+        }
+
         assertValidGameState(draft);
     }
     catch (error) {
@@ -890,6 +882,12 @@ function commit(command: GameCommand, draft: GameState, events: readonly DomainE
         events: freezeEvents(events),
         state: draft,
     };
+}
+
+function shouldUpdatePrestigePowerPeak(command: GameCommand): boolean {
+    return command.type === 'buyProducerLevels' ||
+        command.type === 'buyMaxProducerLevels' ||
+        command.type === 'purchaseBreakthrough';
 }
 
 function reject(

@@ -15,7 +15,7 @@ const configRoot = path.resolve(process.argv[2] ?? path.join(repoRoot, 'data'));
 try {
     const sources = await collectJsonSources(configRoot);
     const repository = loadGameConfigFromSources(sources);
-    console.log(`Config validation passed: contentVersion=${repository.contentVersion} eras=${repository.listEras().length} producers=${repository.listProducers().length} breakthroughs=${repository.listBreakthroughs().length} milestones=${repository.listMilestones().length} permanentUpgrades=${repository.listPermanentUpgrades().length}`);
+    console.log(`Config validation passed: contentVersion=${repository.contentVersion} eras=${repository.listEras().length} producers=${repository.listProducers().length} breakthroughs=${repository.listBreakthroughs().length} milestones=${repository.listMilestones().length} permanentUpgrades=${repository.listPermanentUpgrades().length} prestige=${repository.getPrestigeConfig().id}`);
 }
 catch (error) {
     if (error instanceof ConfigValidationError) {

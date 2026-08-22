@@ -1,6 +1,6 @@
 export type ConfigStage = 'parse' | 'structural' | 'cross-reference' | 'semantic' | 'repository';
 
-export type ConfigFileKind = 'eras' | 'producers' | 'breakthroughs' | 'milestones' | 'permanent_upgrades';
+export type ConfigFileKind = 'eras' | 'producers' | 'breakthroughs' | 'milestones' | 'permanent_upgrades' | 'prestige';
 
 export interface ConfigFileSource {
     filePath: string;
@@ -197,6 +197,11 @@ export interface PermanentUpgradeConfig {
     effects: PermanentUpgradeEffect[];
 }
 
+export interface PrestigeConfig {
+    id: string;
+    p0PrestigePower: number;
+}
+
 export interface GameConfigRepositorySnapshot {
     schemaVersion: number;
     contentVersion: string;
@@ -205,6 +210,7 @@ export interface GameConfigRepositorySnapshot {
     breakthroughs: BreakthroughConfig[];
     milestones: ProducerMilestoneConfig[];
     permanentUpgrades: PermanentUpgradeConfig[];
+    prestige: PrestigeConfig;
 }
 
 interface ParsedConfigFile {
@@ -226,6 +232,7 @@ interface StructuredConfigSet {
     breakthroughs: ConfigEnvelope<'breakthroughs', BreakthroughConfig>[];
     milestones: ConfigEnvelope<'milestones', ProducerMilestoneConfig>[];
     permanentUpgrades: ConfigEnvelope<'permanent_upgrades', PermanentUpgradeConfig>[];
+    prestige: ConfigEnvelope<'prestige', PrestigeConfig>[];
 }
 
 interface StageResult<T> {
@@ -234,7 +241,7 @@ interface StageResult<T> {
 }
 
 const CONFIG_SCHEMA_VERSION = 1;
-const SUPPORTED_CONFIG_KINDS: ConfigFileKind[] = ['eras', 'producers', 'breakthroughs', 'milestones', 'permanent_upgrades'];
+const SUPPORTED_CONFIG_KINDS: ConfigFileKind[] = ['eras', 'producers', 'breakthroughs', 'milestones', 'permanent_upgrades', 'prestige'];
 const SUPPORTED_REQUIREMENT_TYPES = ['producerLevel', 'breakthroughOwned', 'robotsBuilt', 'era', 'civilization'];
 const SUPPORTED_EFFECT_TYPES = [
     'globalProductionMultiplier',
@@ -275,6 +282,7 @@ export class GameConfigRepository {
     private readonly breakthroughById: Map<string, BreakthroughConfig>;
     private readonly milestoneById: Map<string, ProducerMilestoneConfig>;
     private readonly permanentUpgradeById: Map<string, PermanentUpgradeConfig>;
+    private readonly prestige: PrestigeConfig;
 
     constructor(snapshot: GameConfigRepositorySnapshot) {
         this.schemaVersion = snapshot.schemaVersion;
@@ -284,6 +292,7 @@ export class GameConfigRepository {
         this.breakthroughById = new Map(snapshot.breakthroughs.map((breakthrough) => [breakthrough.id, freezePlainObject(breakthrough)]));
         this.milestoneById = new Map(snapshot.milestones.map((milestone) => [milestone.id, freezePlainObject(milestone)]));
         this.permanentUpgradeById = new Map(snapshot.permanentUpgrades.map((upgrade) => [upgrade.id, freezePlainObject(upgrade)]));
+        this.prestige = freezePlainObject(snapshot.prestige);
     }
 
     getEra(id: string): EraConfig | undefined {
@@ -325,6 +334,10 @@ export class GameConfigRepository {
     listPermanentUpgrades(): PermanentUpgradeConfig[] {
         return Array.from(this.permanentUpgradeById.values());
     }
+
+    getPrestigeConfig(): PrestigeConfig {
+        return this.prestige;
+    }
 }
 
 export function formatConfigDiagnostic(diagnostic: ConfigDiagnostic): string {
@@ -364,6 +377,7 @@ export function validateConfigStructure(parsedFiles: ParsedConfigFile[]): StageR
         breakthroughs: [],
         milestones: [],
         permanentUpgrades: [],
+        prestige: [],
     };
     const idsByKind = new Map<ConfigFileKind, Map<string, string>>();
 
@@ -566,6 +580,10 @@ export function buildGameConfigRepository(config: StructuredConfigSet): StageRes
         diagnostics.push(makeDiagnostic('repository', 'CONFIG_MISSING_KIND', EMPTY_FILE_PATH, '$.permanentUpgrades', 'Repository requires a permanent upgrades config file.'));
     }
 
+    if (config.prestige.length === 0) {
+        diagnostics.push(makeDiagnostic('repository', 'CONFIG_MISSING_KIND', EMPTY_FILE_PATH, '$.prestige', 'Repository requires a prestige config file.'));
+    }
+
     if (diagnostics.length > 0) {
         return { value: undefined, diagnostics: sortDiagnostics(diagnostics) };
     }
@@ -579,6 +597,7 @@ export function buildGameConfigRepository(config: StructuredConfigSet): StageRes
         breakthroughs: config.breakthroughs.flatMap((envelope) => envelope.items),
         milestones: config.milestones.flatMap((envelope) => envelope.items),
         permanentUpgrades: config.permanentUpgrades.flatMap((envelope) => envelope.items),
+        prestige: config.prestige.flatMap((envelope) => envelope.items)[0],
     });
 
     return { value: repository, diagnostics };
@@ -617,7 +636,7 @@ export function loadGameConfigFromSources(sources: ConfigFileSource[]): GameConf
     return result.value;
 }
 
-function parseConfigItem(kind: ConfigFileKind, value: unknown, filePath: string, itemPath: string, diagnostics: ConfigDiagnostic[]): EraConfig | ProducerConfig | BreakthroughConfig | ProducerMilestoneConfig | PermanentUpgradeConfig | undefined {
+function parseConfigItem(kind: ConfigFileKind, value: unknown, filePath: string, itemPath: string, diagnostics: ConfigDiagnostic[]): EraConfig | ProducerConfig | BreakthroughConfig | ProducerMilestoneConfig | PermanentUpgradeConfig | PrestigeConfig | undefined {
     if (!isPlainObject(value)) {
         diagnostics.push(makeDiagnostic('structural', 'CONFIG_EXPECTED_OBJECT', filePath, itemPath, 'Config item must be an object.'));
         return undefined;
@@ -637,6 +656,10 @@ function parseConfigItem(kind: ConfigFileKind, value: unknown, filePath: string,
 
     if (kind === 'milestones') {
         return parseProducerMilestoneConfig(value, filePath, itemPath, diagnostics);
+    }
+
+    if (kind === 'prestige') {
+        return parsePrestigeConfig(value, filePath, itemPath, diagnostics);
     }
 
     return parsePermanentUpgradeConfig(value, filePath, itemPath, diagnostics);
@@ -712,6 +735,18 @@ function parseProducerMilestoneConfig(value: Record<string, unknown>, filePath: 
     }
 
     return { id, threshold, productionMultiplier };
+}
+
+function parsePrestigeConfig(value: Record<string, unknown>, filePath: string, itemPath: string, diagnostics: ConfigDiagnostic[]): PrestigeConfig | undefined {
+    validateAllowedKeys('structural', filePath, itemPath, value, ['id', 'p0PrestigePower'], diagnostics);
+    const id = readString(value, 'id', filePath, itemPath, diagnostics);
+    const p0PrestigePower = readNumber(value, 'p0PrestigePower', filePath, itemPath, diagnostics);
+
+    if (id === undefined || p0PrestigePower === undefined) {
+        return undefined;
+    }
+
+    return { id, p0PrestigePower };
 }
 
 function parseBreakthroughConfig(value: Record<string, unknown>, filePath: string, itemPath: string, diagnostics: ConfigDiagnostic[]): BreakthroughConfig | undefined {
@@ -1135,6 +1170,18 @@ function validateSemanticNumbers(config: StructuredConfigSet, diagnostics: Confi
         });
     }
 
+    for (const envelope of config.prestige) {
+        if (envelope.items.length !== 1) {
+            diagnostics.push(makeDiagnostic('semantic', 'CONFIG_PRESTIGE_COUNT', envelope.filePath, '$.items', 'Prestige config must contain exactly one item.'));
+        }
+
+        envelope.items.forEach((prestige, index) => {
+            if (prestige.p0PrestigePower <= 0) {
+                diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].p0PrestigePower`, 'p0PrestigePower must be greater than 0.'));
+            }
+        });
+    }
+
     for (const envelope of config.breakthroughs) {
         envelope.items.forEach((breakthrough, index) => {
             if (breakthrough.cost <= 0) {
@@ -1449,7 +1496,7 @@ function findCycles(graph: Map<string, string[]>): string[][] {
     }
 }
 
-function pushEnvelope(structured: StructuredConfigSet, envelope: ConfigEnvelope<ConfigFileKind, EraConfig | ProducerConfig | BreakthroughConfig | ProducerMilestoneConfig | PermanentUpgradeConfig>): void {
+function pushEnvelope(structured: StructuredConfigSet, envelope: ConfigEnvelope<ConfigFileKind, EraConfig | ProducerConfig | BreakthroughConfig | ProducerMilestoneConfig | PermanentUpgradeConfig | PrestigeConfig>): void {
     if (envelope.kind === 'eras') {
         structured.eras.push(envelope as ConfigEnvelope<'eras', EraConfig>);
         return;
@@ -1470,7 +1517,12 @@ function pushEnvelope(structured: StructuredConfigSet, envelope: ConfigEnvelope<
         return;
     }
 
-    structured.permanentUpgrades.push(envelope as ConfigEnvelope<'permanent_upgrades', PermanentUpgradeConfig>);
+    if (envelope.kind === 'permanent_upgrades') {
+        structured.permanentUpgrades.push(envelope as ConfigEnvelope<'permanent_upgrades', PermanentUpgradeConfig>);
+        return;
+    }
+
+    structured.prestige.push(envelope as ConfigEnvelope<'prestige', PrestigeConfig>);
 }
 
 function getAllEnvelopes(config: StructuredConfigSet): ConfigEnvelope<ConfigFileKind, unknown>[] {
@@ -1480,6 +1532,7 @@ function getAllEnvelopes(config: StructuredConfigSet): ConfigEnvelope<ConfigFile
         ...config.breakthroughs,
         ...config.milestones,
         ...config.permanentUpgrades,
+        ...config.prestige,
     ].sort(compareEnvelope);
 }
 

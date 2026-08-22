@@ -6,6 +6,10 @@ export {
     executeGameCommand,
 } from './GameRuntime.ts';
 
+export {
+    calculateCurrentPrestigeEligibleProductionPerSecond,
+} from '../progression/index.ts';
+
 export type {
     CommandExecutionResult,
     CommandRejectionReason,
