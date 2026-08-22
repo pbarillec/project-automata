@@ -1,4 +1,16 @@
 export {
+    ModifierSet,
+    ModifierSetInputError,
+    applyProductionMultiplier,
+    calculateModifiedProducerOutput,
+    combineModifierSets,
+    createGlobalProductionMultiplier,
+    createProducerProductionMultiplier,
+    resolveEffectiveProducerProductionMultiplier,
+    resolveEffectiveProductionModifiers,
+} from './ModifierSet.ts';
+
+export {
     PRODUCER_COST_ABSOLUTE_TOLERANCE,
     PRODUCER_COST_RELATIVE_TOLERANCE,
     ProducerCostInputError,
@@ -27,6 +39,14 @@ export {
     calculateTotalMilestoneAdjustedProductionPerSecond,
     resolveCrossedProducerMilestones,
 } from './ProducerMilestones.ts';
+
+export type {
+    EffectiveProductionModifiers,
+    GlobalProductionMultiplierModifier,
+    ModifierSetInput,
+    ProducerProductionMultiplierModifier,
+    ProductionMultiplierModifier,
+} from './ModifierSet.ts';
 
 export type {
     MaxAffordableProducerPurchase,
