@@ -12,7 +12,7 @@ import { createBreakthroughModifierSet } from './Breakthroughs.ts';
 import { createPermanentUpgradeModifierSet, resolvePermanentMilestonePowerBonus } from './PermanentUpgrades.ts';
 import { createTemporaryBoostModifierSet } from './TemporaryBoosts.ts';
 
-export type ProductionRateProducerScope = 'all' | 'automated';
+export type ProductionRateProducerScope = 'all' | 'automated' | 'offlineEligible';
 export type ProductionRateTemporaryBoostMode = 'include' | 'exclude';
 
 export interface ProductionRateOptions {
@@ -20,31 +20,54 @@ export interface ProductionRateOptions {
     readonly temporaryBoosts: ProductionRateTemporaryBoostMode;
 }
 
+export interface ProducerProductionRateContribution {
+    readonly producerId: string;
+    readonly productionPerSecond: number;
+}
+
 export function calculateSustainedProductionPerSecond(
     repository: GameConfigRepository,
     state: GameState,
     options: ProductionRateOptions,
 ): number {
+    return calculateSustainedProducerProductionRateContributions(repository, state, options)
+        .reduce((total, contribution) => addFinite(
+            total,
+            contribution.productionPerSecond,
+            `${options.producerScope}ProductionPerSecond`,
+        ), 0);
+}
+
+export function calculateSustainedProducerProductionRateContributions(
+    repository: GameConfigRepository,
+    state: GameState,
+    options: ProductionRateOptions,
+): ProducerProductionRateContribution[] {
     const milestones = repository.listMilestones();
     const milestonePowerBonus = resolvePermanentMilestonePowerBonus(repository, state.meta);
     const modifierSet = createProductionModifierSet(repository, state, options.temporaryBoosts);
-    let total = 0;
+    const contributions: ProducerProductionRateContribution[] = [];
 
     for (const producer of repository.listProducers()) {
-        if (options.producerScope === 'automated') {
-            const automation = resolveEffectiveProducerAutomationState(repository, state, producer.id);
-            if (!automation.isAutomated) {
-                continue;
-            }
+        const automation = resolveEffectiveProducerAutomationState(repository, state, producer.id);
+        if (options.producerScope === 'automated' && !automation.isAutomated) {
+            continue;
+        }
+
+        if (options.producerScope === 'offlineEligible' && (!automation.isAutomated || !automation.isOfflineEligible)) {
+            continue;
         }
 
         const level = state.run.producers[producer.id]?.level ?? 0;
         const milestoneAdjusted = calculateMilestoneAdjustedProducerOutput(producer, level, milestones, milestonePowerBonus);
         const modifier = resolveEffectiveProducerProductionMultiplier(modifierSet, producer.id);
-        total = addFinite(total, applyProductionMultiplier(milestoneAdjusted, modifier), `${options.producerScope}ProductionPerSecond`);
+        contributions.push({
+            producerId: producer.id,
+            productionPerSecond: applyProductionMultiplier(milestoneAdjusted, modifier),
+        });
     }
 
-    return total;
+    return contributions;
 }
 
 export function calculateOnlineProductionPerSecond(
@@ -74,6 +97,26 @@ export function calculateOnlineAutomatedProductionPerSecond(
     return calculateSustainedProductionPerSecond(repository, state, {
         producerScope: 'automated',
         temporaryBoosts: 'include',
+    });
+}
+
+export function calculateOfflineEligibleDurableProductionPerSecond(
+    repository: GameConfigRepository,
+    state: GameState,
+): number {
+    return calculateSustainedProductionPerSecond(repository, state, {
+        producerScope: 'offlineEligible',
+        temporaryBoosts: 'exclude',
+    });
+}
+
+export function calculateOfflineEligibleDurableProducerProductionRateContributions(
+    repository: GameConfigRepository,
+    state: GameState,
+): ProducerProductionRateContribution[] {
+    return calculateSustainedProducerProductionRateContributions(repository, state, {
+        producerScope: 'offlineEligible',
+        temporaryBoosts: 'exclude',
     });
 }
 

@@ -22,9 +22,12 @@ export {
 } from './Automation.ts';
 
 export {
+    calculateOfflineEligibleDurableProducerProductionRateContributions,
+    calculateOfflineEligibleDurableProductionPerSecond,
     calculateDurableProductionPerSecond,
     calculateOnlineAutomatedProductionPerSecond,
     calculateOnlineProductionPerSecond,
+    calculateSustainedProducerProductionRateContributions,
     calculateSustainedProductionPerSecond,
 } from './ProductionRates.ts';
 
@@ -113,6 +116,7 @@ export type {
 } from './EraProgression.ts';
 
 export type {
+    ProducerProductionRateContribution,
     ProductionRateOptions,
     ProductionRateProducerScope,
     ProductionRateTemporaryBoostMode,

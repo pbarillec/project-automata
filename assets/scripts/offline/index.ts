@@ -1,0 +1,30 @@
+export {
+    DEFAULT_OFFLINE_PROGRESS_CONFIG,
+    OFFLINE_CAP_SECONDS,
+    OFFLINE_EFFICIENCY,
+    ROBOT_LINE_PRODUCER_ID,
+    collectOfflineProgress,
+    createOfflineProgressPreview,
+    createOfflineProgressPreviewFromUtc,
+} from './OfflineService.ts';
+
+export type {
+    OfflineCollectFailureResult,
+    OfflineCollectInvalidResult,
+    OfflineCollectNoRewardResult,
+    OfflineCollectResult,
+    OfflineCollectStatus,
+    OfflineCollectSuccessResult,
+    OfflineCriticalSaveRequest,
+    OfflinePreviewBase,
+    OfflineInvalidPreviewResult,
+    OfflineNoRewardPreviewResult,
+    OfflinePreviewReadyResult,
+    OfflinePreviewResult,
+    OfflinePreviewStatus,
+    OfflineProducerContribution,
+    OfflineProducerContributionReason,
+    OfflineProgressClockInput,
+    OfflineProgressConfig,
+    OfflineProgressUtcInput,
+} from './OfflineService.ts';
