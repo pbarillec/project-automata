@@ -19,9 +19,12 @@ import {
     calculateOnlineProductionPerSecond,
     calculateProducerProgressionPurchase,
     calculateUpdatedPrestigePowerPeak,
+    createRebootPreview,
+    executeRebootCivilization,
     evaluateProducerBuildProgression,
     getSecondsUntilNextTemporaryBoostTransition,
     purchaseBreakthrough,
+    type RebootPreview,
 } from '../progression/index.ts';
 import type { AutomationRunState, GameState, ProducerRunState } from '../state/GameState.ts';
 import { cloneGameState, clonePlainData } from '../state/StateClone.ts';
@@ -47,6 +50,8 @@ export type CommandRejectionReason =
     | 'locked_breakthrough'
     | 'insufficient_breakthrough_balance'
     | 'breakthrough_already_owned'
+    | 'reboot_not_confirmed'
+    | 'reboot_not_eligible'
     | 'invalid_resulting_state'
     | 'execution_error';
 
@@ -146,6 +151,14 @@ export class GameRuntime {
         return this.execute({ type: 'activateFreeOverclock' });
     }
 
+    createRebootPreview(): RebootPreview {
+        return createRebootPreview(this.repository, this.currentState);
+    }
+
+    rebootCivilizationConfirmed(): CommandExecutionResult {
+        return this.execute({ type: 'rebootCivilization', confirmed: true });
+    }
+
     advanceAutomation(elapsedSeconds: number): CommandExecutionResult {
         return this.execute({ type: 'advanceAutomation', elapsedSeconds });
     }
@@ -226,6 +239,10 @@ function executeGameCommandInternal(
             return executeBuyMaxProducerLevels(repository, state, parsedCommand.command);
         }
 
+        if (parsedCommand.command.type === 'rebootCivilization') {
+            return executeRebootCivilizationCommand(repository, state, parsedCommand.command);
+        }
+
         return executePurchaseBreakthrough(repository, state, parsedCommand.command);
     }
     catch (error) {
@@ -234,6 +251,34 @@ function executeGameCommandInternal(
             error instanceof Error ? error.message : 'Command execution failed.',
         );
     }
+}
+
+function executeRebootCivilizationCommand(
+    repository: GameConfigRepository,
+    state: GameState,
+    command: GameCommand & { type: 'rebootCivilization' },
+): InternalCommandExecutionResult {
+    const result = executeRebootCivilization(repository, state, { confirmed: command.confirmed });
+
+    if (result.status === 'not_confirmed') {
+        return reject('reboot_not_confirmed', result.reason, {
+            preview: clonePlainData(result.preview),
+        });
+    }
+
+    if (result.status === 'not_eligible') {
+        return reject('reboot_not_eligible', result.reason, {
+            preview: clonePlainData(result.preview),
+        });
+    }
+
+    if (result.status === 'failure') {
+        return reject('execution_error', result.reason, {
+            preview: clonePlainData(result.preview),
+        });
+    }
+
+    return commit(command, result.state, result.events);
 }
 
 export function calculateCurrentProductionPerSecond(repository: GameConfigRepository, state: GameState): number {
@@ -776,6 +821,20 @@ function parseGameCommand(command: unknown): { ok: true; command: GameCommand } 
             command: {
                 type: 'purchaseBreakthrough',
                 breakthroughId: command.breakthroughId,
+            },
+        };
+    }
+
+    if (command.type === 'rebootCivilization') {
+        if (command.confirmed !== true) {
+            return reject('reboot_not_confirmed', 'Reboot Civilization requires confirmed: true.');
+        }
+
+        return {
+            ok: true,
+            command: {
+                type: 'rebootCivilization',
+                confirmed: true,
             },
         };
     }

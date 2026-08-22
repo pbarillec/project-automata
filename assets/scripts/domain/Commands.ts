@@ -5,7 +5,8 @@ export type GameCommand =
     | ActivateFreeOverclockCommand
     | BuyProducerLevelsCommand
     | BuyMaxProducerLevelsCommand
-    | PurchaseBreakthroughCommand;
+    | PurchaseBreakthroughCommand
+    | RebootCivilizationCommand;
 
 export interface ManualProduceCommand {
     readonly type: 'manualProduce';
@@ -39,6 +40,11 @@ export interface BuyMaxProducerLevelsCommand {
 export interface PurchaseBreakthroughCommand {
     readonly type: 'purchaseBreakthrough';
     readonly breakthroughId: string;
+}
+
+export interface RebootCivilizationCommand {
+    readonly type: 'rebootCivilization';
+    readonly confirmed: true;
 }
 
 export type CommandType = GameCommand['type'];

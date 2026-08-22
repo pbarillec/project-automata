@@ -13,7 +13,10 @@ export type DomainEvent =
     | EraChangedEvent
     | ProgressionFlagChangedEvent
     | FirstRobotProducedEvent
-    | RobotsBuiltThresholdReachedEvent;
+    | RobotsBuiltThresholdReachedEvent
+    | AiCoresGrantedEvent
+    | CivilizationChangedEvent
+    | RebootCompletedEvent;
 
 export interface IndustrialOutputChangedEvent {
     readonly type: 'industrialOutputChanged';
@@ -122,4 +125,27 @@ export interface RobotsBuiltThresholdReachedEvent {
     readonly threshold: number;
     readonly previousAmount: number;
     readonly newAmount: number;
+}
+
+export interface AiCoresGrantedEvent {
+    readonly type: 'aiCoresGranted';
+    readonly amount: number;
+    readonly previousAiCores: number;
+    readonly newAiCores: number;
+    readonly source: 'reboot';
+}
+
+export interface CivilizationChangedEvent {
+    readonly type: 'civilizationChanged';
+    readonly oldCivilization: number;
+    readonly newCivilization: number;
+    readonly reason: 'reboot';
+}
+
+export interface RebootCompletedEvent {
+    readonly type: 'rebootCompleted';
+    readonly oldCivilization: number;
+    readonly newCivilization: number;
+    readonly aiCoresGranted: number;
+    readonly prestigePower: number;
 }

@@ -101,6 +101,11 @@ export {
 } from './NextGoal.ts';
 
 export {
+    createRebootPreview,
+    executeRebootCivilization,
+} from './Reboot.ts';
+
+export {
     ProducerProgressionInputError,
     ROBOT_LINE_CONSTRUCTION_COST,
     ROBOT_LINE_PRODUCER_ID,
@@ -176,6 +181,17 @@ export type {
     ProducerMilestoneNextGoal,
     RebootAiCoreNextGoal,
 } from './NextGoal.ts';
+
+export type {
+    RebootEligibilityStatus,
+    RebootExecutionResult,
+    RebootExecutionStatus,
+    RebootFailureResult,
+    RebootPreview,
+    RebootRejectedResult,
+    RebootResetSummary,
+    RebootSuccessResult,
+} from './Reboot.ts';
 
 export type {
     ProducerBuildBlockingRequirement,

@@ -1,5 +1,5 @@
 import type { GameConfigRepository } from '../config/ConfigLoader.ts';
-import type { GameCommand } from '../domain/index.ts';
+import type { DomainEvent, GameCommand } from '../domain/index.ts';
 import {
     collectOfflineProgress,
     createOfflineProgressPreviewFromUtc,
@@ -22,6 +22,9 @@ import {
     GameRuntime,
     type ClockAdvanceActiveSessionResult,
     type CommandExecutionResult,
+    type CommandRejectionResult,
+    type CommandSuccessResult,
+    type RebootPreview,
 } from '../runtime/index.ts';
 import type { GameState } from '../state/GameState.ts';
 import { cloneGameState } from '../state/StateClone.ts';
@@ -125,6 +128,35 @@ export type LifecycleCollectResult =
     | LifecycleCollectDurableResult
     | LifecycleCollectDurabilityFailureResult;
 
+export interface LifecycleRebootPendingOfflineResult {
+    readonly status: 'pending_offline_preview';
+    readonly offlinePreview: OfflinePreviewResult;
+}
+
+export interface LifecycleRebootRejectedResult {
+    readonly status: 'reboot_rejected';
+    readonly execution: CommandRejectionResult;
+    readonly save: null;
+}
+
+export interface LifecycleRebootDurableResult {
+    readonly status: 'reboot_saved';
+    readonly execution: CommandSuccessResult;
+    readonly save: PersistenceSaveResult & { readonly ok: true };
+}
+
+export interface LifecycleRebootDurabilityFailureResult {
+    readonly status: 'reboot_persistence_failed';
+    readonly execution: CommandSuccessResult;
+    readonly save: PersistenceSaveResult & { readonly ok: false };
+}
+
+export type LifecycleRebootResult =
+    | LifecycleRebootPendingOfflineResult
+    | LifecycleRebootRejectedResult
+    | LifecycleRebootDurableResult
+    | LifecycleRebootDurabilityFailureResult;
+
 export class LifecycleSessionCoordinator {
     private readonly configRepository: GameConfigRepository;
     private readonly persistence: PersistenceCoordinator;
@@ -186,6 +218,10 @@ export class LifecycleSessionCoordinator {
         return this.pendingOfflinePreview;
     }
 
+    createRebootPreview(): RebootPreview {
+        return this.runtime.createRebootPreview();
+    }
+
     async execute(command: GameCommand, options: { readonly requestOrdinarySave?: boolean } = {}): Promise<LifecycleCommandResult> {
         const execution = this.runtime.execute(command);
         let save: PersistenceSaveResult | null = null;
@@ -216,6 +252,45 @@ export class LifecycleSessionCoordinator {
         }
 
         return Object.freeze({ runtime, save });
+    }
+
+    async rebootCivilizationConfirmed(): Promise<LifecycleRebootResult> {
+        if (this.pendingOfflinePreview !== null) {
+            return Object.freeze({
+                status: 'pending_offline_preview' as const,
+                offlinePreview: this.pendingOfflinePreview,
+            });
+        }
+
+        const preview = this.runtime.createRebootPreview();
+        const execution = this.runtime.rebootCivilizationConfirmed();
+        if (!execution.ok) {
+            return Object.freeze({
+                status: 'reboot_rejected' as const,
+                execution,
+                save: null,
+            });
+        }
+
+        this.persistence.markDirty();
+        const save = await this.persistence.requestSave(this.runtime.getStateSnapshot(), {
+            intent: 'critical',
+            reason: 'reboot',
+        });
+
+        if (!save.ok) {
+            return Object.freeze({
+                status: 'reboot_persistence_failed' as const,
+                execution,
+                save,
+            });
+        }
+
+        return Object.freeze({
+            status: 'reboot_saved' as const,
+            execution: appendDurableRebootCompletedEvent(execution, preview),
+            save,
+        });
     }
 
     async suspend(): Promise<LifecycleSuspendResult> {
@@ -336,4 +411,25 @@ function mapLoadStatus(status: LoadGameMainResult['status'] | LoadGameRecoveredB
 
 function toPendingOfflinePreview(offlinePreview: OfflinePreviewResult | null): OfflinePreviewResult | null {
     return offlinePreview?.status === 'preview_ready' ? offlinePreview : null;
+}
+
+function appendDurableRebootCompletedEvent(
+    execution: CommandSuccessResult,
+    preview: RebootPreview,
+): CommandSuccessResult {
+    const completionEvent: DomainEvent = Object.freeze({
+        type: 'rebootCompleted' as const,
+        oldCivilization: preview.currentCivilization,
+        newCivilization: preview.resultingCivilization,
+        aiCoresGranted: preview.aiCoresToGain,
+        prestigePower: preview.prestigePower,
+    });
+
+    return Object.freeze({
+        ...execution,
+        events: Object.freeze([
+            ...execution.events,
+            completionEvent,
+        ]),
+    });
 }

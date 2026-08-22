@@ -8,6 +8,7 @@ export {
 
 export {
     calculateCurrentPrestigeEligibleProductionPerSecond,
+    createRebootPreview,
 } from '../progression/index.ts';
 
 export type {
@@ -18,3 +19,7 @@ export type {
     CommandSuccessResult,
     GameRuntimeOptions,
 } from './GameRuntime.ts';
+
+export type {
+    RebootPreview,
+} from '../progression/index.ts';

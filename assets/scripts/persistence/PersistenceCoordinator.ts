@@ -26,6 +26,7 @@ export type PersistenceSaveReason =
     | 'runtime_command'
     | 'suspend'
     | 'offline_collect'
+    | 'reboot'
     | 'manual';
 
 export interface PersistenceCoordinatorOptions {

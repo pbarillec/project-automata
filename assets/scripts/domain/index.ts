@@ -7,11 +7,14 @@ export type {
     GameCommand,
     ManualProduceCommand,
     PurchaseBreakthroughCommand,
+    RebootCivilizationCommand,
 } from './Commands.ts';
 
 export type {
     AutomationStateChangedEvent,
+    AiCoresGrantedEvent,
     BreakthroughPurchasedEvent,
+    CivilizationChangedEvent,
     DomainEvent,
     EraChangedEvent,
     FirstRobotProducedEvent,
@@ -21,6 +24,7 @@ export type {
     ProducerMilestoneReachedEvent,
     ProductionGrantedEvent,
     ProgressionFlagChangedEvent,
+    RebootCompletedEvent,
     RobotsBuiltThresholdReachedEvent,
     TemporaryBoostActivatedEvent,
     TemporaryBoostExpiredEvent,
