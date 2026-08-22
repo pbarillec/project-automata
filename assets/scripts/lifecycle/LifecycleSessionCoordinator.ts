@@ -157,6 +157,29 @@ export type LifecycleRebootResult =
     | LifecycleRebootDurableResult
     | LifecycleRebootDurabilityFailureResult;
 
+export interface LifecyclePermanentUpgradeRejectedResult {
+    readonly status: 'permanent_upgrade_rejected';
+    readonly execution: CommandRejectionResult;
+    readonly save: null;
+}
+
+export interface LifecyclePermanentUpgradeDurableResult {
+    readonly status: 'permanent_upgrade_saved';
+    readonly execution: CommandSuccessResult;
+    readonly save: PersistenceSaveResult & { readonly ok: true };
+}
+
+export interface LifecyclePermanentUpgradeDurabilityFailureResult {
+    readonly status: 'permanent_upgrade_persistence_failed';
+    readonly execution: CommandSuccessResult;
+    readonly save: PersistenceSaveResult & { readonly ok: false };
+}
+
+export type LifecyclePermanentUpgradePurchaseResult =
+    | LifecyclePermanentUpgradeRejectedResult
+    | LifecyclePermanentUpgradeDurableResult
+    | LifecyclePermanentUpgradeDurabilityFailureResult;
+
 export class LifecycleSessionCoordinator {
     private readonly configRepository: GameConfigRepository;
     private readonly persistence: PersistenceCoordinator;
@@ -289,6 +312,37 @@ export class LifecycleSessionCoordinator {
         return Object.freeze({
             status: 'reboot_saved' as const,
             execution: appendDurableRebootCompletedEvent(execution, preview),
+            save,
+        });
+    }
+
+    async purchasePermanentUpgrade(upgradeId: string): Promise<LifecyclePermanentUpgradePurchaseResult> {
+        const execution = this.runtime.purchasePermanentUpgrade(upgradeId);
+        if (!execution.ok) {
+            return Object.freeze({
+                status: 'permanent_upgrade_rejected' as const,
+                execution,
+                save: null,
+            });
+        }
+
+        this.persistence.markDirty();
+        const save = await this.persistence.requestSave(this.runtime.getStateSnapshot(), {
+            intent: 'critical',
+            reason: 'permanent_upgrade_purchase',
+        });
+
+        if (!save.ok) {
+            return Object.freeze({
+                status: 'permanent_upgrade_persistence_failed' as const,
+                execution,
+                save,
+            });
+        }
+
+        return Object.freeze({
+            status: 'permanent_upgrade_saved' as const,
+            execution,
             save,
         });
     }

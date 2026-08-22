@@ -27,6 +27,7 @@ export type PersistenceSaveReason =
     | 'suspend'
     | 'offline_collect'
     | 'reboot'
+    | 'permanent_upgrade_purchase'
     | 'manual';
 
 export interface PersistenceCoordinatorOptions {

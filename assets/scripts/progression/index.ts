@@ -96,6 +96,10 @@ export {
 } from './PermanentUpgrades.ts';
 
 export {
+    purchasePermanentUpgrade,
+} from './PermanentUpgradePurchase.ts';
+
+export {
     NextGoalInputError,
     resolveNextGoal,
 } from './NextGoal.ts';
@@ -164,6 +168,17 @@ export type {
     PermanentUpgradeRankState,
     PermanentUpgradeRankStatus,
 } from './PermanentUpgrades.ts';
+
+export type {
+    PermanentUpgradePurchaseInsufficientAiCoresResult,
+    PermanentUpgradePurchaseInvalidStateResult,
+    PermanentUpgradePurchaseMaxRankResult,
+    PermanentUpgradePurchasePrerequisiteLockedResult,
+    PermanentUpgradePurchaseResult,
+    PermanentUpgradePurchaseStatus,
+    PermanentUpgradePurchaseSuccessResult,
+    PermanentUpgradePurchaseUnknownResult,
+} from './PermanentUpgradePurchase.ts';
 
 export type {
     BreakthroughNextGoal,

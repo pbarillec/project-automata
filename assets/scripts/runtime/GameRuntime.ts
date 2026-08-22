@@ -24,6 +24,7 @@ import {
     evaluateProducerBuildProgression,
     getSecondsUntilNextTemporaryBoostTransition,
     purchaseBreakthrough,
+    purchasePermanentUpgrade,
     type RebootPreview,
 } from '../progression/index.ts';
 import type { AutomationRunState, GameState, ProducerRunState } from '../state/GameState.ts';
@@ -50,6 +51,11 @@ export type CommandRejectionReason =
     | 'locked_breakthrough'
     | 'insufficient_breakthrough_balance'
     | 'breakthrough_already_owned'
+    | 'unknown_permanent_upgrade'
+    | 'permanent_upgrade_prerequisite_locked'
+    | 'permanent_upgrade_max_rank'
+    | 'insufficient_ai_cores'
+    | 'invalid_permanent_upgrade_state'
     | 'reboot_not_confirmed'
     | 'reboot_not_eligible'
     | 'invalid_resulting_state'
@@ -159,6 +165,10 @@ export class GameRuntime {
         return this.execute({ type: 'rebootCivilization', confirmed: true });
     }
 
+    purchasePermanentUpgrade(upgradeId: string): CommandExecutionResult {
+        return this.execute({ type: 'purchasePermanentUpgrade', upgradeId });
+    }
+
     advanceAutomation(elapsedSeconds: number): CommandExecutionResult {
         return this.execute({ type: 'advanceAutomation', elapsedSeconds });
     }
@@ -241,6 +251,10 @@ function executeGameCommandInternal(
 
         if (parsedCommand.command.type === 'rebootCivilization') {
             return executeRebootCivilizationCommand(repository, state, parsedCommand.command);
+        }
+
+        if (parsedCommand.command.type === 'purchasePermanentUpgrade') {
+            return executePurchasePermanentUpgrade(repository, state, parsedCommand.command);
         }
 
         return executePurchaseBreakthrough(repository, state, parsedCommand.command);
@@ -652,6 +666,54 @@ function executePurchaseBreakthrough(
     ], repository);
 }
 
+function executePurchasePermanentUpgrade(
+    repository: GameConfigRepository,
+    state: GameState,
+    command: GameCommand & { type: 'purchasePermanentUpgrade' },
+): InternalCommandExecutionResult {
+    const result = purchasePermanentUpgrade(repository, state, command.upgradeId);
+
+    if (result.status === 'unknown_upgrade') {
+        return reject('unknown_permanent_upgrade', `Unknown permanent upgrade id "${command.upgradeId}".`, {
+            upgradeId: command.upgradeId,
+        });
+    }
+
+    if (result.status === 'prerequisite_locked') {
+        return reject('permanent_upgrade_prerequisite_locked', `Permanent upgrade "${command.upgradeId}" is prerequisite locked.`, {
+            upgradeId: command.upgradeId,
+            currentRank: result.currentRank,
+            nextRank: result.nextRank,
+            cost: result.cost,
+            missingPrerequisites: clonePlainData(result.missingPrerequisites),
+        });
+    }
+
+    if (result.status === 'max_rank') {
+        return reject('permanent_upgrade_max_rank', `Permanent upgrade "${command.upgradeId}" is already at max rank.`, {
+            upgradeId: command.upgradeId,
+            currentRank: result.currentRank,
+            maxRank: result.maxRank,
+        });
+    }
+
+    if (result.status === 'insufficient_ai_cores') {
+        return reject('insufficient_ai_cores', 'Insufficient AI Cores for permanent upgrade purchase.', {
+            upgradeId: command.upgradeId,
+            cost: result.cost,
+            balance: result.balance,
+        });
+    }
+
+    if (result.status === 'invalid_state') {
+        return reject('invalid_permanent_upgrade_state', result.reason, {
+            upgradeId: command.upgradeId,
+        });
+    }
+
+    return commit(command, result.state, result.events);
+}
+
 function createBreakthroughEffectEvents(
     beforeState: GameState,
     afterState: GameState,
@@ -821,6 +883,20 @@ function parseGameCommand(command: unknown): { ok: true; command: GameCommand } 
             command: {
                 type: 'purchaseBreakthrough',
                 breakthroughId: command.breakthroughId,
+            },
+        };
+    }
+
+    if (command.type === 'purchasePermanentUpgrade') {
+        if (typeof command.upgradeId !== 'string' || command.upgradeId.length === 0) {
+            return reject('malformed_command', 'upgradeId must be a non-empty string.');
+        }
+
+        return {
+            ok: true,
+            command: {
+                type: 'purchasePermanentUpgrade',
+                upgradeId: command.upgradeId,
             },
         };
     }

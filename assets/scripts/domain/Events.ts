@@ -15,6 +15,8 @@ export type DomainEvent =
     | FirstRobotProducedEvent
     | RobotsBuiltThresholdReachedEvent
     | AiCoresGrantedEvent
+    | AiCoreBalanceChangedEvent
+    | PermanentUpgradePurchasedEvent
     | CivilizationChangedEvent
     | RebootCompletedEvent;
 
@@ -133,6 +135,22 @@ export interface AiCoresGrantedEvent {
     readonly previousAiCores: number;
     readonly newAiCores: number;
     readonly source: 'reboot';
+}
+
+export interface AiCoreBalanceChangedEvent {
+    readonly type: 'aiCoreBalanceChanged';
+    readonly previousAiCores: number;
+    readonly newAiCores: number;
+    readonly delta: number;
+    readonly reason: 'permanent_upgrade_purchase';
+}
+
+export interface PermanentUpgradePurchasedEvent {
+    readonly type: 'permanentUpgradePurchased';
+    readonly upgradeId: string;
+    readonly previousRank: number;
+    readonly newRank: number;
+    readonly cost: number;
 }
 
 export interface CivilizationChangedEvent {

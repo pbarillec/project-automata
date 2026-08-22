@@ -6,6 +6,7 @@ export type GameCommand =
     | BuyProducerLevelsCommand
     | BuyMaxProducerLevelsCommand
     | PurchaseBreakthroughCommand
+    | PurchasePermanentUpgradeCommand
     | RebootCivilizationCommand;
 
 export interface ManualProduceCommand {
@@ -40,6 +41,11 @@ export interface BuyMaxProducerLevelsCommand {
 export interface PurchaseBreakthroughCommand {
     readonly type: 'purchaseBreakthrough';
     readonly breakthroughId: string;
+}
+
+export interface PurchasePermanentUpgradeCommand {
+    readonly type: 'purchasePermanentUpgrade';
+    readonly upgradeId: string;
 }
 
 export interface RebootCivilizationCommand {
