@@ -20,4 +20,5 @@ export type {
     ProducerMilestoneReachedEvent,
     ProductionGrantedEvent,
     ProgressionFlagChangedEvent,
+    RobotsBuiltThresholdReachedEvent,
 } from './Events.ts';

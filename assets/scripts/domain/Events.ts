@@ -8,7 +8,8 @@ export type DomainEvent =
     | AutomationStateChangedEvent
     | EraChangedEvent
     | ProgressionFlagChangedEvent
-    | FirstRobotProducedEvent;
+    | FirstRobotProducedEvent
+    | RobotsBuiltThresholdReachedEvent;
 
 export interface IndustrialOutputChangedEvent {
     readonly type: 'industrialOutputChanged';
@@ -81,4 +82,11 @@ export interface ProgressionFlagChangedEvent {
 export interface FirstRobotProducedEvent {
     readonly type: 'firstRobotProduced';
     readonly breakthroughId?: string;
+}
+
+export interface RobotsBuiltThresholdReachedEvent {
+    readonly type: 'robotsBuiltThresholdReached';
+    readonly threshold: number;
+    readonly previousAmount: number;
+    readonly newAmount: number;
 }

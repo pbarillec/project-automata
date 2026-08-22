@@ -1,6 +1,7 @@
 export {
     GameRuntime,
     MANUAL_PRODUCTION_AMOUNT,
+    calculateCurrentRobotsBuiltPerSecond,
     calculateCurrentProductionPerSecond,
     executeGameCommand,
 } from './GameRuntime.ts';

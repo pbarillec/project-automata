@@ -40,6 +40,19 @@ export {
     resolveCrossedProducerMilestones,
 } from './ProducerMilestones.ts';
 
+export {
+    ROBOTS_BUILT_ABSOLUTE_TOLERANCE,
+    ROBOTS_BUILT_PER_ROBOT_LINE_LEVEL_PER_SECOND,
+    ROBOTS_BUILT_RELATIVE_TOLERANCE,
+    ROBOTS_BUILT_THRESHOLDS,
+    RobotsBuiltInputError,
+    calculateRobotsBuiltForElapsedSeconds,
+    calculateRobotsBuiltFromRobotLineElapsedSeconds,
+    calculateRobotsBuiltPerSecond,
+    isRobotsBuiltApproximatelyEqual,
+    resolveCrossedRobotsBuiltThresholds,
+} from './RobotsBuilt.ts';
+
 export type {
     EffectiveProductionModifiers,
     GlobalProductionMultiplierModifier,

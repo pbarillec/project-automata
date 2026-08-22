@@ -5,8 +5,11 @@ import {
     calculateElapsedProduction,
     calculateMaxAffordableProducerPurchase,
     calculateProducerPurchaseCost,
+    calculateRobotsBuiltFromRobotLineElapsedSeconds,
+    calculateRobotsBuiltPerSecond,
     calculateMilestoneAdjustedProducerOutput,
     resolveCrossedProducerMilestones,
+    resolveCrossedRobotsBuiltThresholds,
     resolveEffectiveProducerProductionMultiplier,
 } from '../economy/index.ts';
 import {
@@ -92,6 +95,14 @@ export class GameRuntime {
 
     calculateAutomationProductionForElapsedSeconds(elapsedSeconds: number): number {
         return calculateAutomatedProductionForElapsedSeconds(this.repository, this.currentState, elapsedSeconds);
+    }
+
+    getRobotsBuiltPerSecond(): number {
+        return calculateCurrentRobotsBuiltPerSecond(this.currentState);
+    }
+
+    calculateRobotsBuiltForElapsedSeconds(elapsedSeconds: number): number {
+        return calculateRobotsBuiltFromRobotLineElapsedSeconds(getRobotLineLevel(this.currentState), elapsedSeconds);
     }
 
     advanceAutomation(elapsedSeconds: number): CommandExecutionResult {
@@ -191,6 +202,10 @@ export function calculateCurrentProductionPerSecond(repository: GameConfigReposi
     return total;
 }
 
+export function calculateCurrentRobotsBuiltPerSecond(state: GameState): number {
+    return calculateRobotsBuiltPerSecond(getRobotLineLevel(state));
+}
+
 function calculateRuntimeProducerPurchase(
     producer: ProducerConfig,
     currentLevel: number,
@@ -265,33 +280,56 @@ function executeAdvanceAutomation(
     command: GameCommand & { type: 'advanceAutomation' },
 ): InternalCommandExecutionResult {
     const produced = calculateAutomatedProductionForElapsedSeconds(repository, state, command.elapsedSeconds);
+    const robotsBuilt = calculateRobotsBuiltFromRobotLineElapsedSeconds(getRobotLineLevel(state), command.elapsedSeconds);
     const draft = cloneGameState(state);
 
-    if (produced === 0) {
+    if (produced === 0 && robotsBuilt === 0) {
         return commit(command, draft, []);
     }
 
-    const previousAmount = draft.run.industrialOutput;
-    draft.run.industrialOutput = addFinite(draft.run.industrialOutput, produced, 'industrialOutput');
-    draft.run.statistics.industrialOutputEarned = addFinite(
-        draft.run.statistics.industrialOutputEarned,
-        produced,
-        'run.statistics.industrialOutputEarned',
-    );
-    draft.lifetime.industrialOutputEarned = addFinite(
-        draft.lifetime.industrialOutputEarned,
-        produced,
-        'lifetime.industrialOutputEarned',
-    );
+    const events: DomainEvent[] = [];
 
-    return commit(command, draft, [
-        {
-            type: 'productionGranted',
-            source: 'automation',
-            amount: produced,
-        },
-        industrialOutputChanged(previousAmount, draft.run.industrialOutput, 'automation_production'),
-    ]);
+    const previousAmount = draft.run.industrialOutput;
+    if (produced > 0) {
+        draft.run.industrialOutput = addFinite(draft.run.industrialOutput, produced, 'industrialOutput');
+        draft.run.statistics.industrialOutputEarned = addFinite(
+            draft.run.statistics.industrialOutputEarned,
+            produced,
+            'run.statistics.industrialOutputEarned',
+        );
+        draft.lifetime.industrialOutputEarned = addFinite(
+            draft.lifetime.industrialOutputEarned,
+            produced,
+            'lifetime.industrialOutputEarned',
+        );
+
+        events.push(
+            {
+                type: 'productionGranted',
+                source: 'automation',
+                amount: produced,
+            },
+            industrialOutputChanged(previousAmount, draft.run.industrialOutput, 'automation_production'),
+        );
+    }
+
+    if (robotsBuilt > 0) {
+        const previousRobotsBuilt = draft.run.robotsBuilt;
+        draft.run.robotsBuilt = addFinite(draft.run.robotsBuilt, robotsBuilt, 'robotsBuilt');
+        draft.run.statistics.robotsBuiltPeak = Math.max(draft.run.statistics.robotsBuiltPeak, draft.run.robotsBuilt);
+        draft.lifetime.robotsBuilt = addFinite(draft.lifetime.robotsBuilt, robotsBuilt, 'lifetime.robotsBuilt');
+
+        for (const threshold of resolveCrossedRobotsBuiltThresholds(previousRobotsBuilt, draft.run.robotsBuilt)) {
+            events.push({
+                type: 'robotsBuiltThresholdReached',
+                threshold,
+                previousAmount: previousRobotsBuilt,
+                newAmount: draft.run.robotsBuilt,
+            });
+        }
+    }
+
+    return commit(command, draft, events);
 }
 
 function executeManualProduce(state: GameState, command: GameCommand & { type: 'manualProduce' }): InternalCommandExecutionResult {
@@ -770,6 +808,10 @@ function evaluateProducerConstructionLock(
 function isBuilt(state: GameState, producerId: string): boolean {
     const producer = state.run.producers[producerId];
     return producer !== undefined && producer.isBuilt && producer.level > 0;
+}
+
+function getRobotLineLevel(state: GameState): number {
+    return state.run.producers[ROBOT_LINE_PRODUCER_ID]?.level ?? 0;
 }
 
 function automationStatesEqual(left: AutomationRunState | undefined, right: AutomationRunState | undefined): boolean {
