@@ -12,6 +12,8 @@ import {
 } from '../economy/ModifierSet.ts';
 import type { GameState, ProducerRunState } from '../state/GameState.ts';
 import { cloneGameState } from '../state/StateClone.ts';
+import { applyDefaultAutomationForConstructedProducer } from './AutomationState.ts';
+import { applyEraTransition, isCurrentEraAtLeast } from './EraProgression.ts';
 
 export type BreakthroughEligibilityStatus =
     | 'eligible'
@@ -184,7 +186,7 @@ export function purchaseBreakthrough(
     draft.run.statistics.breakthroughsPurchased += 1;
     draft.lifetime.breakthroughsPurchased += 1;
     draft.run.purchasedBreakthroughIds.push(breakthrough.id);
-    applyBreakthroughEffects(draft, breakthrough);
+    applyBreakthroughEffects(repository, draft, breakthrough);
 
     return {
         status: 'success',
@@ -305,13 +307,14 @@ function getRequirementCurrentValue(
     throw new BreakthroughInputError(`unsupported breakthrough requirement type "${String(requirement.type)}".`);
 }
 
-function applyBreakthroughEffects(state: GameState, breakthrough: BreakthroughConfig): void {
+function applyBreakthroughEffects(repository: GameConfigRepository, state: GameState, breakthrough: BreakthroughConfig): void {
     for (const effect of breakthrough.effects) {
-        applyBreakthroughEffect(state, breakthrough.id, effect);
+        applyBreakthroughEffect(repository, state, breakthrough.id, effect);
     }
 }
 
 function applyBreakthroughEffect(
+    repository: GameConfigRepository,
     state: GameState,
     breakthroughId: string,
     effect: BreakthroughEffect,
@@ -335,11 +338,12 @@ function applyBreakthroughEffect(
     if (effect.type === 'constructProducer') {
         const existing = state.run.producers[effect.producerId];
         state.run.producers[effect.producerId] = constructProducer(existing, effect.level);
+        applyDefaultAutomationForConstructedProducer(repository, state, effect.producerId, breakthroughId);
         return;
     }
 
     if (effect.type === 'enterEra') {
-        state.run.currentEraId = effect.eraId;
+        applyEraTransition(repository, state, effect.eraId);
         return;
     }
 
@@ -358,25 +362,6 @@ function constructProducer(existing: ProducerRunState | undefined, level: number
         isUnlocked: true,
         isBuilt: true,
     };
-}
-
-function isCurrentEraAtLeast(
-    repository: GameConfigRepository,
-    state: GameState,
-    requiredEraId: string,
-): boolean {
-    const currentEraId = state.run.currentEraId;
-    if (currentEraId === null) {
-        return false;
-    }
-
-    const currentEra = repository.getEra(currentEraId);
-    const requiredEra = repository.getEra(requiredEraId);
-    if (currentEra === undefined || requiredEra === undefined) {
-        return false;
-    }
-
-    return currentEra.order >= requiredEra.order;
 }
 
 function readBalance(state: GameState): number {

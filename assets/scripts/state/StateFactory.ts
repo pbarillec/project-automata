@@ -9,6 +9,7 @@ import type {
 } from './GameState.ts';
 
 export const INITIAL_CIVILIZATION_NUMBER = 1;
+export const INITIAL_RUN_ERA_ID = 'manual_workshop';
 
 export function createFreshGameState(): GameState {
     return {
@@ -27,7 +28,7 @@ export function createFreshRunState(): RunState {
         producers: {},
         automation: {},
         purchasedBreakthroughIds: [],
-        currentEraId: null,
+        currentEraId: INITIAL_RUN_ERA_ID,
         robotsBuilt: 0,
         statistics: {
             industrialOutputEarned: 0,

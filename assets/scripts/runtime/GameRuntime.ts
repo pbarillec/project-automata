@@ -1,4 +1,4 @@
-import type { BreakthroughEffect, GameConfigRepository } from '../config/ConfigLoader.ts';
+import type { BreakthroughEffect, GameConfigRepository, ProducerConfig } from '../config/ConfigLoader.ts';
 import type { DomainEvent, GameCommand } from '../domain/index.ts';
 import {
     applyProductionMultiplier,
@@ -9,17 +9,37 @@ import {
     resolveCrossedProducerMilestones,
     resolveEffectiveProducerProductionMultiplier,
 } from '../economy/index.ts';
-import { createBreakthroughModifierSet, purchaseBreakthrough } from '../progression/index.ts';
+import {
+    AUTOMATED_FACTORY_ERA_ID,
+    applyDefaultAutomationForConstructedProducer,
+    applyEraTransition,
+    calculateAutomatedProductionForElapsedSeconds,
+    calculateAutomatedProductionPerSecond,
+    createBreakthroughModifierSet,
+    purchaseBreakthrough,
+} from '../progression/index.ts';
 import type { AutomationRunState, GameState, ProducerRunState } from '../state/GameState.ts';
 import { cloneGameState, clonePlainData } from '../state/StateClone.ts';
 import { assertValidGameState } from '../state/StateValidation.ts';
 
 export const MANUAL_PRODUCTION_AMOUNT = 1;
+const ROBOT_LINE_PRODUCER_ID = 'robot_line';
+const ROBOT_LINE_CONSTRUCTION_COST = 500000;
+
+interface RuntimeProducerPurchase {
+    readonly producerId: string;
+    readonly currentLevel: number;
+    readonly quantity: number;
+    readonly nextLevel: number;
+    readonly cost: number;
+}
 
 export type CommandRejectionReason =
     | 'malformed_command'
     | 'invalid_producer_id'
     | 'invalid_quantity'
+    | 'invalid_elapsed_seconds'
+    | 'locked_producer'
     | 'insufficient_balance'
     | 'no_affordable_levels'
     | 'unknown_breakthrough'
@@ -62,8 +82,20 @@ export class GameRuntime {
         return calculateCurrentProductionPerSecond(this.repository, this.currentState);
     }
 
+    getAutomatedProductionPerSecond(): number {
+        return calculateAutomatedProductionPerSecond(this.repository, this.currentState);
+    }
+
     calculateProductionForElapsedSeconds(elapsedSeconds: number): number {
         return calculateElapsedProduction(this.getProductionPerSecond(), elapsedSeconds);
+    }
+
+    calculateAutomationProductionForElapsedSeconds(elapsedSeconds: number): number {
+        return calculateAutomatedProductionForElapsedSeconds(this.repository, this.currentState, elapsedSeconds);
+    }
+
+    advanceAutomation(elapsedSeconds: number): CommandExecutionResult {
+        return this.execute({ type: 'advanceAutomation', elapsedSeconds });
     }
 
     execute(command: unknown): CommandExecutionResult {
@@ -122,6 +154,10 @@ function executeGameCommandInternal(
             return executeManualProduce(state, parsedCommand.command);
         }
 
+        if (parsedCommand.command.type === 'advanceAutomation') {
+            return executeAdvanceAutomation(repository, state, parsedCommand.command);
+        }
+
         if (parsedCommand.command.type === 'buyProducerLevels') {
             return executeBuyProducerLevels(repository, state, parsedCommand.command);
         }
@@ -153,6 +189,109 @@ export function calculateCurrentProductionPerSecond(repository: GameConfigReposi
     }
 
     return total;
+}
+
+function calculateRuntimeProducerPurchase(
+    producer: ProducerConfig,
+    currentLevel: number,
+    quantity: number,
+): RuntimeProducerPurchase {
+    if (!isRobotLineConstructionPurchase(producer.id, currentLevel)) {
+        return calculateProducerPurchaseCost(producer, currentLevel, quantity);
+    }
+
+    if (quantity === 1) {
+        return {
+            producerId: producer.id,
+            currentLevel,
+            quantity,
+            nextLevel: 1,
+            cost: ROBOT_LINE_CONSTRUCTION_COST,
+        };
+    }
+
+    const additionalLevels = calculateProducerPurchaseCost(producer, 1, quantity - 1);
+    return {
+        producerId: producer.id,
+        currentLevel,
+        quantity,
+        nextLevel: quantity,
+        cost: addFinite(ROBOT_LINE_CONSTRUCTION_COST, additionalLevels.cost, 'robotLineConstructionCost'),
+    };
+}
+
+function calculateMaxAffordableRuntimeProducerPurchase(
+    producer: ProducerConfig,
+    currentLevel: number,
+    balance: number,
+): RuntimeProducerPurchase {
+    if (!isRobotLineConstructionPurchase(producer.id, currentLevel)) {
+        return calculateMaxAffordableProducerPurchase(producer, currentLevel, balance);
+    }
+
+    if (balance < ROBOT_LINE_CONSTRUCTION_COST) {
+        return {
+            producerId: producer.id,
+            currentLevel,
+            quantity: 0,
+            nextLevel: currentLevel,
+            cost: 0,
+        };
+    }
+
+    const additionalLevels = calculateMaxAffordableProducerPurchase(
+        producer,
+        1,
+        balance - ROBOT_LINE_CONSTRUCTION_COST,
+    );
+    const quantity = 1 + additionalLevels.quantity;
+
+    return {
+        producerId: producer.id,
+        currentLevel,
+        quantity,
+        nextLevel: quantity,
+        cost: addFinite(ROBOT_LINE_CONSTRUCTION_COST, additionalLevels.cost, 'robotLineConstructionCost'),
+    };
+}
+
+function isRobotLineConstructionPurchase(producerId: string, currentLevel: number): boolean {
+    return producerId === ROBOT_LINE_PRODUCER_ID && currentLevel === 0;
+}
+
+function executeAdvanceAutomation(
+    repository: GameConfigRepository,
+    state: GameState,
+    command: GameCommand & { type: 'advanceAutomation' },
+): InternalCommandExecutionResult {
+    const produced = calculateAutomatedProductionForElapsedSeconds(repository, state, command.elapsedSeconds);
+    const draft = cloneGameState(state);
+
+    if (produced === 0) {
+        return commit(command, draft, []);
+    }
+
+    const previousAmount = draft.run.industrialOutput;
+    draft.run.industrialOutput = addFinite(draft.run.industrialOutput, produced, 'industrialOutput');
+    draft.run.statistics.industrialOutputEarned = addFinite(
+        draft.run.statistics.industrialOutputEarned,
+        produced,
+        'run.statistics.industrialOutputEarned',
+    );
+    draft.lifetime.industrialOutputEarned = addFinite(
+        draft.lifetime.industrialOutputEarned,
+        produced,
+        'lifetime.industrialOutputEarned',
+    );
+
+    return commit(command, draft, [
+        {
+            type: 'productionGranted',
+            source: 'automation',
+            amount: produced,
+        },
+        industrialOutputChanged(previousAmount, draft.run.industrialOutput, 'automation_production'),
+    ]);
 }
 
 function executeManualProduce(state: GameState, command: GameCommand & { type: 'manualProduce' }): InternalCommandExecutionResult {
@@ -193,7 +332,14 @@ function executeBuyProducerLevels(
     }
 
     const currentLevel = state.run.producers[producer.id]?.level ?? 0;
-    const purchase = calculateProducerPurchaseCost(producer, currentLevel, command.quantity);
+    if (currentLevel === 0) {
+        const constructionLock = evaluateProducerConstructionLock(state, producer.id);
+        if (constructionLock !== undefined) {
+            return reject('locked_producer', `Producer "${producer.id}" is locked for construction.`, constructionLock);
+        }
+    }
+
+    const purchase = calculateRuntimeProducerPurchase(producer, currentLevel, command.quantity);
     if (purchase.cost > state.run.industrialOutput) {
         return reject('insufficient_balance', 'Insufficient Industrial Output for producer purchase.', {
             producerId: producer.id,
@@ -216,7 +362,14 @@ function executeBuyMaxProducerLevels(
     }
 
     const currentLevel = state.run.producers[producer.id]?.level ?? 0;
-    const purchase = calculateMaxAffordableProducerPurchase(producer, currentLevel, state.run.industrialOutput);
+    if (currentLevel === 0) {
+        const constructionLock = evaluateProducerConstructionLock(state, producer.id);
+        if (constructionLock !== undefined) {
+            return reject('locked_producer', `Producer "${producer.id}" is locked for construction.`, constructionLock);
+        }
+    }
+
+    const purchase = calculateMaxAffordableRuntimeProducerPurchase(producer, currentLevel, state.run.industrialOutput);
     if (purchase.quantity === 0) {
         return reject('no_affordable_levels', 'No affordable producer levels are available.', {
             producerId: producer.id,
@@ -274,6 +427,29 @@ function applyProducerPurchase(
             level: newLevel,
             source: 'producer_purchase',
         });
+
+        applyDefaultAutomationForConstructedProducer(repository, draft, producerId);
+        const automation = draft.run.automation[producerId];
+        if (automation !== undefined) {
+            events.push({
+                type: 'automationStateChanged',
+                producerId,
+                isAutomated: automation.isAutomated,
+                isOfflineEligible: automation.isOfflineEligible,
+                unlockedByBreakthroughId: automation.unlockedByBreakthroughId,
+            });
+        }
+
+        if (producerId === ROBOT_LINE_PRODUCER_ID) {
+            const transition = applyEraTransition(repository, draft, AUTOMATED_FACTORY_ERA_ID);
+            if (transition.changed) {
+                events.push({
+                    type: 'eraChanged',
+                    oldEraId: transition.oldEraId,
+                    newEraId: transition.newEraId,
+                });
+            }
+        }
     }
 
     for (const milestone of resolveCrossedProducerMilestones(repository.listMilestones(), oldLevel, newLevel)) {
@@ -379,6 +555,18 @@ function createBreakthroughEffectEvents(
                     breakthroughId,
                 });
             }
+
+            const beforeAutomation = beforeState.run.automation[effect.producerId];
+            const afterAutomation = afterState.run.automation[effect.producerId];
+            if (afterAutomation !== undefined && !automationStatesEqual(beforeAutomation, afterAutomation)) {
+                events.push({
+                    type: 'automationStateChanged',
+                    producerId: effect.producerId,
+                    isAutomated: afterAutomation.isAutomated,
+                    isOfflineEligible: afterAutomation.isOfflineEligible,
+                    unlockedByBreakthroughId: afterAutomation.unlockedByBreakthroughId,
+                });
+            }
             continue;
         }
 
@@ -423,6 +611,20 @@ function parseGameCommand(command: unknown): { ok: true; command: GameCommand } 
 
     if (command.type === 'manualProduce') {
         return { ok: true, command: { type: 'manualProduce' } };
+    }
+
+    if (command.type === 'advanceAutomation') {
+        if (typeof command.elapsedSeconds !== 'number' || !Number.isFinite(command.elapsedSeconds) || command.elapsedSeconds < 0) {
+            return reject('invalid_elapsed_seconds', 'elapsedSeconds must be a non-negative finite number.');
+        }
+
+        return {
+            ok: true,
+            command: {
+                type: 'advanceAutomation',
+                elapsedSeconds: command.elapsedSeconds,
+            },
+        };
     }
 
     if (command.type === 'buyProducerLevels') {
@@ -510,7 +712,7 @@ function reject(
 function industrialOutputChanged(
     previousAmount: number,
     newAmount: number,
-    reason: 'manual_production' | 'producer_purchase' | 'breakthrough_purchase',
+    reason: 'manual_production' | 'automation_production' | 'producer_purchase' | 'breakthrough_purchase',
 ): DomainEvent {
     return {
         type: 'industrialOutputChanged',
@@ -519,6 +721,55 @@ function industrialOutputChanged(
         delta: newAmount - previousAmount,
         reason,
     };
+}
+
+function evaluateProducerConstructionLock(
+    state: GameState,
+    producerId: string,
+): Readonly<Record<string, unknown>> | undefined {
+    if (producerId === 'fabricator') {
+        return undefined;
+    }
+
+    if (producerId === 'assembly_station') {
+        return isBuilt(state, 'fabricator')
+            ? undefined
+            : { producerId, missingProducerIds: ['fabricator'] };
+    }
+
+    if (producerId === ROBOT_LINE_PRODUCER_ID) {
+        const missingBreakthroughIds = ['auto_feeder', 'worker_bot', 'robotic_logistics']
+            .filter((breakthroughId) => !state.run.purchasedBreakthroughIds.includes(breakthroughId));
+        const missingProducerLevels = [
+            { producerId: 'fabricator', level: 50, currentLevel: state.run.producers.fabricator?.level ?? 0 },
+            { producerId: 'assembly_station', level: 25, currentLevel: state.run.producers.assembly_station?.level ?? 0 },
+        ].filter((requirement) => requirement.currentLevel < requirement.level);
+
+        if (missingBreakthroughIds.length === 0 && missingProducerLevels.length === 0) {
+            return undefined;
+        }
+
+        return { producerId, missingBreakthroughIds, missingProducerLevels };
+    }
+
+    if (producerId === 'automated_cell') {
+        return isBuilt(state, 'automated_cell')
+            ? undefined
+            : { producerId, requiredBreakthroughId: 'automated_cell_architecture' };
+    }
+
+    if (producerId === 'advanced_robotics_complex') {
+        return isBuilt(state, 'advanced_robotics_complex')
+            ? undefined
+            : { producerId, requiredBreakthroughId: 'advanced_robotics' };
+    }
+
+    return undefined;
+}
+
+function isBuilt(state: GameState, producerId: string): boolean {
+    const producer = state.run.producers[producerId];
+    return producer !== undefined && producer.isBuilt && producer.level > 0;
 }
 
 function automationStatesEqual(left: AutomationRunState | undefined, right: AutomationRunState | undefined): boolean {

@@ -20,6 +20,7 @@ export type {
 
 export {
     INITIAL_CIVILIZATION_NUMBER,
+    INITIAL_RUN_ERA_ID,
     createFreshBoostState,
     createFreshGameState,
     createFreshLifetimeState,

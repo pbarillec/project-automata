@@ -327,9 +327,11 @@ test('construction and era effects emit descriptive events without duplicating B
         'industrialOutputChanged',
         'breakthroughPurchased',
         'producerConstructed',
+        'automationStateChanged',
         'eraChanged',
     ]);
     assert.equal(runtime.getStateSnapshot().run.producers.advanced_robotics_complex.level, 1);
+    assert.equal(runtime.getStateSnapshot().run.automation.advanced_robotics_complex.isAutomated, true);
     assert.equal(runtime.getStateSnapshot().run.currentEraId, 'robotics_complex');
 });
 

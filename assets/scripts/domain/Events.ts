@@ -15,12 +15,12 @@ export interface IndustrialOutputChangedEvent {
     readonly previousAmount: number;
     readonly newAmount: number;
     readonly delta: number;
-    readonly reason: 'manual_production' | 'producer_purchase' | 'breakthrough_purchase';
+    readonly reason: 'manual_production' | 'automation_production' | 'producer_purchase' | 'breakthrough_purchase';
 }
 
 export interface ProductionGrantedEvent {
     readonly type: 'productionGranted';
-    readonly source: 'manual';
+    readonly source: 'manual' | 'automation';
     readonly amount: number;
 }
 

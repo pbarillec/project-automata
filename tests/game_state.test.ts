@@ -43,7 +43,7 @@ test('fresh state is a valid Civilization #1 with safe empty defaults', async ()
     assert.deepEqual(state.run.producers, {});
     assert.deepEqual(state.run.automation, {});
     assert.deepEqual(state.run.purchasedBreakthroughIds, []);
-    assert.equal(state.run.currentEraId, null);
+    assert.equal(state.run.currentEraId, 'manual_workshop');
     assert.equal(state.run.robotsBuilt, 0);
     assert.equal(state.run.prestigePowerPeak, 0);
     assert.deepEqual(state.meta.permanentUpgradeRanks, {});

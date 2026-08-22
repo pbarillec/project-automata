@@ -1,11 +1,17 @@
 export type GameCommand =
     | ManualProduceCommand
+    | AdvanceAutomationCommand
     | BuyProducerLevelsCommand
     | BuyMaxProducerLevelsCommand
     | PurchaseBreakthroughCommand;
 
 export interface ManualProduceCommand {
     readonly type: 'manualProduce';
+}
+
+export interface AdvanceAutomationCommand {
+    readonly type: 'advanceAutomation';
+    readonly elapsedSeconds: number;
 }
 
 export interface BuyProducerLevelsCommand {
