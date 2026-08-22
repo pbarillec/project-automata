@@ -1,0 +1,23 @@
+{
+  "kind": "breakthroughs",
+  "schemaVersion": 1,
+  "contentVersion": "0.1.0-aut-010",
+  "items": [
+    {
+      "id": "invalid_secret_unlock",
+      "displayNameKey": "breakthrough.invalid_secret_unlock.name",
+      "cost": 250,
+      "requirements": [
+        {
+          "type": "secretHandshake"
+        }
+      ],
+      "effects": [
+        {
+          "type": "globalProductionMultiplier",
+          "multiplier": 2
+        }
+      ]
+    }
+  ]
+}

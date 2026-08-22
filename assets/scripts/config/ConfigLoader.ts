@@ -39,32 +39,86 @@ export interface ProducerMilestoneConfig {
 }
 
 export interface ProducerLevelRequirement {
+    type: 'producerLevel';
     producerId: string;
     level: number;
 }
 
-export interface BreakthroughPrerequisites {
-    producerLevels: ProducerLevelRequirement[];
-    breakthroughIds: string[];
+export interface BreakthroughOwnedRequirement {
+    type: 'breakthroughOwned';
+    breakthroughId: string;
 }
 
-export interface ProductionMultiplierEffect {
-    type: 'productionMultiplier';
+export interface RobotsBuiltRequirement {
+    type: 'robotsBuilt';
+    count: number;
+}
+
+export interface EraRequirement {
+    type: 'era';
+    eraId: string;
+}
+
+export interface CivilizationRequirement {
+    type: 'civilization';
+    civilizationNumber: number;
+}
+
+export type BreakthroughRequirement =
+    | ProducerLevelRequirement
+    | BreakthroughOwnedRequirement
+    | RobotsBuiltRequirement
+    | EraRequirement
+    | CivilizationRequirement;
+
+export interface GlobalProductionMultiplierEffect {
+    type: 'globalProductionMultiplier';
     multiplier: number;
 }
 
-export interface UnlockProducerEffect {
-    type: 'unlockProducer';
+export interface ProducerProductionMultiplierEffect {
+    type: 'producerProductionMultiplier';
     producerId: string;
+    multiplier: number;
 }
 
-export type BreakthroughEffect = ProductionMultiplierEffect | UnlockProducerEffect;
+export interface ProducerAutomationEffect {
+    type: 'setProducerAutomation';
+    producerId: string;
+    automated: boolean;
+    offlineEligible: boolean;
+}
+
+export interface ConstructProducerEffect {
+    type: 'constructProducer';
+    producerId: string;
+    level: number;
+}
+
+export interface EnterEraEffect {
+    type: 'enterEra';
+    eraId: string;
+}
+
+export interface SetProgressionFlagEffect {
+    type: 'setProgressionFlag';
+    flagId: string;
+    value: boolean;
+}
+
+export type BreakthroughEffect =
+    | GlobalProductionMultiplierEffect
+    | ProducerProductionMultiplierEffect
+    | ProducerAutomationEffect
+    | ConstructProducerEffect
+    | EnterEraEffect
+    | SetProgressionFlagEffect;
 
 export interface BreakthroughConfig {
     id: string;
     displayNameKey: string;
     cost: number;
-    prerequisites: BreakthroughPrerequisites;
+    requirements: BreakthroughRequirement[];
     effects: BreakthroughEffect[];
 }
 
@@ -104,7 +158,15 @@ interface StageResult<T> {
 
 const CONFIG_SCHEMA_VERSION = 1;
 const SUPPORTED_CONFIG_KINDS: ConfigFileKind[] = ['eras', 'producers', 'breakthroughs', 'milestones'];
-const SUPPORTED_EFFECT_TYPES = ['productionMultiplier', 'unlockProducer'];
+const SUPPORTED_REQUIREMENT_TYPES = ['producerLevel', 'breakthroughOwned', 'robotsBuilt', 'era', 'civilization'];
+const SUPPORTED_EFFECT_TYPES = [
+    'globalProductionMultiplier',
+    'producerProductionMultiplier',
+    'setProducerAutomation',
+    'constructProducer',
+    'enterEra',
+    'setProgressionFlag',
+];
 const EMPTY_FILE_PATH = '<config>';
 
 export class ConfigValidationError extends Error {
@@ -306,21 +368,32 @@ export function validateConfigReferences(config: StructuredConfigSet): ConfigDia
     for (const envelope of config.breakthroughs) {
         envelope.items.forEach((breakthrough, index) => {
             const itemPath = `$.items[${index}]`;
-            breakthrough.prerequisites.producerLevels.forEach((requirement, requirementIndex) => {
-                if (!producerIds.has(requirement.producerId)) {
-                    diagnostics.push(makeDiagnostic('cross-reference', 'CONFIG_UNKNOWN_REFERENCE', envelope.filePath, `${itemPath}.prerequisites.producerLevels[${requirementIndex}].producerId`, `Unknown producer id "${requirement.producerId}".`));
+            breakthrough.requirements.forEach((requirement, requirementIndex) => {
+                if (requirement.type === 'producerLevel' && !producerIds.has(requirement.producerId)) {
+                    diagnostics.push(makeDiagnostic('cross-reference', 'CONFIG_UNKNOWN_REFERENCE', envelope.filePath, `${itemPath}.requirements[${requirementIndex}].producerId`, `Unknown producer id "${requirement.producerId}".`));
                 }
-            });
 
-            breakthrough.prerequisites.breakthroughIds.forEach((breakthroughId, prerequisiteIndex) => {
-                if (!breakthroughIds.has(breakthroughId)) {
-                    diagnostics.push(makeDiagnostic('cross-reference', 'CONFIG_UNKNOWN_REFERENCE', envelope.filePath, `${itemPath}.prerequisites.breakthroughIds[${prerequisiteIndex}]`, `Unknown breakthrough id "${breakthroughId}".`));
+                if (requirement.type === 'breakthroughOwned' && !breakthroughIds.has(requirement.breakthroughId)) {
+                    diagnostics.push(makeDiagnostic('cross-reference', 'CONFIG_UNKNOWN_REFERENCE', envelope.filePath, `${itemPath}.requirements[${requirementIndex}].breakthroughId`, `Unknown breakthrough id "${requirement.breakthroughId}".`));
+                }
+
+                if (requirement.type === 'era' && !eraIds.has(requirement.eraId)) {
+                    diagnostics.push(makeDiagnostic('cross-reference', 'CONFIG_UNKNOWN_REFERENCE', envelope.filePath, `${itemPath}.requirements[${requirementIndex}].eraId`, `Unknown era id "${requirement.eraId}".`));
                 }
             });
 
             breakthrough.effects.forEach((effect, effectIndex) => {
-                if (effect.type === 'unlockProducer' && !producerIds.has(effect.producerId)) {
+                if (
+                    (effect.type === 'producerProductionMultiplier' ||
+                        effect.type === 'setProducerAutomation' ||
+                        effect.type === 'constructProducer') &&
+                    !producerIds.has(effect.producerId)
+                ) {
                     diagnostics.push(makeDiagnostic('cross-reference', 'CONFIG_UNKNOWN_REFERENCE', envelope.filePath, `${itemPath}.effects[${effectIndex}].producerId`, `Unknown producer id "${effect.producerId}".`));
+                }
+
+                if (effect.type === 'enterEra' && !eraIds.has(effect.eraId)) {
+                    diagnostics.push(makeDiagnostic('cross-reference', 'CONFIG_UNKNOWN_REFERENCE', envelope.filePath, `${itemPath}.effects[${effectIndex}].eraId`, `Unknown era id "${effect.eraId}".`));
                 }
             });
         });
@@ -502,14 +575,14 @@ function parseProducerMilestoneConfig(value: Record<string, unknown>, filePath: 
 }
 
 function parseBreakthroughConfig(value: Record<string, unknown>, filePath: string, itemPath: string, diagnostics: ConfigDiagnostic[]): BreakthroughConfig | undefined {
-    validateAllowedKeys('structural', filePath, itemPath, value, ['id', 'displayNameKey', 'cost', 'prerequisites', 'effects'], diagnostics);
+    validateAllowedKeys('structural', filePath, itemPath, value, ['id', 'displayNameKey', 'cost', 'requirements', 'effects'], diagnostics);
     const id = readString(value, 'id', filePath, itemPath, diagnostics);
     const displayNameKey = readString(value, 'displayNameKey', filePath, itemPath, diagnostics);
     const cost = readNumber(value, 'cost', filePath, itemPath, diagnostics);
-    const prerequisites = parsePrerequisites(value.prerequisites, filePath, `${itemPath}.prerequisites`, diagnostics);
+    const requirements = parseRequirements(value.requirements, filePath, `${itemPath}.requirements`, diagnostics);
     const effects = parseEffects(value.effects, filePath, `${itemPath}.effects`, diagnostics);
 
-    if (id === undefined || displayNameKey === undefined || cost === undefined || prerequisites === undefined || effects === undefined) {
+    if (id === undefined || displayNameKey === undefined || cost === undefined || requirements === undefined || effects === undefined) {
         return undefined;
     }
 
@@ -517,39 +590,18 @@ function parseBreakthroughConfig(value: Record<string, unknown>, filePath: strin
         id,
         displayNameKey,
         cost,
-        prerequisites,
+        requirements,
         effects,
     };
 }
 
-function parsePrerequisites(value: unknown, filePath: string, configPath: string, diagnostics: ConfigDiagnostic[]): BreakthroughPrerequisites | undefined {
-    if (!isPlainObject(value)) {
-        diagnostics.push(makeDiagnostic('structural', 'CONFIG_REQUIRED_FIELD', filePath, configPath, 'prerequisites must be an object.'));
-        return undefined;
-    }
-
-    validateAllowedKeys('structural', filePath, configPath, value, ['producerLevels', 'breakthroughIds'], diagnostics);
-    const producerLevels = parseProducerLevelRequirements(value.producerLevels, filePath, `${configPath}.producerLevels`, diagnostics);
-    const breakthroughIds = readOptionalStringArray(value, 'breakthroughIds', filePath, configPath, diagnostics);
-
-    if (producerLevels === undefined || breakthroughIds === undefined) {
-        return undefined;
-    }
-
-    return { producerLevels, breakthroughIds };
-}
-
-function parseProducerLevelRequirements(value: unknown, filePath: string, configPath: string, diagnostics: ConfigDiagnostic[]): ProducerLevelRequirement[] | undefined {
-    if (value === undefined) {
-        return [];
-    }
-
+function parseRequirements(value: unknown, filePath: string, configPath: string, diagnostics: ConfigDiagnostic[]): BreakthroughRequirement[] | undefined {
     if (!Array.isArray(value)) {
-        diagnostics.push(makeDiagnostic('structural', 'CONFIG_EXPECTED_ARRAY', filePath, configPath, 'producerLevels must be an array.'));
+        diagnostics.push(makeDiagnostic('structural', 'CONFIG_REQUIRED_FIELD', filePath, configPath, 'requirements must be an array.'));
         return undefined;
     }
 
-    const requirements: ProducerLevelRequirement[] = [];
+    const requirements: BreakthroughRequirement[] = [];
     for (let index = 0; index < value.length; index += 1) {
         const itemPath = `${configPath}[${index}]`;
         const requirement = value[index];
@@ -558,12 +610,56 @@ function parseProducerLevelRequirements(value: unknown, filePath: string, config
             continue;
         }
 
-        validateAllowedKeys('structural', filePath, itemPath, requirement, ['producerId', 'level'], diagnostics);
-        const producerId = readString(requirement, 'producerId', filePath, itemPath, diagnostics);
-        const level = readNumber(requirement, 'level', filePath, itemPath, diagnostics);
+        const type = readString(requirement, 'type', filePath, itemPath, diagnostics);
 
-        if (producerId !== undefined && level !== undefined) {
-            requirements.push({ producerId, level });
+        if (type === 'producerLevel') {
+            validateAllowedKeys('structural', filePath, itemPath, requirement, ['type', 'producerId', 'level'], diagnostics);
+            const producerId = readString(requirement, 'producerId', filePath, itemPath, diagnostics);
+            const level = readNumber(requirement, 'level', filePath, itemPath, diagnostics);
+            if (producerId !== undefined && level !== undefined) {
+                requirements.push({ type, producerId, level });
+            }
+            continue;
+        }
+
+        if (type === 'breakthroughOwned') {
+            validateAllowedKeys('structural', filePath, itemPath, requirement, ['type', 'breakthroughId'], diagnostics);
+            const breakthroughId = readString(requirement, 'breakthroughId', filePath, itemPath, diagnostics);
+            if (breakthroughId !== undefined) {
+                requirements.push({ type, breakthroughId });
+            }
+            continue;
+        }
+
+        if (type === 'robotsBuilt') {
+            validateAllowedKeys('structural', filePath, itemPath, requirement, ['type', 'count'], diagnostics);
+            const count = readNumber(requirement, 'count', filePath, itemPath, diagnostics);
+            if (count !== undefined) {
+                requirements.push({ type, count });
+            }
+            continue;
+        }
+
+        if (type === 'era') {
+            validateAllowedKeys('structural', filePath, itemPath, requirement, ['type', 'eraId'], diagnostics);
+            const eraId = readString(requirement, 'eraId', filePath, itemPath, diagnostics);
+            if (eraId !== undefined) {
+                requirements.push({ type, eraId });
+            }
+            continue;
+        }
+
+        if (type === 'civilization') {
+            validateAllowedKeys('structural', filePath, itemPath, requirement, ['type', 'civilizationNumber'], diagnostics);
+            const civilizationNumber = readNumber(requirement, 'civilizationNumber', filePath, itemPath, diagnostics);
+            if (civilizationNumber !== undefined) {
+                requirements.push({ type, civilizationNumber });
+            }
+            continue;
+        }
+
+        if (type !== undefined) {
+            requirements.push({ type } as BreakthroughRequirement);
         }
     }
 
@@ -585,10 +681,10 @@ function parseEffects(value: unknown, filePath: string, configPath: string, diag
             continue;
         }
 
-        validateAllowedKeys('structural', filePath, itemPath, effect, ['type', 'multiplier', 'producerId'], diagnostics);
         const type = readString(effect, 'type', filePath, itemPath, diagnostics);
 
-        if (type === 'productionMultiplier') {
+        if (type === 'globalProductionMultiplier') {
+            validateAllowedKeys('structural', filePath, itemPath, effect, ['type', 'multiplier'], diagnostics);
             const multiplier = readNumber(effect, 'multiplier', filePath, itemPath, diagnostics);
             if (multiplier !== undefined) {
                 effects.push({ type, multiplier });
@@ -596,10 +692,52 @@ function parseEffects(value: unknown, filePath: string, configPath: string, diag
             continue;
         }
 
-        if (type === 'unlockProducer') {
+        if (type === 'producerProductionMultiplier') {
+            validateAllowedKeys('structural', filePath, itemPath, effect, ['type', 'producerId', 'multiplier'], diagnostics);
             const producerId = readString(effect, 'producerId', filePath, itemPath, diagnostics);
-            if (producerId !== undefined) {
-                effects.push({ type, producerId });
+            const multiplier = readNumber(effect, 'multiplier', filePath, itemPath, diagnostics);
+            if (producerId !== undefined && multiplier !== undefined) {
+                effects.push({ type, producerId, multiplier });
+            }
+            continue;
+        }
+
+        if (type === 'setProducerAutomation') {
+            validateAllowedKeys('structural', filePath, itemPath, effect, ['type', 'producerId', 'automated', 'offlineEligible'], diagnostics);
+            const producerId = readString(effect, 'producerId', filePath, itemPath, diagnostics);
+            const automated = readBoolean(effect, 'automated', filePath, itemPath, diagnostics);
+            const offlineEligible = readBoolean(effect, 'offlineEligible', filePath, itemPath, diagnostics);
+            if (producerId !== undefined && automated !== undefined && offlineEligible !== undefined) {
+                effects.push({ type, producerId, automated, offlineEligible });
+            }
+            continue;
+        }
+
+        if (type === 'constructProducer') {
+            validateAllowedKeys('structural', filePath, itemPath, effect, ['type', 'producerId', 'level'], diagnostics);
+            const producerId = readString(effect, 'producerId', filePath, itemPath, diagnostics);
+            const level = readNumber(effect, 'level', filePath, itemPath, diagnostics);
+            if (producerId !== undefined && level !== undefined) {
+                effects.push({ type, producerId, level });
+            }
+            continue;
+        }
+
+        if (type === 'enterEra') {
+            validateAllowedKeys('structural', filePath, itemPath, effect, ['type', 'eraId'], diagnostics);
+            const eraId = readString(effect, 'eraId', filePath, itemPath, diagnostics);
+            if (eraId !== undefined) {
+                effects.push({ type, eraId });
+            }
+            continue;
+        }
+
+        if (type === 'setProgressionFlag') {
+            validateAllowedKeys('structural', filePath, itemPath, effect, ['type', 'flagId', 'value'], diagnostics);
+            const flagId = readString(effect, 'flagId', filePath, itemPath, diagnostics);
+            const flagValue = readBoolean(effect, 'value', filePath, itemPath, diagnostics);
+            if (flagId !== undefined && flagValue !== undefined) {
+                effects.push({ type, flagId, value: flagValue });
             }
             continue;
         }
@@ -666,15 +804,27 @@ function validateSemanticNumbers(config: StructuredConfigSet, diagnostics: Confi
                 diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].cost`, 'cost must be greater than 0.'));
             }
 
-            breakthrough.prerequisites.producerLevels.forEach((requirement, requirementIndex) => {
-                if (!Number.isInteger(requirement.level) || requirement.level <= 0) {
-                    diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].prerequisites.producerLevels[${requirementIndex}].level`, 'producer prerequisite level must be a positive integer.'));
+            breakthrough.requirements.forEach((requirement, requirementIndex) => {
+                if (requirement.type === 'producerLevel' && (!Number.isInteger(requirement.level) || requirement.level <= 0)) {
+                    diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].requirements[${requirementIndex}].level`, 'producer requirement level must be a positive integer.'));
+                }
+
+                if (requirement.type === 'robotsBuilt' && (!Number.isInteger(requirement.count) || requirement.count <= 0)) {
+                    diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].requirements[${requirementIndex}].count`, 'robotsBuilt requirement count must be a positive integer.'));
+                }
+
+                if (requirement.type === 'civilization' && (!Number.isInteger(requirement.civilizationNumber) || requirement.civilizationNumber <= 0)) {
+                    diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].requirements[${requirementIndex}].civilizationNumber`, 'civilization requirement must be a positive integer.'));
                 }
             });
 
             breakthrough.effects.forEach((effect, effectIndex) => {
-                if (effect.type === 'productionMultiplier' && effect.multiplier <= 0) {
+                if ((effect.type === 'globalProductionMultiplier' || effect.type === 'producerProductionMultiplier') && effect.multiplier <= 0) {
                     diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].effects[${effectIndex}].multiplier`, 'production multiplier must be greater than 0.'));
+                }
+
+                if (effect.type === 'constructProducer' && (!Number.isInteger(effect.level) || effect.level <= 0)) {
+                    diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].effects[${effectIndex}].level`, 'constructed producer level must be a positive integer.'));
                 }
             });
         });
@@ -684,6 +834,12 @@ function validateSemanticNumbers(config: StructuredConfigSet, diagnostics: Confi
 function validateKnownEffectTypes(config: StructuredConfigSet, diagnostics: ConfigDiagnostic[]): void {
     for (const envelope of config.breakthroughs) {
         envelope.items.forEach((breakthrough, index) => {
+            breakthrough.requirements.forEach((requirement, requirementIndex) => {
+                if (!SUPPORTED_REQUIREMENT_TYPES.includes(requirement.type)) {
+                    diagnostics.push(makeDiagnostic('semantic', 'CONFIG_UNKNOWN_REQUIREMENT_TYPE', envelope.filePath, `$.items[${index}].requirements[${requirementIndex}].type`, `Unsupported requirement type "${requirement.type}".`));
+                }
+            });
+
             breakthrough.effects.forEach((effect, effectIndex) => {
                 if (!SUPPORTED_EFFECT_TYPES.includes(effect.type)) {
                     diagnostics.push(makeDiagnostic('semantic', 'CONFIG_UNKNOWN_EFFECT_TYPE', envelope.filePath, `$.items[${index}].effects[${effectIndex}].type`, `Unsupported effect type "${effect.type}".`));
@@ -758,7 +914,12 @@ function validateReferenceCycles(config: StructuredConfigSet, diagnostics: Confi
     const breakthroughFileById = new Map<string, { filePath: string; index: number }>();
     for (const envelope of config.breakthroughs) {
         envelope.items.forEach((breakthrough, index) => {
-            breakthroughGraph.set(breakthrough.id, breakthrough.prerequisites.breakthroughIds);
+            breakthroughGraph.set(
+                breakthrough.id,
+                breakthrough.requirements
+                    .filter((requirement): requirement is BreakthroughOwnedRequirement => requirement.type === 'breakthroughOwned')
+                    .map((requirement) => requirement.breakthroughId),
+            );
             breakthroughFileById.set(breakthrough.id, { filePath: envelope.filePath, index });
         });
     }
@@ -769,7 +930,7 @@ function validateReferenceCycles(config: StructuredConfigSet, diagnostics: Confi
             'semantic',
             'CONFIG_REFERENCE_CYCLE',
             owner?.filePath ?? EMPTY_FILE_PATH,
-            owner === undefined ? '$.breakthroughs' : `$.items[${owner.index}].prerequisites.breakthroughIds`,
+            owner === undefined ? '$.breakthroughs' : `$.items[${owner.index}].requirements`,
             `Breakthrough prerequisite cycle detected: ${cycle.join(' -> ')}.`,
         ));
     }
@@ -888,6 +1049,21 @@ function readNumber(value: Record<string, unknown>, fieldName: string, filePath:
 
     if (typeof value[fieldName] !== 'number' || !Number.isFinite(value[fieldName])) {
         diagnostics.push(makeDiagnostic('structural', 'CONFIG_INVALID_TYPE', filePath, fieldPath, `${fieldName} must be a finite number.`));
+        return undefined;
+    }
+
+    return value[fieldName];
+}
+
+function readBoolean(value: Record<string, unknown>, fieldName: string, filePath: string, parentPath: string, diagnostics: ConfigDiagnostic[]): boolean | undefined {
+    const fieldPath = `${parentPath}.${fieldName}`;
+    if (!(fieldName in value)) {
+        diagnostics.push(makeDiagnostic('structural', 'CONFIG_REQUIRED_FIELD', filePath, fieldPath, `${fieldName} is required.`));
+        return undefined;
+    }
+
+    if (typeof value[fieldName] !== 'boolean') {
+        diagnostics.push(makeDiagnostic('structural', 'CONFIG_INVALID_TYPE', filePath, fieldPath, `${fieldName} must be a boolean.`));
         return undefined;
     }
 

@@ -7,15 +7,13 @@
       "id": "invalid_grant_currency",
       "displayNameKey": "breakthrough.invalid_grant_currency.name",
       "cost": 250,
-      "prerequisites": {
-        "producerLevels": [
-          {
-            "producerId": "fabricator",
-            "level": 2
-          }
-        ],
-        "breakthroughIds": []
-      },
+      "requirements": [
+        {
+          "type": "producerLevel",
+          "producerId": "fabricator",
+          "level": 2
+        }
+      ],
       "effects": [
         {
           "type": "grantCurrency"

@@ -102,6 +102,7 @@ test('deep clone produces independent nested collections', async () => {
     };
     original.run.automation.fixture_fabricator = {
         isAutomated: true,
+        isOfflineEligible: true,
         unlockedByBreakthroughId: 'fixture_basic_automation',
     };
     original.run.purchasedBreakthroughIds.push('fixture_basic_automation');

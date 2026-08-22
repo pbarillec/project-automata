@@ -29,6 +29,7 @@ export interface ProducerRunState {
 
 export interface AutomationRunState {
     isAutomated: boolean;
+    isOfflineEligible: boolean;
     unlockedByBreakthroughId: string | null;
 }
 

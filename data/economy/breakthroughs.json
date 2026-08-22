@@ -2,5 +2,171 @@
   "kind": "breakthroughs",
   "schemaVersion": 1,
   "contentVersion": "0.1.0-aut-010",
-  "items": []
+  "items": [
+    {
+      "id": "auto_feeder",
+      "displayNameKey": "breakthrough.auto_feeder.name",
+      "cost": 1500,
+      "requirements": [
+        {
+          "type": "producerLevel",
+          "producerId": "fabricator",
+          "level": 15
+        }
+      ],
+      "effects": [
+        {
+          "type": "setProducerAutomation",
+          "producerId": "fabricator",
+          "automated": true,
+          "offlineEligible": true
+        },
+        {
+          "type": "producerProductionMultiplier",
+          "producerId": "fabricator",
+          "multiplier": 1.25
+        }
+      ]
+    },
+    {
+      "id": "worker_bot",
+      "displayNameKey": "breakthrough.worker_bot.name",
+      "cost": 75000,
+      "requirements": [
+        {
+          "type": "producerLevel",
+          "producerId": "assembly_station",
+          "level": 10
+        }
+      ],
+      "effects": [
+        {
+          "type": "setProducerAutomation",
+          "producerId": "assembly_station",
+          "automated": true,
+          "offlineEligible": false
+        },
+        {
+          "type": "producerProductionMultiplier",
+          "producerId": "assembly_station",
+          "multiplier": 1.5
+        },
+        {
+          "type": "setProgressionFlag",
+          "flagId": "first_robot",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "robotic_logistics",
+      "displayNameKey": "breakthrough.robotic_logistics.name",
+      "cost": 250000,
+      "requirements": [
+        {
+          "type": "breakthroughOwned",
+          "breakthroughId": "worker_bot"
+        },
+        {
+          "type": "producerLevel",
+          "producerId": "fabricator",
+          "level": 25
+        },
+        {
+          "type": "producerLevel",
+          "producerId": "assembly_station",
+          "level": 15
+        }
+      ],
+      "effects": [
+        {
+          "type": "producerProductionMultiplier",
+          "producerId": "fabricator",
+          "multiplier": 2
+        },
+        {
+          "type": "producerProductionMultiplier",
+          "producerId": "assembly_station",
+          "multiplier": 2
+        }
+      ]
+    },
+    {
+      "id": "factory_control_system",
+      "displayNameKey": "breakthrough.factory_control_system.name",
+      "cost": 3000000,
+      "requirements": [
+        {
+          "type": "producerLevel",
+          "producerId": "robot_line",
+          "level": 10
+        },
+        {
+          "type": "robotsBuilt",
+          "count": 10
+        }
+      ],
+      "effects": [
+        {
+          "type": "globalProductionMultiplier",
+          "multiplier": 2
+        }
+      ]
+    },
+    {
+      "id": "automated_cell_architecture",
+      "displayNameKey": "breakthrough.automated_cell_architecture.name",
+      "cost": 25000000,
+      "requirements": [
+        {
+          "type": "producerLevel",
+          "producerId": "robot_line",
+          "level": 25
+        },
+        {
+          "type": "robotsBuilt",
+          "count": 100
+        }
+      ],
+      "effects": [
+        {
+          "type": "constructProducer",
+          "producerId": "automated_cell",
+          "level": 1
+        }
+      ]
+    },
+    {
+      "id": "advanced_robotics",
+      "displayNameKey": "breakthrough.advanced_robotics.name",
+      "cost": 1000000000,
+      "requirements": [
+        {
+          "type": "producerLevel",
+          "producerId": "robot_line",
+          "level": 50
+        },
+        {
+          "type": "producerLevel",
+          "producerId": "automated_cell",
+          "level": 25
+        },
+        {
+          "type": "robotsBuilt",
+          "count": 1000
+        }
+      ],
+      "effects": [
+        {
+          "type": "constructProducer",
+          "producerId": "advanced_robotics_complex",
+          "level": 1
+        },
+        {
+          "type": "enterEra",
+          "eraId": "robotics_complex"
+        }
+      ]
+    }
+  ]
 }

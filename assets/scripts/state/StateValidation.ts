@@ -133,8 +133,9 @@ function validateAutomationRecords(value: unknown, path: string, diagnostics: St
         if (!requirePlainObject(automation, itemPath, 'AutomationRunState', diagnostics)) {
             continue;
         }
-        requireExactKeys(itemPath, automation, ['isAutomated', 'unlockedByBreakthroughId'], diagnostics);
+        requireExactKeys(itemPath, automation, ['isAutomated', 'isOfflineEligible', 'unlockedByBreakthroughId'], diagnostics);
         requireBoolean(automation.isAutomated, `${itemPath}.isAutomated`, diagnostics);
+        requireBoolean(automation.isOfflineEligible, `${itemPath}.isOfflineEligible`, diagnostics);
         validateNullableString(automation.unlockedByBreakthroughId, `${itemPath}.unlockedByBreakthroughId`, diagnostics);
     }
 }

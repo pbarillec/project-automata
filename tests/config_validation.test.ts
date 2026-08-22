@@ -67,10 +67,20 @@ async function sourcesWithInvalidFixture(fixtureName, fileName) {
         text: await readFile(fixturePath, 'utf8'),
     };
     const sourceSuffix = `data/economy/${fileName}`;
+    const replacementSources = [fixtureSource];
+
+    if (fileName === 'producers.json') {
+        replacementSources.push(emptyBreakthroughsSource());
+    }
 
     return validSources
-        .filter((source) => source.filePath !== sourceSuffix)
-        .concat(fixtureSource)
+        .filter((source) => {
+            if (source.filePath === sourceSuffix) {
+                return false;
+            }
+            return fileName !== 'producers.json' || source.filePath !== 'data/economy/breakthroughs.json';
+        })
+        .concat(replacementSources)
         .sort((left, right) => left.filePath.localeCompare(right.filePath));
 }
 
@@ -87,9 +97,21 @@ async function sourcesWithProducerItems(items) {
     };
 
     return validSources
-        .filter((source) => source.filePath !== producerSource.filePath)
-        .concat(producerSource)
+        .filter((source) => source.filePath !== producerSource.filePath && source.filePath !== 'data/economy/breakthroughs.json')
+        .concat(producerSource, emptyBreakthroughsSource())
         .sort((left, right) => left.filePath.localeCompare(right.filePath));
+}
+
+function emptyBreakthroughsSource() {
+    return {
+        filePath: 'data/economy/breakthroughs.json',
+        text: JSON.stringify({
+            kind: 'breakthroughs',
+            schemaVersion: 1,
+            contentVersion: '0.1.0-aut-010',
+            items: [],
+        }),
+    };
 }
 
 async function expectDiagnostic(fixtureName, fileName, expected) {
@@ -111,7 +133,7 @@ test('valid representative multi-file config loads into typed repository', async
     assert.equal(repository.contentVersion, '0.1.0-aut-010');
     assert.equal(repository.listEras().length, 3);
     assert.equal(repository.listProducers().length, 5);
-    assert.equal(repository.listBreakthroughs().length, 0);
+    assert.equal(repository.listBreakthroughs().length, 6);
     assert.equal(repository.listMilestones().length, 4);
     assert.equal(repository.getProducer('fabricator')?.baseCost, 10);
 });
@@ -205,6 +227,108 @@ test('approved shared MVP milestones match Economy thresholds and production mul
             productionMultiplier: 5,
         },
     ]);
+});
+
+test('approved standard MVP breakthroughs match Economy costs, requirements and typed effects', async () => {
+    const { loadGameConfigFromSources } = await configModule();
+    const repository = loadGameConfigFromSources(await collectJsonSources(dataRoot));
+
+    assert.deepEqual(repository.listBreakthroughs().map((breakthrough) => breakthrough.id), [
+        'auto_feeder',
+        'worker_bot',
+        'robotic_logistics',
+        'factory_control_system',
+        'automated_cell_architecture',
+        'advanced_robotics',
+    ]);
+
+    assert.deepEqual(repository.listBreakthroughs().map((breakthrough) => ({
+        id: breakthrough.id,
+        cost: breakthrough.cost,
+        requirements: breakthrough.requirements,
+        effects: breakthrough.effects,
+    })), [
+        {
+            id: 'auto_feeder',
+            cost: 1500,
+            requirements: [
+                { type: 'producerLevel', producerId: 'fabricator', level: 15 },
+            ],
+            effects: [
+                { type: 'setProducerAutomation', producerId: 'fabricator', automated: true, offlineEligible: true },
+                { type: 'producerProductionMultiplier', producerId: 'fabricator', multiplier: 1.25 },
+            ],
+        },
+        {
+            id: 'worker_bot',
+            cost: 75000,
+            requirements: [
+                { type: 'producerLevel', producerId: 'assembly_station', level: 10 },
+            ],
+            effects: [
+                { type: 'setProducerAutomation', producerId: 'assembly_station', automated: true, offlineEligible: false },
+                { type: 'producerProductionMultiplier', producerId: 'assembly_station', multiplier: 1.5 },
+                { type: 'setProgressionFlag', flagId: 'first_robot', value: true },
+            ],
+        },
+        {
+            id: 'robotic_logistics',
+            cost: 250000,
+            requirements: [
+                { type: 'breakthroughOwned', breakthroughId: 'worker_bot' },
+                { type: 'producerLevel', producerId: 'fabricator', level: 25 },
+                { type: 'producerLevel', producerId: 'assembly_station', level: 15 },
+            ],
+            effects: [
+                { type: 'producerProductionMultiplier', producerId: 'fabricator', multiplier: 2 },
+                { type: 'producerProductionMultiplier', producerId: 'assembly_station', multiplier: 2 },
+            ],
+        },
+        {
+            id: 'factory_control_system',
+            cost: 3000000,
+            requirements: [
+                { type: 'producerLevel', producerId: 'robot_line', level: 10 },
+                { type: 'robotsBuilt', count: 10 },
+            ],
+            effects: [
+                { type: 'globalProductionMultiplier', multiplier: 2 },
+            ],
+        },
+        {
+            id: 'automated_cell_architecture',
+            cost: 25000000,
+            requirements: [
+                { type: 'producerLevel', producerId: 'robot_line', level: 25 },
+                { type: 'robotsBuilt', count: 100 },
+            ],
+            effects: [
+                { type: 'constructProducer', producerId: 'automated_cell', level: 1 },
+            ],
+        },
+        {
+            id: 'advanced_robotics',
+            cost: 1000000000,
+            requirements: [
+                { type: 'producerLevel', producerId: 'robot_line', level: 50 },
+                { type: 'producerLevel', producerId: 'automated_cell', level: 25 },
+                { type: 'robotsBuilt', count: 1000 },
+            ],
+            effects: [
+                { type: 'constructProducer', producerId: 'advanced_robotics_complex', level: 1 },
+                { type: 'enterEra', eraId: 'robotics_complex' },
+            ],
+        },
+    ]);
+});
+
+test('standard MVP breakthroughs intentionally exclude Robot Line construction and Reboot Civilization', async () => {
+    const { loadGameConfigFromSources } = await configModule();
+    const repository = loadGameConfigFromSources(await collectJsonSources(dataRoot));
+    const ids = repository.listBreakthroughs().map((breakthrough) => breakthrough.id);
+
+    assert.equal(ids.includes('robot_line'), false);
+    assert.equal(ids.includes('reboot_civilization'), false);
 });
 
 test('validation stages are callable separately', async () => {
@@ -326,6 +450,14 @@ test('unknown effect types fail deterministically', async () => {
         stage: 'semantic',
         code: 'CONFIG_UNKNOWN_EFFECT_TYPE',
         messagePattern: /Unsupported effect type "grantCurrency"/,
+    });
+});
+
+test('unknown requirement types fail deterministically', async () => {
+    await expectDiagnostic('unknown-requirement-type', 'breakthroughs.json', {
+        stage: 'semantic',
+        code: 'CONFIG_UNKNOWN_REQUIREMENT_TYPE',
+        messagePattern: /Unsupported requirement type "secretHandshake"/,
     });
 });
 
