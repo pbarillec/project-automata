@@ -1,0 +1,61 @@
+{
+  "saveVersion": 0,
+  "gameVersion": "0.1.0-test",
+  "contentVersion": "synthetic-v0-test",
+  "savedAtUtc": "2026-08-20T10:00:00.000Z",
+  "payload": {
+    "run": {
+      "industrialOutput": 0,
+      "producers": {},
+      "automation": {},
+      "purchasedBreakthroughIds": [],
+      "currentEraId": "manual_workshop",
+      "robotsBuilt": 0,
+      "statistics": {
+        "industrialOutputEarned": 0,
+        "industrialOutputSpent": 0,
+        "manualProductionActions": 0,
+        "producerLevelsPurchased": 0,
+        "breakthroughsPurchased": 0,
+        "robotsBuiltPeak": 0
+      },
+      "prestigePowerPeak": 0,
+      "progressionFlags": {}
+    },
+    "meta": {
+      "civilizationNumber": 1,
+      "aiCores": 0,
+      "lifetimeAiCoresEarned": 0,
+      "permanentUpgradeRanks": {},
+      "accountFeatureUnlocks": {},
+      "durableEntitlements": {},
+      "cosmeticOwnership": {}
+    },
+    "boosts": {
+      "activeBoosts": {},
+      "cooldowns": {},
+      "consumedCharges": {}
+    },
+    "monetization": {
+      "rewardedClaims": {},
+      "pendingAdRequests": {},
+      "pendingPurchaseRequests": {},
+      "productMetadataCache": {}
+    },
+    "settings": {
+      "musicVolume": 0,
+      "sfxVolume": 0,
+      "vibrationEnabled": false,
+      "languageCode": null
+    },
+    "lifetime": {
+      "industrialOutputEarned": 0,
+      "manualProductionActions": 0,
+      "producerLevelsPurchased": 0,
+      "breakthroughsPurchased": 0,
+      "robotsBuilt": 0,
+      "rebootsCompleted": 0,
+      "highestCivilizationReached": 1
+    }
+  }
+}

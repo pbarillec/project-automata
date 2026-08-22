@@ -11,6 +11,7 @@ import {
     deserializeGameStateFromSaveJson,
     serializeGameStateToSaveJson,
 } from './SaveEnvelope.ts';
+import type { SaveMigrationRegistry } from './SaveMigrations.ts';
 import {
     SAVE_BACKUP_NAME,
     SAVE_MAIN_NAME,
@@ -147,15 +148,18 @@ export type LoadGameResult =
 
 export interface AtomicSaveRepositoryOptions {
     readonly createFreshState?: () => GameState;
+    readonly migrations?: SaveMigrationRegistry;
 }
 
 export class AtomicSaveRepository {
     private readonly storage: SaveStorage;
     private readonly createFreshState: () => GameState;
+    private readonly migrations: SaveMigrationRegistry | undefined;
 
     constructor(storage: SaveStorage, options: AtomicSaveRepositoryOptions = {}) {
         this.storage = storage;
         this.createFreshState = options.createFreshState ?? createFreshGameState;
+        this.migrations = options.migrations;
     }
 
     async save(state: GameState, metadata: SaveEnvelopeMetadata): Promise<SaveGameResult> {
@@ -167,7 +171,7 @@ export class AtomicSaveRepository {
             return saveFailure('serialization_failed', messageFromUnknown(error), diagnosticsFromUnknown(error));
         }
 
-        const replacementValidation = deserializeGameStateFromSaveJson(text);
+        const replacementValidation = this.deserializeSaveJson(text);
         if (replacementValidation.envelope === undefined || replacementValidation.state === undefined) {
             return saveFailure(
                 'replacement_validation_failed',
@@ -338,7 +342,7 @@ export class AtomicSaveRepository {
             return saveFailure('temp_verification_failed', 'Temporary save was not readable after write.');
         }
 
-        const verified = deserializeGameStateFromSaveJson(verifiedText);
+        const verified = this.deserializeSaveJson(verifiedText);
         if (verified.envelope === undefined || verified.state === undefined) {
             return saveFailure('temp_verification_failed', 'Temporary save failed validation after write.', verified.diagnostics);
         }
@@ -368,7 +372,7 @@ export class AtomicSaveRepository {
             });
         }
 
-        const result: SaveDeserializeResult = deserializeGameStateFromSaveJson(text);
+        const result: SaveDeserializeResult = this.deserializeSaveJson(text);
         if (result.envelope === undefined || result.state === undefined) {
             return Object.freeze({
                 status: 'invalid',
@@ -386,6 +390,10 @@ export class AtomicSaveRepository {
             envelope: result.envelope,
             state: cloneGameState(result.state),
         });
+    }
+
+    private deserializeSaveJson(text: string): SaveDeserializeResult {
+        return deserializeGameStateFromSaveJson(text, { migrations: this.migrations });
     }
 }
 

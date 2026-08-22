@@ -1,0 +1,88 @@
+{
+  "saveVersion": 0,
+  "gameVersion": "0.1.0-test",
+  "contentVersion": "synthetic-v0-test",
+  "savedAtUtc": "2026-08-20T11:15:30.000Z",
+  "payload": {
+    "run": {
+      "industrialOutput": 12345.5,
+      "producers": {
+        "fabricator": {
+          "level": 25,
+          "isUnlocked": true,
+          "isBuilt": true
+        },
+        "assembly_station": {
+          "level": 3,
+          "isUnlocked": true,
+          "isBuilt": true
+        }
+      },
+      "automation": {
+        "fabricator": {
+          "isAutomated": true,
+          "isOfflineEligible": true,
+          "unlockedByBreakthroughId": "auto_feeder"
+        }
+      },
+      "purchasedBreakthroughIds": [
+        "auto_feeder"
+      ],
+      "currentEraId": "manual_workshop",
+      "robotsBuilt": 1.25,
+      "statistics": {
+        "industrialOutputEarned": 25000,
+        "industrialOutputSpent": 12654.5,
+        "manualProductionActions": 42,
+        "producerLevelsPurchased": 28,
+        "breakthroughsPurchased": 1,
+        "robotsBuiltPeak": 1.25
+      },
+      "prestigePowerPeak": 88.5,
+      "progressionFlags": {
+        "first_robot": true
+      }
+    },
+    "meta": {
+      "civilizationNumber": 2,
+      "aiCores": 7,
+      "lifetimeAiCoresEarned": 9,
+      "permanentUpgradeRanks": {
+        "industrial_scaling": 2
+      },
+      "accountFeatureUnlocks": {
+        "free_overclock": true
+      },
+      "durableEntitlements": {},
+      "cosmeticOwnership": {}
+    },
+    "boosts": {
+      "activeBoosts": {},
+      "cooldowns": {},
+      "consumedCharges": {
+        "founder_surge": 1
+      }
+    },
+    "monetization": {
+      "rewardedClaims": {},
+      "pendingAdRequests": {},
+      "pendingPurchaseRequests": {},
+      "productMetadataCache": {}
+    },
+    "settings": {
+      "musicVolume": 0.25,
+      "sfxVolume": 0.5,
+      "vibrationEnabled": true,
+      "languageCode": "en"
+    },
+    "lifetime": {
+      "industrialOutputEarned": 50000,
+      "manualProductionActions": 42,
+      "producerLevelsPurchased": 28,
+      "breakthroughsPurchased": 1,
+      "robotsBuilt": 1.25,
+      "rebootsCompleted": 1,
+      "highestCivilizationReached": 2
+    }
+  }
+}

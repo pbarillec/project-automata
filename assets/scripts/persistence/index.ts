@@ -4,6 +4,7 @@ export {
 
 export {
     CURRENT_SAVE_VERSION,
+    DEFAULT_SAVE_MIGRATION_REGISTRY,
     SAVE_INTEGRITY_ALGORITHM,
     SAVE_TIMESTAMP_UTC_ISO_PATTERN,
     SaveEnvelopeValidationError,
@@ -16,6 +17,11 @@ export {
     stringifyCanonicalJson,
     validateSaveEnvelope,
 } from './SaveEnvelope.ts';
+
+export {
+    createSaveMigrationRegistry,
+    migrateParsedSaveEnvelopeToCurrent,
+} from './SaveMigrations.ts';
 
 export {
     DEFAULT_DIRTY_SAVE_POLICY,
@@ -78,6 +84,7 @@ export type {
 
 export type {
     SaveDeserializeResult,
+    SaveDeserializeOptions,
     SaveDiagnostic,
     SaveEnvelope,
     SaveEnvelopeMetadata,
@@ -85,3 +92,10 @@ export type {
     SavePayload,
     SaveValidationStage,
 } from './SaveEnvelope.ts';
+
+export type {
+    SaveMigrationApplication,
+    SaveMigrationRegistry,
+    SaveMigrationResult,
+    SaveMigrationStep,
+} from './SaveMigrations.ts';

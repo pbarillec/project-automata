@@ -1,10 +1,17 @@
 import type { GameState } from '../state/GameState.ts';
 import { cloneGameState, clonePlainData } from '../state/StateClone.ts';
 import { assertValidGameState } from '../state/StateValidation.ts';
+import {
+    createSaveMigrationRegistry,
+    migrateParsedSaveEnvelopeToCurrent,
+    type SaveMigrationRegistry,
+    type SaveMigrationResult,
+} from './SaveMigrations.ts';
 
 export const CURRENT_SAVE_VERSION = 1;
 export const SAVE_INTEGRITY_ALGORITHM = 'fnv1a32-payload-v1';
 export const SAVE_TIMESTAMP_UTC_ISO_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+export const DEFAULT_SAVE_MIGRATION_REGISTRY = createSaveMigrationRegistry(CURRENT_SAVE_VERSION, []);
 
 export interface SaveEnvelopeMetadata {
     readonly saveVersion: typeof CURRENT_SAVE_VERSION;
@@ -29,7 +36,7 @@ export interface SaveEnvelope {
     readonly payload: SavePayload;
 }
 
-export type SaveValidationStage = 'parse' | 'structural' | 'semantic' | 'integrity' | 'payload';
+export type SaveValidationStage = 'parse' | 'structural' | 'semantic' | 'integrity' | 'payload' | 'migration';
 
 export interface SaveDiagnostic {
     readonly stage: SaveValidationStage;
@@ -42,6 +49,11 @@ export interface SaveDeserializeResult {
     readonly envelope: SaveEnvelope | undefined;
     readonly state: GameState | undefined;
     readonly diagnostics: readonly SaveDiagnostic[];
+    readonly migration?: SaveMigrationResult;
+}
+
+export interface SaveDeserializeOptions {
+    readonly migrations?: SaveMigrationRegistry;
 }
 
 export class SaveEnvelopeValidationError extends Error {
@@ -89,7 +101,7 @@ export function serializeGameStateToSaveJson(state: GameState, metadata: SaveEnv
     return stringifyCanonicalJson(createSaveEnvelope(state, metadata));
 }
 
-export function deserializeGameStateFromSaveJson(text: string): SaveDeserializeResult {
+export function deserializeGameStateFromSaveJson(text: string, options: SaveDeserializeOptions = {}): SaveDeserializeResult {
     const parsed = parseSaveJson(text);
     if (parsed.diagnostics.length > 0) {
         return {
@@ -99,12 +111,26 @@ export function deserializeGameStateFromSaveJson(text: string): SaveDeserializeR
         };
     }
 
-    const envelopeResult = validateSaveEnvelope(parsed.value);
+    const migration = migrateParsedSaveEnvelopeToCurrent(
+        parsed.value,
+        options.migrations ?? DEFAULT_SAVE_MIGRATION_REGISTRY,
+    );
+    if (migration.diagnostics.length > 0) {
+        return {
+            envelope: undefined,
+            state: undefined,
+            diagnostics: migration.diagnostics,
+            migration,
+        };
+    }
+
+    const envelopeResult = validateSaveEnvelope(migration.value);
     if (envelopeResult.diagnostics.length > 0 || envelopeResult.envelope === undefined) {
         return {
             envelope: undefined,
             state: undefined,
             diagnostics: envelopeResult.diagnostics,
+            migration,
         };
     }
 
@@ -115,14 +141,18 @@ export function deserializeGameStateFromSaveJson(text: string): SaveDeserializeR
         envelope,
         state,
         diagnostics: [],
+        migration,
     };
 }
 
-export function assertDeserializeGameStateFromSaveJson(text: string): SaveDeserializeResult & {
+export function assertDeserializeGameStateFromSaveJson(
+    text: string,
+    options: SaveDeserializeOptions = {},
+): SaveDeserializeResult & {
     readonly envelope: SaveEnvelope;
     readonly state: GameState;
 } {
-    const result = deserializeGameStateFromSaveJson(text);
+    const result = deserializeGameStateFromSaveJson(text, options);
     if (result.envelope === undefined || result.state === undefined) {
         throw new SaveEnvelopeValidationError(result.diagnostics);
     }
