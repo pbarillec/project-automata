@@ -3,6 +3,10 @@ export {
 } from './AtomicSaveRepository.ts';
 
 export {
+    PersistenceCoordinator,
+} from './PersistenceCoordinator.ts';
+
+export {
     CURRENT_SAVE_VERSION,
     DEFAULT_SAVE_MIGRATION_REGISTRY,
     SAVE_INTEGRITY_ALGORITHM,
@@ -65,6 +69,17 @@ export type {
     StoredSaveSource,
     StoredValidSaveRead,
 } from './AtomicSaveRepository.ts';
+
+export type {
+    PersistenceCoordinatorOptions,
+    PersistenceSaveCompletedResult,
+    PersistenceSaveFailedResult,
+    PersistenceSaveIntent,
+    PersistenceSaveReason,
+    PersistenceSaveRequest,
+    PersistenceSaveResult,
+    PersistenceSaveSkippedResult,
+} from './PersistenceCoordinator.ts';
 
 export type {
     DirtySaveDecision,
