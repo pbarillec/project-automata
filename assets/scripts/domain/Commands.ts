@@ -1,5 +1,6 @@
 export type GameCommand =
     | ManualProduceCommand
+    | AdvanceActiveSessionCommand
     | AdvanceAutomationCommand
     | ActivateFreeOverclockCommand
     | BuyProducerLevelsCommand
@@ -8,6 +9,11 @@ export type GameCommand =
 
 export interface ManualProduceCommand {
     readonly type: 'manualProduce';
+}
+
+export interface AdvanceActiveSessionCommand {
+    readonly type: 'advanceActiveSession';
+    readonly elapsedSeconds: number;
 }
 
 export interface AdvanceAutomationCommand {

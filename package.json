@@ -5,6 +5,7 @@
   "scripts": {
     "android:build": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/ci/build_android.ps1",
     "validate:config": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/ci/validate_config.ps1",
+    "simulate:reference": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/ci/simulate.ps1",
     "test": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/ci/test.ps1",
     "check": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/ci/check.ps1"
   },

@@ -93,7 +93,11 @@ export class GameRuntime {
     calculateAutomationProductionForElapsedSeconds(elapsedSeconds: number): number {
         const draft = cloneGameState(this.currentState);
         const previousAmount = draft.run.industrialOutput;
-        applyOnlineProductionAndBoostProgression(this.repository, draft, elapsedSeconds);
+        applyOnlineProductionAndBoostProgression(
+            draft,
+            elapsedSeconds,
+            (segmentDraft) => calculateAutomatedProductionPerSecond(this.repository, segmentDraft),
+        );
         return draft.run.industrialOutput - previousAmount;
     }
 
@@ -103,6 +107,10 @@ export class GameRuntime {
 
     calculateRobotsBuiltForElapsedSeconds(elapsedSeconds: number): number {
         return calculateRobotsBuiltFromRobotLineElapsedSeconds(getRobotLineLevel(this.currentState), elapsedSeconds);
+    }
+
+    advanceActiveSession(elapsedSeconds: number): CommandExecutionResult {
+        return this.execute({ type: 'advanceActiveSession', elapsedSeconds });
     }
 
     activateFreeOverclock(): CommandExecutionResult {
@@ -169,6 +177,10 @@ function executeGameCommandInternal(
             return executeManualProduce(state, parsedCommand.command);
         }
 
+        if (parsedCommand.command.type === 'advanceActiveSession') {
+            return executeAdvanceActiveSession(repository, state, parsedCommand.command);
+        }
+
         if (parsedCommand.command.type === 'advanceAutomation') {
             return executeAdvanceAutomation(repository, state, parsedCommand.command);
         }
@@ -203,13 +215,44 @@ export function calculateCurrentRobotsBuiltPerSecond(state: GameState): number {
     return calculateRobotsBuiltPerSecond(getRobotLineLevel(state));
 }
 
+function executeAdvanceActiveSession(
+    repository: GameConfigRepository,
+    state: GameState,
+    command: GameCommand & { type: 'advanceActiveSession' },
+): InternalCommandExecutionResult {
+    return executeElapsedProduction(
+        repository,
+        state,
+        command,
+        (draft) => calculateOnlineProductionPerSecond(repository, draft),
+    );
+}
+
 function executeAdvanceAutomation(
     repository: GameConfigRepository,
     state: GameState,
     command: GameCommand & { type: 'advanceAutomation' },
 ): InternalCommandExecutionResult {
+    return executeElapsedProduction(
+        repository,
+        state,
+        command,
+        (draft) => calculateAutomatedProductionPerSecond(repository, draft),
+    );
+}
+
+function executeElapsedProduction(
+    repository: GameConfigRepository,
+    state: GameState,
+    command: GameCommand & { type: 'advanceActiveSession' | 'advanceAutomation' },
+    calculateProductionPerSecond: (draft: GameState) => number,
+): InternalCommandExecutionResult {
     const draft = cloneGameState(state);
-    const productionAndBoostEvents = applyOnlineProductionAndBoostProgression(repository, draft, command.elapsedSeconds);
+    const productionAndBoostEvents = applyOnlineProductionAndBoostProgression(
+        draft,
+        command.elapsedSeconds,
+        calculateProductionPerSecond,
+    );
     const robotsBuilt = calculateRobotsBuiltFromRobotLineElapsedSeconds(getRobotLineLevel(state), command.elapsedSeconds);
 
     if (productionAndBoostEvents.length === 0 && robotsBuilt === 0) {
@@ -257,9 +300,9 @@ function executeActivateFreeOverclock(
 }
 
 function applyOnlineProductionAndBoostProgression(
-    repository: GameConfigRepository,
     draft: GameState,
     elapsedSeconds: number,
+    calculateProductionPerSecond: (draft: GameState) => number,
 ): DomainEvent[] {
     let remainingSeconds = elapsedSeconds;
     const events: DomainEvent[] = [];
@@ -274,7 +317,7 @@ function applyOnlineProductionAndBoostProgression(
             break;
         }
 
-        const productionPerSecond = calculateAutomatedProductionPerSecond(repository, draft);
+        const productionPerSecond = calculateProductionPerSecond(draft);
         const produced = calculateElapsedProduction(productionPerSecond, segmentSeconds);
         if (produced > 0) {
             const previousAmount = draft.run.industrialOutput;
@@ -627,6 +670,20 @@ function parseGameCommand(command: unknown): { ok: true; command: GameCommand } 
 
     if (command.type === 'manualProduce') {
         return { ok: true, command: { type: 'manualProduce' } };
+    }
+
+    if (command.type === 'advanceActiveSession') {
+        if (typeof command.elapsedSeconds !== 'number' || !Number.isFinite(command.elapsedSeconds) || command.elapsedSeconds < 0) {
+            return reject('invalid_elapsed_seconds', 'elapsedSeconds must be a non-negative finite number.');
+        }
+
+        return {
+            ok: true,
+            command: {
+                type: 'advanceActiveSession',
+                elapsedSeconds: command.elapsedSeconds,
+            },
+        };
     }
 
     if (command.type === 'activateFreeOverclock') {
