@@ -1,0 +1,320 @@
+{
+  "schemaVersion": 1,
+  "targetSetId": "civilization_1_pacing_v1",
+  "contentVersion": "0.1.0-aut-022",
+  "numericTolerance": 0.000001,
+  "warningsBlockExit": false,
+  "baselineDiffPolicy": "WARNING",
+  "deadZone": {
+    "enabled": true,
+    "minDurationSeconds": 900,
+    "intentionalDecisionCadenceMultiplier": 1.5,
+    "policy": "WARNING"
+  },
+  "scenarios": [
+    {
+      "scenarioId": "civilization_1_active_v1",
+      "strategyId": "active.v1",
+      "strategyConfig": {
+        "target": {
+          "type": "producerLevel",
+          "producerId": "advanced_robotics_complex",
+          "level": 25
+        },
+        "maxSimulatedSeconds": 43200,
+        "maxPolicyDecisions": 20000,
+        "decisionIntervalSeconds": 10,
+        "manualActionSeconds": 0.05,
+        "maxLevelsPerPurchase": null,
+        "maxPurchaseBatchesPerDecision": 1000,
+        "actionDelaySeconds": 0,
+        "useFreeOverclock": true,
+        "reactToBoostTransitions": true
+      },
+      "baselinePath": "data/simulation/baselines/civilization_1_active_v1.baseline.json.sim"
+    },
+    {
+      "scenarioId": "civilization_1_normal_v1",
+      "strategyId": "normal.v1",
+      "strategyConfig": {
+        "target": {
+          "type": "producerLevel",
+          "producerId": "advanced_robotics_complex",
+          "level": 25
+        },
+        "maxSimulatedSeconds": 172800,
+        "maxPolicyDecisions": 20000,
+        "decisionIntervalSeconds": 900,
+        "manualActionSeconds": 1,
+        "maxLevelsPerPurchase": 10,
+        "maxPurchaseBatchesPerDecision": 1,
+        "actionDelaySeconds": 30,
+        "useFreeOverclock": true,
+        "reactToBoostTransitions": false
+      },
+      "baselinePath": "data/simulation/baselines/civilization_1_normal_v1.baseline.json.sim"
+    },
+    {
+      "scenarioId": "civilization_1_passive_v1",
+      "strategyId": "passive.v1",
+      "strategyConfig": {
+        "target": {
+          "type": "producerLevel",
+          "producerId": "advanced_robotics_complex",
+          "level": 25
+        },
+        "maxSimulatedSeconds": 604800,
+        "maxPolicyDecisions": 20000,
+        "decisionIntervalSeconds": 28800,
+        "manualActionSeconds": 2,
+        "maxLevelsPerPurchase": 10,
+        "maxPurchaseBatchesPerDecision": 1,
+        "actionDelaySeconds": 180,
+        "useFreeOverclock": false,
+        "reactToBoostTransitions": false
+      },
+      "baselinePath": "data/simulation/baselines/civilization_1_passive_v1.baseline.json.sim"
+    },
+    {
+      "scenarioId": "civilization_1_optimized_v1",
+      "strategyId": "optimized.v1",
+      "strategyConfig": {
+        "target": {
+          "type": "producerLevel",
+          "producerId": "advanced_robotics_complex",
+          "level": 25
+        },
+        "maxSimulatedSeconds": 43200,
+        "maxPolicyDecisions": 20000,
+        "decisionIntervalSeconds": 10,
+        "manualActionSeconds": 0.05,
+        "maxLevelsPerPurchase": null,
+        "maxPurchaseBatchesPerDecision": 1000,
+        "actionDelaySeconds": 0,
+        "useFreeOverclock": true,
+        "reactToBoostTransitions": true
+      },
+      "baselinePath": "data/simulation/baselines/civilization_1_optimized_v1.baseline.json.sim"
+    }
+  ],
+  "targets": [
+    {
+      "id": "active.first_meaningful_milestone.time",
+      "description": "First meaningful milestone should arrive within the opening minute.",
+      "source": "ECONOMY.md Section 11: First meaningful milestone <1 min.",
+      "metric": {
+        "metricId": "checkpoint.time_seconds",
+        "checkpointId": "fabricator_level_10"
+      },
+      "scope": {
+        "strategyIds": ["active.v1", "optimized.v1"]
+      },
+      "windows": {
+        "pass": { "min": 0, "max": 75 },
+        "warning": { "min": 0, "max": 90 }
+      },
+      "violationPolicy": "FAILURE"
+    },
+    {
+      "id": "active.auto_feeder.time",
+      "description": "Auto Feeder first-run pacing.",
+      "source": "ECONOMY.md Sections 8 and 11: Auto Feeder target_first_run 1.5-2.5 min.",
+      "metric": {
+        "metricId": "checkpoint.time_seconds",
+        "checkpointId": "auto_feeder"
+      },
+      "scope": {
+        "strategyIds": ["active.v1", "optimized.v1"]
+      },
+      "windows": {
+        "pass": { "min": 75, "max": 180 },
+        "warning": { "min": 45, "max": 240 }
+      },
+      "violationPolicy": "FAILURE"
+    },
+    {
+      "id": "active.assembly_station.time",
+      "description": "Assembly Station first-run pacing.",
+      "source": "ECONOMY.md Section 11: Assembly Station 3-5 min.",
+      "metric": {
+        "metricId": "checkpoint.time_seconds",
+        "checkpointId": "assembly_station"
+      },
+      "scope": {
+        "strategyIds": ["active.v1", "optimized.v1"]
+      },
+      "windows": {
+        "pass": { "min": 150, "max": 420 },
+        "warning": { "min": 120, "max": 600 }
+      },
+      "violationPolicy": "FAILURE"
+    },
+    {
+      "id": "active.worker_bot.time",
+      "description": "First Robot / Worker Bot first-run pacing.",
+      "source": "ECONOMY.md Sections 8 and 11: Worker Bot / First Robot 6.5-9 min.",
+      "metric": {
+        "metricId": "checkpoint.time_seconds",
+        "checkpointId": "worker_bot"
+      },
+      "scope": {
+        "strategyIds": ["active.v1", "optimized.v1"]
+      },
+      "windows": {
+        "pass": { "min": 360, "max": 900 },
+        "warning": { "min": 300, "max": 1080 }
+      },
+      "violationPolicy": "FAILURE"
+    },
+    {
+      "id": "active.robotic_logistics.time",
+      "description": "Robotic Logistics first-run pacing.",
+      "source": "ECONOMY.md Sections 8 and 11: Robotic Logistics 12-18 min.",
+      "metric": {
+        "metricId": "checkpoint.time_seconds",
+        "checkpointId": "robotic_logistics"
+      },
+      "scope": {
+        "strategyIds": ["active.v1", "optimized.v1"]
+      },
+      "windows": {
+        "pass": { "min": 600, "max": 1320 },
+        "warning": { "min": 480, "max": 1800 }
+      },
+      "violationPolicy": "FAILURE"
+    },
+    {
+      "id": "active.robot_line.time",
+      "description": "Automated Factory / Robot Line first-run pacing.",
+      "source": "ECONOMY.md Sections 8 and 11: Automated Factory / Robot Line 15-25 min.",
+      "metric": {
+        "metricId": "checkpoint.time_seconds",
+        "checkpointId": "robot_line_era_ii"
+      },
+      "scope": {
+        "strategyIds": ["active.v1", "optimized.v1"]
+      },
+      "windows": {
+        "pass": { "min": 720, "max": 1800 },
+        "warning": { "min": 600, "max": 2400 }
+      },
+      "violationPolicy": "FAILURE"
+    },
+    {
+      "id": "active.factory_control.time",
+      "description": "Factory Control System first-run pacing.",
+      "source": "ECONOMY.md Sections 8 and 11: Factory Control 25-40 min.",
+      "metric": {
+        "metricId": "checkpoint.time_seconds",
+        "checkpointId": "factory_control_system"
+      },
+      "scope": {
+        "strategyIds": ["active.v1", "optimized.v1"]
+      },
+      "windows": {
+        "pass": { "min": 1200, "max": 3000 },
+        "warning": { "min": 900, "max": 3600 }
+      },
+      "violationPolicy": "FAILURE"
+    },
+    {
+      "id": "active.automated_cell.time",
+      "description": "Automated Cell first-run pacing.",
+      "source": "ECONOMY.md Sections 8 and 11: Automated Cell 40-75 min.",
+      "metric": {
+        "metricId": "checkpoint.time_seconds",
+        "checkpointId": "automated_cell"
+      },
+      "scope": {
+        "strategyIds": ["active.v1", "optimized.v1"]
+      },
+      "windows": {
+        "pass": { "min": 1800, "max": 5400 },
+        "warning": { "min": 1500, "max": 7200 }
+      },
+      "violationPolicy": "FAILURE"
+    },
+    {
+      "id": "active.robotics_complex.time",
+      "description": "Robotics Complex first-run pacing.",
+      "source": "ECONOMY.md Sections 8 and 11: Robotics Complex 2-3.5 h active.",
+      "metric": {
+        "metricId": "checkpoint.time_seconds",
+        "checkpointId": "robotics_complex_era_iii"
+      },
+      "scope": {
+        "strategyIds": ["active.v1", "optimized.v1"]
+      },
+      "windows": {
+        "pass": { "min": 7200, "max": 14400 },
+        "warning": { "min": 5400, "max": 18000 }
+      },
+      "violationPolicy": "FAILURE"
+    },
+    {
+      "id": "active.prestige_frontier.time",
+      "description": "First Reboot / prestige frontier active economic pacing.",
+      "source": "ECONOMY.md Sections 11 and 14: First Reboot 4-7 h active economic progression.",
+      "metric": {
+        "metricId": "checkpoint.time_seconds",
+        "checkpointId": "prestige_frontier"
+      },
+      "scope": {
+        "strategyIds": ["active.v1", "optimized.v1"]
+      },
+      "windows": {
+        "pass": { "min": 12600, "max": 25200 },
+        "warning": { "min": 10800, "max": 32400 }
+      },
+      "violationPolicy": "FAILURE"
+    },
+    {
+      "id": "all.first_frontier_core_reward",
+      "description": "Default strategies should reach the first prestige frontier with the intended baseline AI Core preview.",
+      "source": "ECONOMY.md Section 14: first viable Reboot reward approximately 5 AI Cores.",
+      "metric": {
+        "metricId": "final.projected_ai_core_reward"
+      },
+      "scope": {
+        "strategyIds": ["active.v1", "normal.v1", "passive.v1", "optimized.v1"]
+      },
+      "windows": {
+        "pass": { "min": 5, "max": 5 },
+        "warning": { "min": 4, "max": 7 }
+      },
+      "violationPolicy": "FAILURE"
+    },
+    {
+      "id": "normal.frontier.completion_guard",
+      "description": "Normal strategy must complete the canonical first-frontier scenario within its explicit active-session guard.",
+      "source": "AUT-022 default regression matrix guard for AUT-021 normal.v1.",
+      "metric": {
+        "metricId": "final.simulated_active_seconds"
+      },
+      "scope": {
+        "scenarioIds": ["civilization_1_normal_v1"]
+      },
+      "windows": {
+        "pass": { "min": 0, "max": 129600 },
+        "warning": { "min": 0, "max": 172800 }
+      },
+      "violationPolicy": "FAILURE"
+    },
+    {
+      "id": "passive.frontier.completion_guard",
+      "description": "Passive strategy must complete the canonical first-frontier scenario within its explicit sparse-decision guard.",
+      "source": "AUT-022 default regression matrix guard for AUT-021 passive.v1.",
+      "metric": {
+        "metricId": "final.simulated_active_seconds"
+      },
+      "scope": {
+        "scenarioIds": ["civilization_1_passive_v1"]
+      },
+      "windows": {
+        "pass": { "min": 0, "max": 518400 },
+        "warning": { "min": 0, "max": 604800 }
+      },
+      "violationPolicy": "FAILURE"
+    }
+  ]
+}

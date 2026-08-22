@@ -1,0 +1,252 @@
+{
+  "schemaVersion": 1,
+  "scenarioId": "civilization_1_passive_v1",
+  "strategyId": "passive.v1",
+  "strategyFamily": "passive",
+  "strategyConfig": {
+    "target": {
+      "type": "producerLevel",
+      "producerId": "advanced_robotics_complex",
+      "level": 25
+    },
+    "maxSimulatedSeconds": 604800,
+    "maxPolicyDecisions": 20000,
+    "decisionIntervalSeconds": 28800,
+    "manualActionSeconds": 2,
+    "maxLevelsPerPurchase": 10,
+    "maxPurchaseBatchesPerDecision": 1,
+    "actionDelaySeconds": 180,
+    "useFreeOverclock": false,
+    "reactToBoostTransitions": false
+  },
+  "contentVersion": "0.1.0-aut-010",
+  "finalSummary": {
+    "simulatedActiveSeconds": 150680,
+    "industrialOutput": 962051497474.8251,
+    "productionPerSecond": 100690200,
+    "automatedProductionPerSecond": 100690200,
+    "robotsBuilt": 23058.9,
+    "robotsBuiltPerSecond": 0.25,
+    "eraId": "robotics_complex",
+    "prestigePower": 100690200,
+    "projectedAiCoreReward": 5,
+    "p0PrestigePower": 100000000,
+    "producerLevels": {
+      "fabricator": 50,
+      "assembly_station": 25,
+      "robot_line": 50,
+      "automated_cell": 25,
+      "advanced_robotics_complex": 25
+    },
+    "purchasedBreakthroughIds": [
+      "auto_feeder",
+      "worker_bot",
+      "robotic_logistics",
+      "factory_control_system",
+      "automated_cell_architecture",
+      "advanced_robotics"
+    ]
+  },
+  "checkpoints": [
+    {
+      "id": "fabricator_level_10",
+      "label": "Fabricator Level 10",
+      "timeSeconds": 380,
+      "industrialOutput": 1616.627048991531,
+      "productionPerSecond": 20,
+      "automatedProductionPerSecond": 0,
+      "robotsBuilt": 0,
+      "robotsBuiltPerSecond": 0,
+      "eraId": "manual_workshop",
+      "prestigePower": 20,
+      "projectedAiCoreReward": 0,
+      "producerLevels": {
+        "fabricator": 10,
+        "assembly_station": 0,
+        "robot_line": 0,
+        "automated_cell": 0,
+        "advanced_robotics_complex": 0
+      }
+    },
+    {
+      "id": "auto_feeder",
+      "label": "Auto Feeder",
+      "timeSeconds": 920,
+      "industrialOutput": 15621.575858686574,
+      "productionPerSecond": 37.5,
+      "automatedProductionPerSecond": 37.5,
+      "robotsBuilt": 0,
+      "robotsBuiltPerSecond": 0,
+      "eraId": "manual_workshop",
+      "prestigePower": 37.5,
+      "projectedAiCoreReward": 0,
+      "producerLevels": {
+        "fabricator": 15,
+        "assembly_station": 0,
+        "robot_line": 0,
+        "automated_cell": 0,
+        "advanced_robotics_complex": 0
+      }
+    },
+    {
+      "id": "assembly_station",
+      "label": "Assembly Station",
+      "timeSeconds": 920,
+      "industrialOutput": 14121.575858686574,
+      "productionPerSecond": 49.5,
+      "automatedProductionPerSecond": 37.5,
+      "robotsBuilt": 0,
+      "robotsBuiltPerSecond": 0,
+      "eraId": "manual_workshop",
+      "prestigePower": 49.5,
+      "projectedAiCoreReward": 0,
+      "producerLevels": {
+        "fabricator": 15,
+        "assembly_station": 1,
+        "robot_line": 0,
+        "automated_cell": 0,
+        "advanced_robotics_complex": 0
+      }
+    },
+    {
+      "id": "worker_bot",
+      "label": "Worker Bot / First Robot",
+      "timeSeconds": 30440,
+      "industrialOutput": 8056605.998501607,
+      "productionPerSecond": 397.5,
+      "automatedProductionPerSecond": 397.5,
+      "robotsBuilt": 0,
+      "robotsBuiltPerSecond": 0,
+      "eraId": "manual_workshop",
+      "prestigePower": 397.5,
+      "projectedAiCoreReward": 0,
+      "producerLevels": {
+        "fabricator": 15,
+        "assembly_station": 10,
+        "robot_line": 0,
+        "automated_cell": 0,
+        "advanced_robotics_complex": 0
+      }
+    },
+    {
+      "id": "robotic_logistics",
+      "label": "Robotic Logistics",
+      "timeSeconds": 30980,
+      "industrialOutput": 8210710.675436067,
+      "productionPerSecond": 1330,
+      "automatedProductionPerSecond": 1330,
+      "robotsBuilt": 0,
+      "robotsBuiltPerSecond": 0,
+      "eraId": "manual_workshop",
+      "prestigePower": 1330,
+      "projectedAiCoreReward": 0,
+      "producerLevels": {
+        "fabricator": 25,
+        "assembly_station": 15,
+        "robot_line": 0,
+        "automated_cell": 0,
+        "advanced_robotics_complex": 0
+      }
+    },
+    {
+      "id": "robot_line_era_ii",
+      "label": "Robot Line / Era II",
+      "timeSeconds": 31700,
+      "industrialOutput": 9329965.260340733,
+      "productionPerSecond": 5250,
+      "automatedProductionPerSecond": 5250,
+      "robotsBuilt": 0,
+      "robotsBuiltPerSecond": 0.005,
+      "eraId": "automated_factory",
+      "prestigePower": 5250,
+      "projectedAiCoreReward": 0,
+      "producerLevels": {
+        "fabricator": 50,
+        "assembly_station": 25,
+        "robot_line": 1,
+        "automated_cell": 0,
+        "advanced_robotics_complex": 0
+      }
+    },
+    {
+      "id": "factory_control_system",
+      "label": "Factory Control System",
+      "timeSeconds": 61040,
+      "industrialOutput": 243912891.79826263,
+      "productionPerSecond": 16200,
+      "automatedProductionPerSecond": 16200,
+      "robotsBuilt": 1458.9,
+      "robotsBuiltPerSecond": 0.05,
+      "eraId": "automated_factory",
+      "prestigePower": 16200,
+      "projectedAiCoreReward": 0,
+      "producerLevels": {
+        "fabricator": 50,
+        "assembly_station": 25,
+        "robot_line": 10,
+        "automated_cell": 0,
+        "advanced_robotics_complex": 0
+      }
+    },
+    {
+      "id": "automated_cell",
+      "label": "Automated Cell",
+      "timeSeconds": 61580,
+      "industrialOutput": 226886264.08285037,
+      "productionPerSecond": 45200,
+      "automatedProductionPerSecond": 45200,
+      "robotsBuilt": 1521.9,
+      "robotsBuiltPerSecond": 0.125,
+      "eraId": "automated_factory",
+      "prestigePower": 45200,
+      "projectedAiCoreReward": 0,
+      "producerLevels": {
+        "fabricator": 50,
+        "assembly_station": 25,
+        "robot_line": 25,
+        "automated_cell": 1,
+        "advanced_robotics_complex": 0
+      }
+    },
+    {
+      "id": "robotics_complex_era_iii",
+      "label": "Advanced Robotics / Robotics Complex Era III",
+      "timeSeconds": 120440,
+      "industrialOutput": 19741592247.222076,
+      "productionPerSecond": 1690200,
+      "automatedProductionPerSecond": 1690200,
+      "robotsBuilt": 15498.9,
+      "robotsBuiltPerSecond": 0.25,
+      "eraId": "robotics_complex",
+      "prestigePower": 1690200,
+      "projectedAiCoreReward": 0,
+      "producerLevels": {
+        "fabricator": 50,
+        "assembly_station": 25,
+        "robot_line": 50,
+        "automated_cell": 25,
+        "advanced_robotics_complex": 1
+      }
+    },
+    {
+      "id": "prestige_frontier",
+      "label": "First Prestige Frontier",
+      "timeSeconds": 150500,
+      "industrialOutput": 943927261474.8251,
+      "productionPerSecond": 100690200,
+      "automatedProductionPerSecond": 100690200,
+      "robotsBuilt": 23013.9,
+      "robotsBuiltPerSecond": 0.25,
+      "eraId": "robotics_complex",
+      "prestigePower": 100690200,
+      "projectedAiCoreReward": 5,
+      "producerLevels": {
+        "fabricator": 50,
+        "assembly_station": 25,
+        "robot_line": 50,
+        "automated_cell": 25,
+        "advanced_robotics_complex": 25
+      }
+    }
+  ]
+}

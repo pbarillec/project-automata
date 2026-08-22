@@ -12,6 +12,22 @@ export {
 } from './Metrics.ts';
 
 export {
+    PacingTargetValidationError,
+    formatPacingTargetDiagnostic,
+    parsePacingTargetConfig,
+} from './PacingTargets.ts';
+
+export {
+    compareBaseline,
+    createCanonicalBaseline,
+    createCanonicalBaselineFromScenario,
+    detectDeadZones,
+    evaluateTargets,
+    runPacingRegression,
+    shouldPacingRegressionExitNonZero,
+} from './PacingRegression.ts';
+
+export {
     ACTIVE_STRATEGY_ID,
     NORMAL_STRATEGY_ID,
     OPTIMIZED_STRATEGY_ID,
@@ -61,6 +77,31 @@ export type {
     SimulationMetricsSnapshot,
     SimulationReport,
 } from './Metrics.ts';
+
+export type {
+    DeadZoneConfig,
+    NumericWindow,
+    PacingOutcome,
+    PacingScenarioConfig,
+    PacingTargetConfig,
+    PacingTargetDefinition,
+    PacingTargetDiagnostic,
+    PacingTargetMetric,
+    PacingTargetScope,
+    PacingTargetWindows,
+} from './PacingTargets.ts';
+
+export type {
+    BaselineDiffEntry,
+    CanonicalCheckpointSnapshot,
+    CanonicalSimulationBaseline,
+    CheckpointTimingResult,
+    DeadZoneReport,
+    PacingRegressionReport,
+    PacingRegressionScenarioReport,
+    RunPacingRegressionOptions,
+    TargetEvaluationResult,
+} from './PacingRegression.ts';
 
 export type {
     ReferenceActiveScenarioOptions,

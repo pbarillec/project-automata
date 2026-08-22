@@ -19,7 +19,7 @@ try {
         exit $LASTEXITCODE
     }
 
-    Write-Host 'AUT-020 check: Headless reference simulation'
+    Write-Host 'AUT-022 check: Pacing regression'
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $SimulationScript
     exit $LASTEXITCODE
 }

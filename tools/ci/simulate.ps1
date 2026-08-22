@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..')
-$SimulationScript = Join-Path $RepoRoot 'tools\simulation\run_reference.ts'
+$SimulationScript = Join-Path $RepoRoot 'tools\simulation\run_pacing_regression.ts'
 
 Push-Location $RepoRoot
 try {
@@ -17,7 +17,7 @@ try {
         exit 1
     }
 
-    & node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON $SimulationScript > $null
+    & node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON $SimulationScript
     exit $LASTEXITCODE
 }
 finally {
