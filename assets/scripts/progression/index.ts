@@ -92,6 +92,22 @@ export {
     validatePermanentUpgradeRanks,
 } from './PermanentUpgrades.ts';
 
+export {
+    NextGoalInputError,
+    resolveNextGoal,
+} from './NextGoal.ts';
+
+export {
+    ProducerProgressionInputError,
+    ROBOT_LINE_CONSTRUCTION_COST,
+    ROBOT_LINE_PRODUCER_ID,
+    calculateMaxAffordableProducerProgressionPurchase,
+    calculateProducerProgressionPurchase,
+    evaluateProducerBuildProgression,
+    getProgressionProducerLevel,
+    isProducerBuilt,
+} from './ProducerProgression.ts';
+
 export type {
     EraTransitionResult,
 } from './EraProgression.ts';
@@ -139,3 +155,27 @@ export type {
     PermanentUpgradeRankState,
     PermanentUpgradeRankStatus,
 } from './PermanentUpgrades.ts';
+
+export type {
+    BreakthroughNextGoal,
+    EraNextGoal,
+    NextGoal,
+    NextGoalAffordability,
+    NextGoalBlocking,
+    NextGoalBlockingRequirement,
+    NextGoalCategory,
+    NextGoalFocusTarget,
+    NextGoalFocusTargetSource,
+    NextGoalProgress,
+    NoNextGoal,
+    ProducerBuildNextGoal,
+    ProducerMilestoneNextGoal,
+    RebootAiCoreNextGoal,
+} from './NextGoal.ts';
+
+export type {
+    ProducerBuildBlockingRequirement,
+    ProducerBuildProgressionResult,
+    ProducerBuildProgressionStatus,
+    ProducerProgressionPurchasePreview,
+} from './ProducerProgression.ts';

@@ -1,9 +1,7 @@
-import type { BreakthroughEffect, GameConfigRepository, ProducerConfig } from '../config/ConfigLoader.ts';
+import type { BreakthroughEffect, GameConfigRepository } from '../config/ConfigLoader.ts';
 import type { DomainEvent, GameCommand } from '../domain/index.ts';
 import {
     calculateElapsedProduction,
-    calculateMaxAffordableProducerPurchase,
-    calculateProducerPurchaseCost,
     calculateRobotsBuiltFromRobotLineElapsedSeconds,
     calculateRobotsBuiltPerSecond,
     resolveCrossedRobotsBuiltThresholds,
@@ -17,29 +15,20 @@ import {
     applyEraTransition,
     calculateAutomatedProductionPerSecond,
     calculateCurrentPrestigeEligibleProductionPerSecond,
+    calculateMaxAffordableProducerProgressionPurchase,
     calculateOnlineProductionPerSecond,
+    calculateProducerProgressionPurchase,
     calculateUpdatedPrestigePowerPeak,
+    evaluateProducerBuildProgression,
     getSecondsUntilNextTemporaryBoostTransition,
     purchaseBreakthrough,
-    applyNewProducerConstructionCostMultiplier,
-    resolveEffectiveMajorRequirement,
-    resolveNewProducerConstructionCostMultiplier,
 } from '../progression/index.ts';
-import type { AutomationRunState, GameState, MetaState, ProducerRunState } from '../state/GameState.ts';
+import type { AutomationRunState, GameState, ProducerRunState } from '../state/GameState.ts';
 import { cloneGameState, clonePlainData } from '../state/StateClone.ts';
 import { assertValidGameState } from '../state/StateValidation.ts';
 
 export const MANUAL_PRODUCTION_AMOUNT = 1;
 const ROBOT_LINE_PRODUCER_ID = 'robot_line';
-const ROBOT_LINE_CONSTRUCTION_COST = 500000;
-
-interface RuntimeProducerPurchase {
-    readonly producerId: string;
-    readonly currentLevel: number;
-    readonly quantity: number;
-    readonly nextLevel: number;
-    readonly cost: number;
-}
 
 export type CommandRejectionReason =
     | 'malformed_command'
@@ -214,151 +203,6 @@ export function calculateCurrentRobotsBuiltPerSecond(state: GameState): number {
     return calculateRobotsBuiltPerSecond(getRobotLineLevel(state));
 }
 
-function calculateRuntimeProducerPurchase(
-    repository: GameConfigRepository,
-    meta: MetaState,
-    producer: ProducerConfig,
-    currentLevel: number,
-    quantity: number,
-): RuntimeProducerPurchase {
-    if (!isRobotLineConstructionPurchase(producer.id, currentLevel)) {
-        if (currentLevel === 0) {
-            return calculateConstructionAdjustedProducerPurchase(repository, meta, producer, quantity);
-        }
-        return calculateProducerPurchaseCost(producer, currentLevel, quantity);
-    }
-
-    const constructionCost = applyNewProducerConstructionCostMultiplier(repository, meta, ROBOT_LINE_CONSTRUCTION_COST);
-    if (quantity === 1) {
-        return {
-            producerId: producer.id,
-            currentLevel,
-            quantity,
-            nextLevel: 1,
-            cost: constructionCost,
-        };
-    }
-
-    const additionalLevels = calculateProducerPurchaseCost(producer, 1, quantity - 1);
-    return {
-        producerId: producer.id,
-        currentLevel,
-        quantity,
-        nextLevel: quantity,
-        cost: addFinite(constructionCost, additionalLevels.cost, 'robotLineConstructionCost'),
-    };
-}
-
-function calculateMaxAffordableRuntimeProducerPurchase(
-    repository: GameConfigRepository,
-    meta: MetaState,
-    producer: ProducerConfig,
-    currentLevel: number,
-    balance: number,
-): RuntimeProducerPurchase {
-    if (!isRobotLineConstructionPurchase(producer.id, currentLevel)) {
-        if (currentLevel === 0) {
-            return calculateMaxAffordableConstructionAdjustedProducerPurchase(repository, meta, producer, balance);
-        }
-        return calculateMaxAffordableProducerPurchase(producer, currentLevel, balance);
-    }
-
-    const constructionCost = applyNewProducerConstructionCostMultiplier(repository, meta, ROBOT_LINE_CONSTRUCTION_COST);
-    if (balance < constructionCost) {
-        return {
-            producerId: producer.id,
-            currentLevel,
-            quantity: 0,
-            nextLevel: currentLevel,
-            cost: 0,
-        };
-    }
-
-    const additionalLevels = calculateMaxAffordableProducerPurchase(
-        producer,
-        1,
-        balance - constructionCost,
-    );
-    const quantity = 1 + additionalLevels.quantity;
-
-    return {
-        producerId: producer.id,
-        currentLevel,
-        quantity,
-        nextLevel: quantity,
-        cost: addFinite(constructionCost, additionalLevels.cost, 'robotLineConstructionCost'),
-    };
-}
-
-function calculateConstructionAdjustedProducerPurchase(
-    repository: GameConfigRepository,
-    meta: MetaState,
-    producer: ProducerConfig,
-    quantity: number,
-): RuntimeProducerPurchase {
-    const constructionMultiplier = resolveNewProducerConstructionCostMultiplier(repository, meta);
-    if (constructionMultiplier === 1) {
-        return calculateProducerPurchaseCost(producer, 0, quantity);
-    }
-
-    const constructionCost = producer.baseCost * constructionMultiplier;
-    if (quantity === 1) {
-        return {
-            producerId: producer.id,
-            currentLevel: 0,
-            quantity,
-            nextLevel: 1,
-            cost: constructionCost,
-        };
-    }
-
-    const additionalLevels = calculateProducerPurchaseCost(producer, 1, quantity - 1);
-    return {
-        producerId: producer.id,
-        currentLevel: 0,
-        quantity,
-        nextLevel: quantity,
-        cost: addFinite(constructionCost, additionalLevels.cost, `${producer.id}ConstructionCost`),
-    };
-}
-
-function calculateMaxAffordableConstructionAdjustedProducerPurchase(
-    repository: GameConfigRepository,
-    meta: MetaState,
-    producer: ProducerConfig,
-    balance: number,
-): RuntimeProducerPurchase {
-    const constructionMultiplier = resolveNewProducerConstructionCostMultiplier(repository, meta);
-    if (constructionMultiplier === 1) {
-        return calculateMaxAffordableProducerPurchase(producer, 0, balance);
-    }
-
-    const constructionCost = producer.baseCost * constructionMultiplier;
-    if (balance < constructionCost) {
-        return {
-            producerId: producer.id,
-            currentLevel: 0,
-            quantity: 0,
-            nextLevel: 0,
-            cost: 0,
-        };
-    }
-
-    const additionalLevels = calculateMaxAffordableProducerPurchase(producer, 1, balance - constructionCost);
-    const quantity = 1 + additionalLevels.quantity;
-    return {
-        producerId: producer.id,
-        currentLevel: 0,
-        quantity,
-        nextLevel: quantity,
-        cost: addFinite(constructionCost, additionalLevels.cost, `${producer.id}ConstructionCost`),
-    };
-}
-
-function isRobotLineConstructionPurchase(producerId: string, currentLevel: number): boolean {
-    return producerId === ROBOT_LINE_PRODUCER_ID && currentLevel === 0;
-}
-
 function executeAdvanceAutomation(
     repository: GameConfigRepository,
     state: GameState,
@@ -511,7 +355,7 @@ function executeBuyProducerLevels(
         }
     }
 
-    const purchase = calculateRuntimeProducerPurchase(repository, state.meta, producer, currentLevel, command.quantity);
+    const purchase = calculateProducerProgressionPurchase(repository, state.meta, producer, currentLevel, command.quantity);
     if (purchase.cost > state.run.industrialOutput) {
         return reject('insufficient_balance', 'Insufficient Industrial Output for producer purchase.', {
             producerId: producer.id,
@@ -541,7 +385,7 @@ function executeBuyMaxProducerLevels(
         }
     }
 
-    const purchase = calculateMaxAffordableRuntimeProducerPurchase(repository, state.meta, producer, currentLevel, state.run.industrialOutput);
+    const purchase = calculateMaxAffordableProducerProgressionPurchase(repository, state.meta, producer, currentLevel, state.run.industrialOutput);
     if (purchase.quantity === 0) {
         return reject('no_affordable_levels', 'No affordable producer levels are available.', {
             producerId: producer.id,
@@ -959,51 +803,15 @@ function evaluateProducerConstructionLock(
     state: GameState,
     producerId: string,
 ): Readonly<Record<string, unknown>> | undefined {
-    if (producerId === 'fabricator') {
+    const progression = evaluateProducerBuildProgression(repository, state, producerId);
+    if (progression.status !== 'locked') {
         return undefined;
     }
 
-    if (producerId === 'assembly_station') {
-        return isBuilt(state, 'fabricator')
-            ? undefined
-            : { producerId, missingProducerIds: ['fabricator'] };
-    }
-
-    if (producerId === ROBOT_LINE_PRODUCER_ID) {
-        const requiredFabricatorLevel = resolveEffectiveMajorRequirement(repository, state.meta, 50);
-        const requiredAssemblyLevel = resolveEffectiveMajorRequirement(repository, state.meta, 25);
-        const missingBreakthroughIds = ['auto_feeder', 'worker_bot', 'robotic_logistics']
-            .filter((breakthroughId) => !state.run.purchasedBreakthroughIds.includes(breakthroughId));
-        const missingProducerLevels = [
-            { producerId: 'fabricator', level: requiredFabricatorLevel, currentLevel: state.run.producers.fabricator?.level ?? 0 },
-            { producerId: 'assembly_station', level: requiredAssemblyLevel, currentLevel: state.run.producers.assembly_station?.level ?? 0 },
-        ].filter((requirement) => requirement.currentLevel < requirement.level);
-
-        if (missingBreakthroughIds.length === 0 && missingProducerLevels.length === 0) {
-            return undefined;
-        }
-
-        return { producerId, missingBreakthroughIds, missingProducerLevels };
-    }
-
-    if (producerId === 'automated_cell') {
-        return isBuilt(state, 'automated_cell')
-            ? undefined
-            : { producerId, requiredBreakthroughId: 'automated_cell_architecture' };
-    }
-
-    if (producerId === 'advanced_robotics_complex') {
-        return isBuilt(state, 'advanced_robotics_complex')
-            ? undefined
-            : { producerId, requiredBreakthroughId: 'advanced_robotics' };
-    }
-
-    return undefined;
-}
-
-function isBuilt(state: GameState, producerId: string): boolean {
-    const producer = state.run.producers[producerId];
-    return producer !== undefined && producer.isBuilt && producer.level > 0;
+    return {
+        producerId,
+        blockingRequirements: clonePlainData(progression.blockingRequirements),
+    };
 }
 
 function getRobotLineLevel(state: GameState): number {
