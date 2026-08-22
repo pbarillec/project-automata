@@ -227,6 +227,62 @@ export function createIntegrityMetadata(payload: SavePayload): SaveIntegrityMeta
     };
 }
 
+export function createSaveTimestampUtcIsoFromUnixMilliseconds(unixMilliseconds: number): string {
+    if (!Number.isInteger(unixMilliseconds)) {
+        throw new SaveEnvelopeValidationError([
+            diagnostic(
+                'semantic',
+                'SAVE_INVALID_TIMESTAMP',
+                '$.savedAtUtc',
+                'savedAtUtc milliseconds must be a finite integer Unix timestamp.',
+            ),
+        ]);
+    }
+
+    const date = new Date(unixMilliseconds);
+    if (!Number.isFinite(date.getTime())) {
+        throw new SaveEnvelopeValidationError([
+            diagnostic(
+                'semantic',
+                'SAVE_INVALID_TIMESTAMP',
+                '$.savedAtUtc',
+                'savedAtUtc milliseconds must represent a valid UTC instant.',
+            ),
+        ]);
+    }
+
+    const value = date.toISOString();
+    assertSaveTimestampUtcIsoString(value);
+    return value;
+}
+
+export function parseSaveTimestampUtcIsoToUnixMilliseconds(value: unknown): number | undefined {
+    if (!isSaveTimestampUtcIsoString(value)) {
+        return undefined;
+    }
+
+    return new Date(value).getTime();
+}
+
+export function isSaveTimestampUtcIsoString(value: unknown): value is string {
+    if (typeof value !== 'string' || !SAVE_TIMESTAMP_UTC_ISO_PATTERN.test(value)) {
+        return false;
+    }
+
+    const parsedDate = new Date(value);
+    return Number.isFinite(parsedDate.getTime()) && parsedDate.toISOString() === value;
+}
+
+export function assertSaveTimestampUtcIsoString(value: unknown): string {
+    const diagnostics: SaveDiagnostic[] = [];
+    validateSavedAtUtc(value, '$.savedAtUtc', diagnostics);
+    if (diagnostics.length > 0) {
+        throw new SaveEnvelopeValidationError(sortDiagnostics(diagnostics));
+    }
+
+    return value as string;
+}
+
 export function calculatePayloadHash(payload: SavePayload): string {
     return fnv1a32Hex(stringifyCanonicalJson(payload));
 }
@@ -300,8 +356,7 @@ function validateSavedAtUtc(value: unknown, path: string, diagnostics: SaveDiagn
         return;
     }
 
-    const parsedDate = new Date(value);
-    if (!Number.isFinite(parsedDate.getTime()) || parsedDate.toISOString() !== value) {
+    if (!isSaveTimestampUtcIsoString(value)) {
         diagnostics.push(diagnostic(
             'semantic',
             'SAVE_INVALID_TIMESTAMP',

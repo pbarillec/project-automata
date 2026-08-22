@@ -26,6 +26,7 @@ import {
 import type { AutomationRunState, GameState, ProducerRunState } from '../state/GameState.ts';
 import { cloneGameState, clonePlainData } from '../state/StateClone.ts';
 import { assertValidGameState } from '../state/StateValidation.ts';
+import type { TimeService } from '../time/index.ts';
 
 export const MANUAL_PRODUCTION_AMOUNT = 1;
 const ROBOT_LINE_PRODUCER_ID = 'robot_line';
@@ -65,13 +66,26 @@ export interface CommandRejectionResult {
 
 export type CommandExecutionResult = CommandSuccessResult | CommandRejectionResult;
 
+export interface GameRuntimeOptions {
+    readonly timeService?: TimeService;
+}
+
+export interface ClockAdvanceActiveSessionResult {
+    readonly elapsedSeconds: number;
+    readonly execution: CommandExecutionResult;
+}
+
 export class GameRuntime {
     private currentState: GameState;
     private readonly repository: GameConfigRepository;
+    private readonly timeService: TimeService | undefined;
+    private lastClockAdvanceMonotonicSeconds: number | null;
 
-    constructor(repository: GameConfigRepository, initialState: GameState) {
+    constructor(repository: GameConfigRepository, initialState: GameState, options: GameRuntimeOptions = {}) {
         this.repository = repository;
         this.currentState = cloneGameState(assertValidGameState(initialState));
+        this.timeService = options.timeService;
+        this.lastClockAdvanceMonotonicSeconds = options.timeService?.nowMonotonicSeconds() ?? null;
     }
 
     getStateSnapshot(): GameState {
@@ -111,6 +125,21 @@ export class GameRuntime {
 
     advanceActiveSession(elapsedSeconds: number): CommandExecutionResult {
         return this.execute({ type: 'advanceActiveSession', elapsedSeconds });
+    }
+
+    advanceActiveSessionFromClock(): ClockAdvanceActiveSessionResult {
+        if (this.timeService === undefined || this.lastClockAdvanceMonotonicSeconds === null) {
+            throw new Error('GameRuntime requires an injected TimeService to advance from clock time.');
+        }
+
+        const currentMonotonicSeconds = this.timeService.nowMonotonicSeconds();
+        const elapsedSeconds = Math.max(0, currentMonotonicSeconds - this.lastClockAdvanceMonotonicSeconds);
+        this.lastClockAdvanceMonotonicSeconds = currentMonotonicSeconds;
+
+        return Object.freeze({
+            elapsedSeconds,
+            execution: this.advanceActiveSession(elapsedSeconds),
+        });
     }
 
     activateFreeOverclock(): CommandExecutionResult {

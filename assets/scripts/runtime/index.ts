@@ -11,8 +11,10 @@ export {
 } from '../progression/index.ts';
 
 export type {
+    ClockAdvanceActiveSessionResult,
     CommandExecutionResult,
     CommandRejectionReason,
     CommandRejectionResult,
     CommandSuccessResult,
+    GameRuntimeOptions,
 } from './GameRuntime.ts';
