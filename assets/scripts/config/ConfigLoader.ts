@@ -1,6 +1,6 @@
 export type ConfigStage = 'parse' | 'structural' | 'cross-reference' | 'semantic' | 'repository';
 
-export type ConfigFileKind = 'eras' | 'producers' | 'breakthroughs' | 'milestones';
+export type ConfigFileKind = 'eras' | 'producers' | 'breakthroughs' | 'milestones' | 'permanent_upgrades';
 
 export interface ConfigFileSource {
     filePath: string;
@@ -122,6 +122,81 @@ export interface BreakthroughConfig {
     effects: BreakthroughEffect[];
 }
 
+export type PermanentUpgradeBranch = 'production' | 'automation' | 'expansion';
+
+export interface PermanentUpgradePrerequisite {
+    upgradeId: string;
+    rank: number;
+}
+
+export interface PermanentUpgradeProducerLevelRequirementOverride {
+    producerId: string;
+    level: number;
+}
+
+export interface PermanentUpgradeRequirementOverrideRank {
+    rank: number;
+    producerLevelRequirements: PermanentUpgradeProducerLevelRequirementOverride[];
+    availableImmediately: boolean;
+    costMultiplier: number;
+}
+
+export interface PermanentGlobalProductionMultiplierPerRankEffect {
+    type: 'globalProductionMultiplierPerRank';
+    multiplier: number;
+}
+
+export interface PermanentMilestonePowerBonusPerRankEffect {
+    type: 'milestonePowerBonusPerRank';
+    bonus: number;
+}
+
+export interface PermanentAutomatedProducerMultiplierPerRankEffect {
+    type: 'automatedProducerMultiplierPerRank';
+    multiplier: number;
+}
+
+export interface PermanentBreakthroughRequirementOverrideByRankEffect {
+    type: 'breakthroughRequirementOverrideByRank';
+    breakthroughId: string;
+    ranks: PermanentUpgradeRequirementOverrideRank[];
+}
+
+export interface PermanentProducerStartsAutomatedOnceConstructedEffect {
+    type: 'producerStartsAutomatedOnceConstructed';
+    producerId: string;
+}
+
+export interface PermanentNewProducerConstructionCostMultiplierPerRankEffect {
+    type: 'newProducerConstructionCostMultiplierPerRank';
+    multiplier: number;
+}
+
+export interface PermanentMajorRequirementReductionPerRankEffect {
+    type: 'majorRequirementReductionPerRank';
+    reduction: number;
+    roundingRule: 'floor';
+}
+
+export type PermanentUpgradeEffect =
+    | PermanentGlobalProductionMultiplierPerRankEffect
+    | PermanentMilestonePowerBonusPerRankEffect
+    | PermanentAutomatedProducerMultiplierPerRankEffect
+    | PermanentBreakthroughRequirementOverrideByRankEffect
+    | PermanentProducerStartsAutomatedOnceConstructedEffect
+    | PermanentNewProducerConstructionCostMultiplierPerRankEffect
+    | PermanentMajorRequirementReductionPerRankEffect;
+
+export interface PermanentUpgradeConfig {
+    id: string;
+    branch: PermanentUpgradeBranch;
+    displayNameKey: string;
+    maxRank: number;
+    rankCosts: number[];
+    prerequisites: PermanentUpgradePrerequisite[];
+    effects: PermanentUpgradeEffect[];
+}
+
 export interface GameConfigRepositorySnapshot {
     schemaVersion: number;
     contentVersion: string;
@@ -129,6 +204,7 @@ export interface GameConfigRepositorySnapshot {
     producers: ProducerConfig[];
     breakthroughs: BreakthroughConfig[];
     milestones: ProducerMilestoneConfig[];
+    permanentUpgrades: PermanentUpgradeConfig[];
 }
 
 interface ParsedConfigFile {
@@ -149,6 +225,7 @@ interface StructuredConfigSet {
     producers: ConfigEnvelope<'producers', ProducerConfig>[];
     breakthroughs: ConfigEnvelope<'breakthroughs', BreakthroughConfig>[];
     milestones: ConfigEnvelope<'milestones', ProducerMilestoneConfig>[];
+    permanentUpgrades: ConfigEnvelope<'permanent_upgrades', PermanentUpgradeConfig>[];
 }
 
 interface StageResult<T> {
@@ -157,7 +234,7 @@ interface StageResult<T> {
 }
 
 const CONFIG_SCHEMA_VERSION = 1;
-const SUPPORTED_CONFIG_KINDS: ConfigFileKind[] = ['eras', 'producers', 'breakthroughs', 'milestones'];
+const SUPPORTED_CONFIG_KINDS: ConfigFileKind[] = ['eras', 'producers', 'breakthroughs', 'milestones', 'permanent_upgrades'];
 const SUPPORTED_REQUIREMENT_TYPES = ['producerLevel', 'breakthroughOwned', 'robotsBuilt', 'era', 'civilization'];
 const SUPPORTED_EFFECT_TYPES = [
     'globalProductionMultiplier',
@@ -166,6 +243,16 @@ const SUPPORTED_EFFECT_TYPES = [
     'constructProducer',
     'enterEra',
     'setProgressionFlag',
+];
+const SUPPORTED_PERMANENT_UPGRADE_BRANCHES = ['production', 'automation', 'expansion'];
+const SUPPORTED_PERMANENT_UPGRADE_EFFECT_TYPES = [
+    'globalProductionMultiplierPerRank',
+    'milestonePowerBonusPerRank',
+    'automatedProducerMultiplierPerRank',
+    'breakthroughRequirementOverrideByRank',
+    'producerStartsAutomatedOnceConstructed',
+    'newProducerConstructionCostMultiplierPerRank',
+    'majorRequirementReductionPerRank',
 ];
 const EMPTY_FILE_PATH = '<config>';
 
@@ -187,6 +274,7 @@ export class GameConfigRepository {
     private readonly producerById: Map<string, ProducerConfig>;
     private readonly breakthroughById: Map<string, BreakthroughConfig>;
     private readonly milestoneById: Map<string, ProducerMilestoneConfig>;
+    private readonly permanentUpgradeById: Map<string, PermanentUpgradeConfig>;
 
     constructor(snapshot: GameConfigRepositorySnapshot) {
         this.schemaVersion = snapshot.schemaVersion;
@@ -195,6 +283,7 @@ export class GameConfigRepository {
         this.producerById = new Map(snapshot.producers.map((producer) => [producer.id, freezePlainObject(producer)]));
         this.breakthroughById = new Map(snapshot.breakthroughs.map((breakthrough) => [breakthrough.id, freezePlainObject(breakthrough)]));
         this.milestoneById = new Map(snapshot.milestones.map((milestone) => [milestone.id, freezePlainObject(milestone)]));
+        this.permanentUpgradeById = new Map(snapshot.permanentUpgrades.map((upgrade) => [upgrade.id, freezePlainObject(upgrade)]));
     }
 
     getEra(id: string): EraConfig | undefined {
@@ -213,6 +302,10 @@ export class GameConfigRepository {
         return this.milestoneById.get(id);
     }
 
+    getPermanentUpgrade(id: string): PermanentUpgradeConfig | undefined {
+        return this.permanentUpgradeById.get(id);
+    }
+
     listEras(): EraConfig[] {
         return Array.from(this.eraById.values());
     }
@@ -227,6 +320,10 @@ export class GameConfigRepository {
 
     listMilestones(): ProducerMilestoneConfig[] {
         return Array.from(this.milestoneById.values());
+    }
+
+    listPermanentUpgrades(): PermanentUpgradeConfig[] {
+        return Array.from(this.permanentUpgradeById.values());
     }
 }
 
@@ -266,6 +363,7 @@ export function validateConfigStructure(parsedFiles: ParsedConfigFile[]): StageR
         producers: [],
         breakthroughs: [],
         milestones: [],
+        permanentUpgrades: [],
     };
     const idsByKind = new Map<ConfigFileKind, Map<string, string>>();
 
@@ -349,6 +447,7 @@ export function validateConfigReferences(config: StructuredConfigSet): ConfigDia
     const eraIds = collectIds(config.eras);
     const producerIds = collectIds(config.producers);
     const breakthroughIds = collectIds(config.breakthroughs);
+    const permanentUpgradeIds = collectIds(config.permanentUpgrades);
 
     for (const envelope of config.producers) {
         envelope.items.forEach((producer, index) => {
@@ -399,6 +498,37 @@ export function validateConfigReferences(config: StructuredConfigSet): ConfigDia
         });
     }
 
+    for (const envelope of config.permanentUpgrades) {
+        envelope.items.forEach((upgrade, index) => {
+            const itemPath = `$.items[${index}]`;
+            upgrade.prerequisites.forEach((prerequisite, prerequisiteIndex) => {
+                if (!permanentUpgradeIds.has(prerequisite.upgradeId)) {
+                    diagnostics.push(makeDiagnostic('cross-reference', 'CONFIG_UNKNOWN_REFERENCE', envelope.filePath, `${itemPath}.prerequisites[${prerequisiteIndex}].upgradeId`, `Unknown permanent upgrade id "${prerequisite.upgradeId}".`));
+                }
+            });
+
+            upgrade.effects.forEach((effect, effectIndex) => {
+                if (effect.type === 'breakthroughRequirementOverrideByRank') {
+                    if (!breakthroughIds.has(effect.breakthroughId)) {
+                        diagnostics.push(makeDiagnostic('cross-reference', 'CONFIG_UNKNOWN_REFERENCE', envelope.filePath, `${itemPath}.effects[${effectIndex}].breakthroughId`, `Unknown breakthrough id "${effect.breakthroughId}".`));
+                    }
+
+                    effect.ranks.forEach((rank, rankIndex) => {
+                        rank.producerLevelRequirements.forEach((requirement, requirementIndex) => {
+                            if (!producerIds.has(requirement.producerId)) {
+                                diagnostics.push(makeDiagnostic('cross-reference', 'CONFIG_UNKNOWN_REFERENCE', envelope.filePath, `${itemPath}.effects[${effectIndex}].ranks[${rankIndex}].producerLevelRequirements[${requirementIndex}].producerId`, `Unknown producer id "${requirement.producerId}".`));
+                            }
+                        });
+                    });
+                }
+
+                if (effect.type === 'producerStartsAutomatedOnceConstructed' && !producerIds.has(effect.producerId)) {
+                    diagnostics.push(makeDiagnostic('cross-reference', 'CONFIG_UNKNOWN_REFERENCE', envelope.filePath, `${itemPath}.effects[${effectIndex}].producerId`, `Unknown producer id "${effect.producerId}".`));
+                }
+            });
+        });
+    }
+
     return sortDiagnostics(diagnostics);
 }
 
@@ -407,6 +537,7 @@ export function validateConfigSemantics(config: StructuredConfigSet): ConfigDiag
     validateContentVersionConsistency(config, diagnostics);
     validateSemanticNumbers(config, diagnostics);
     validateKnownEffectTypes(config, diagnostics);
+    validatePermanentUpgradePrerequisiteRanks(config, diagnostics);
     validateMilestoneOrdering(config, diagnostics);
     validateReferenceCycles(config, diagnostics);
     return sortDiagnostics(diagnostics);
@@ -431,6 +562,10 @@ export function buildGameConfigRepository(config: StructuredConfigSet): StageRes
         diagnostics.push(makeDiagnostic('repository', 'CONFIG_MISSING_KIND', EMPTY_FILE_PATH, '$.milestones', 'Repository requires a milestones config file.'));
     }
 
+    if (config.permanentUpgrades.length === 0) {
+        diagnostics.push(makeDiagnostic('repository', 'CONFIG_MISSING_KIND', EMPTY_FILE_PATH, '$.permanentUpgrades', 'Repository requires a permanent upgrades config file.'));
+    }
+
     if (diagnostics.length > 0) {
         return { value: undefined, diagnostics: sortDiagnostics(diagnostics) };
     }
@@ -443,6 +578,7 @@ export function buildGameConfigRepository(config: StructuredConfigSet): StageRes
         producers: config.producers.flatMap((envelope) => envelope.items),
         breakthroughs: config.breakthroughs.flatMap((envelope) => envelope.items),
         milestones: config.milestones.flatMap((envelope) => envelope.items),
+        permanentUpgrades: config.permanentUpgrades.flatMap((envelope) => envelope.items),
     });
 
     return { value: repository, diagnostics };
@@ -481,7 +617,7 @@ export function loadGameConfigFromSources(sources: ConfigFileSource[]): GameConf
     return result.value;
 }
 
-function parseConfigItem(kind: ConfigFileKind, value: unknown, filePath: string, itemPath: string, diagnostics: ConfigDiagnostic[]): EraConfig | ProducerConfig | BreakthroughConfig | ProducerMilestoneConfig | undefined {
+function parseConfigItem(kind: ConfigFileKind, value: unknown, filePath: string, itemPath: string, diagnostics: ConfigDiagnostic[]): EraConfig | ProducerConfig | BreakthroughConfig | ProducerMilestoneConfig | PermanentUpgradeConfig | undefined {
     if (!isPlainObject(value)) {
         diagnostics.push(makeDiagnostic('structural', 'CONFIG_EXPECTED_OBJECT', filePath, itemPath, 'Config item must be an object.'));
         return undefined;
@@ -499,7 +635,11 @@ function parseConfigItem(kind: ConfigFileKind, value: unknown, filePath: string,
         return parseBreakthroughConfig(value, filePath, itemPath, diagnostics);
     }
 
-    return parseProducerMilestoneConfig(value, filePath, itemPath, diagnostics);
+    if (kind === 'milestones') {
+        return parseProducerMilestoneConfig(value, filePath, itemPath, diagnostics);
+    }
+
+    return parsePermanentUpgradeConfig(value, filePath, itemPath, diagnostics);
 }
 
 function parseEraConfig(value: Record<string, unknown>, filePath: string, itemPath: string, diagnostics: ConfigDiagnostic[]): EraConfig | undefined {
@@ -750,6 +890,203 @@ function parseEffects(value: unknown, filePath: string, configPath: string, diag
     return effects;
 }
 
+function parsePermanentUpgradeConfig(value: Record<string, unknown>, filePath: string, itemPath: string, diagnostics: ConfigDiagnostic[]): PermanentUpgradeConfig | undefined {
+    validateAllowedKeys('structural', filePath, itemPath, value, ['id', 'branch', 'displayNameKey', 'maxRank', 'rankCosts', 'prerequisites', 'effects'], diagnostics);
+    const id = readString(value, 'id', filePath, itemPath, diagnostics);
+    const branch = readString(value, 'branch', filePath, itemPath, diagnostics) as PermanentUpgradeBranch | undefined;
+    const displayNameKey = readString(value, 'displayNameKey', filePath, itemPath, diagnostics);
+    const maxRank = readNumber(value, 'maxRank', filePath, itemPath, diagnostics);
+    const rankCosts = parseNumberArray(value.rankCosts, filePath, `${itemPath}.rankCosts`, diagnostics);
+    const prerequisites = parsePermanentUpgradePrerequisites(value.prerequisites, filePath, `${itemPath}.prerequisites`, diagnostics);
+    const effects = parsePermanentUpgradeEffects(value.effects, filePath, `${itemPath}.effects`, diagnostics);
+
+    if (id === undefined || branch === undefined || displayNameKey === undefined || maxRank === undefined || rankCosts === undefined || prerequisites === undefined || effects === undefined) {
+        return undefined;
+    }
+
+    return {
+        id,
+        branch,
+        displayNameKey,
+        maxRank,
+        rankCosts,
+        prerequisites,
+        effects,
+    };
+}
+
+function parsePermanentUpgradePrerequisites(value: unknown, filePath: string, configPath: string, diagnostics: ConfigDiagnostic[]): PermanentUpgradePrerequisite[] | undefined {
+    if (!Array.isArray(value)) {
+        diagnostics.push(makeDiagnostic('structural', 'CONFIG_REQUIRED_FIELD', filePath, configPath, 'prerequisites must be an array.'));
+        return undefined;
+    }
+
+    const prerequisites: PermanentUpgradePrerequisite[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+        const itemPath = `${configPath}[${index}]`;
+        const prerequisite = value[index];
+        if (!isPlainObject(prerequisite)) {
+            diagnostics.push(makeDiagnostic('structural', 'CONFIG_EXPECTED_OBJECT', filePath, itemPath, 'permanent upgrade prerequisite must be an object.'));
+            continue;
+        }
+
+        validateAllowedKeys('structural', filePath, itemPath, prerequisite, ['upgradeId', 'rank'], diagnostics);
+        const upgradeId = readString(prerequisite, 'upgradeId', filePath, itemPath, diagnostics);
+        const rank = readNumber(prerequisite, 'rank', filePath, itemPath, diagnostics);
+        if (upgradeId !== undefined && rank !== undefined) {
+            prerequisites.push({ upgradeId, rank });
+        }
+    }
+
+    return prerequisites;
+}
+
+function parsePermanentUpgradeEffects(value: unknown, filePath: string, configPath: string, diagnostics: ConfigDiagnostic[]): PermanentUpgradeEffect[] | undefined {
+    if (!Array.isArray(value)) {
+        diagnostics.push(makeDiagnostic('structural', 'CONFIG_REQUIRED_FIELD', filePath, configPath, 'effects must be an array.'));
+        return undefined;
+    }
+
+    const effects: PermanentUpgradeEffect[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+        const itemPath = `${configPath}[${index}]`;
+        const effect = value[index];
+        if (!isPlainObject(effect)) {
+            diagnostics.push(makeDiagnostic('structural', 'CONFIG_EXPECTED_OBJECT', filePath, itemPath, 'permanent upgrade effect must be an object.'));
+            continue;
+        }
+
+        const type = readString(effect, 'type', filePath, itemPath, diagnostics);
+
+        if (type === 'globalProductionMultiplierPerRank' || type === 'automatedProducerMultiplierPerRank' || type === 'newProducerConstructionCostMultiplierPerRank') {
+            validateAllowedKeys('structural', filePath, itemPath, effect, ['type', 'multiplier'], diagnostics);
+            const multiplier = readNumber(effect, 'multiplier', filePath, itemPath, diagnostics);
+            if (multiplier !== undefined) {
+                effects.push({ type, multiplier } as PermanentUpgradeEffect);
+            }
+            continue;
+        }
+
+        if (type === 'milestonePowerBonusPerRank') {
+            validateAllowedKeys('structural', filePath, itemPath, effect, ['type', 'bonus'], diagnostics);
+            const bonus = readNumber(effect, 'bonus', filePath, itemPath, diagnostics);
+            if (bonus !== undefined) {
+                effects.push({ type, bonus });
+            }
+            continue;
+        }
+
+        if (type === 'breakthroughRequirementOverrideByRank') {
+            validateAllowedKeys('structural', filePath, itemPath, effect, ['type', 'breakthroughId', 'ranks'], diagnostics);
+            const breakthroughId = readString(effect, 'breakthroughId', filePath, itemPath, diagnostics);
+            const ranks = parsePermanentUpgradeRequirementOverrideRanks(effect.ranks, filePath, `${itemPath}.ranks`, diagnostics);
+            if (breakthroughId !== undefined && ranks !== undefined) {
+                effects.push({ type, breakthroughId, ranks });
+            }
+            continue;
+        }
+
+        if (type === 'producerStartsAutomatedOnceConstructed') {
+            validateAllowedKeys('structural', filePath, itemPath, effect, ['type', 'producerId'], diagnostics);
+            const producerId = readString(effect, 'producerId', filePath, itemPath, diagnostics);
+            if (producerId !== undefined) {
+                effects.push({ type, producerId });
+            }
+            continue;
+        }
+
+        if (type === 'majorRequirementReductionPerRank') {
+            validateAllowedKeys('structural', filePath, itemPath, effect, ['type', 'reduction', 'roundingRule'], diagnostics);
+            const reduction = readNumber(effect, 'reduction', filePath, itemPath, diagnostics);
+            const roundingRule = readString(effect, 'roundingRule', filePath, itemPath, diagnostics) as 'floor' | undefined;
+            if (reduction !== undefined && roundingRule !== undefined) {
+                effects.push({ type, reduction, roundingRule });
+            }
+            continue;
+        }
+
+        if (type !== undefined) {
+            effects.push({ type } as PermanentUpgradeEffect);
+        }
+    }
+
+    return effects;
+}
+
+function parsePermanentUpgradeRequirementOverrideRanks(value: unknown, filePath: string, configPath: string, diagnostics: ConfigDiagnostic[]): PermanentUpgradeRequirementOverrideRank[] | undefined {
+    if (!Array.isArray(value)) {
+        diagnostics.push(makeDiagnostic('structural', 'CONFIG_REQUIRED_FIELD', filePath, configPath, 'ranks must be an array.'));
+        return undefined;
+    }
+
+    const ranks: PermanentUpgradeRequirementOverrideRank[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+        const itemPath = `${configPath}[${index}]`;
+        const rankValue = value[index];
+        if (!isPlainObject(rankValue)) {
+            diagnostics.push(makeDiagnostic('structural', 'CONFIG_EXPECTED_OBJECT', filePath, itemPath, 'permanent upgrade rank override must be an object.'));
+            continue;
+        }
+
+        validateAllowedKeys('structural', filePath, itemPath, rankValue, ['rank', 'producerLevelRequirements', 'availableImmediately', 'costMultiplier'], diagnostics);
+        const rank = readNumber(rankValue, 'rank', filePath, itemPath, diagnostics);
+        const producerLevelRequirements = parsePermanentUpgradeProducerLevelRequirementOverrides(rankValue.producerLevelRequirements, filePath, `${itemPath}.producerLevelRequirements`, diagnostics);
+        const availableImmediately = readBoolean(rankValue, 'availableImmediately', filePath, itemPath, diagnostics);
+        const costMultiplier = readNumber(rankValue, 'costMultiplier', filePath, itemPath, diagnostics);
+
+        if (rank !== undefined && producerLevelRequirements !== undefined && availableImmediately !== undefined && costMultiplier !== undefined) {
+            ranks.push({ rank, producerLevelRequirements, availableImmediately, costMultiplier });
+        }
+    }
+
+    return ranks;
+}
+
+function parsePermanentUpgradeProducerLevelRequirementOverrides(value: unknown, filePath: string, configPath: string, diagnostics: ConfigDiagnostic[]): PermanentUpgradeProducerLevelRequirementOverride[] | undefined {
+    if (!Array.isArray(value)) {
+        diagnostics.push(makeDiagnostic('structural', 'CONFIG_REQUIRED_FIELD', filePath, configPath, 'producerLevelRequirements must be an array.'));
+        return undefined;
+    }
+
+    const requirements: PermanentUpgradeProducerLevelRequirementOverride[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+        const itemPath = `${configPath}[${index}]`;
+        const requirement = value[index];
+        if (!isPlainObject(requirement)) {
+            diagnostics.push(makeDiagnostic('structural', 'CONFIG_EXPECTED_OBJECT', filePath, itemPath, 'producer level requirement override must be an object.'));
+            continue;
+        }
+
+        validateAllowedKeys('structural', filePath, itemPath, requirement, ['producerId', 'level'], diagnostics);
+        const producerId = readString(requirement, 'producerId', filePath, itemPath, diagnostics);
+        const level = readNumber(requirement, 'level', filePath, itemPath, diagnostics);
+        if (producerId !== undefined && level !== undefined) {
+            requirements.push({ producerId, level });
+        }
+    }
+
+    return requirements;
+}
+
+function parseNumberArray(value: unknown, filePath: string, configPath: string, diagnostics: ConfigDiagnostic[]): number[] | undefined {
+    if (!Array.isArray(value)) {
+        diagnostics.push(makeDiagnostic('structural', 'CONFIG_REQUIRED_FIELD', filePath, configPath, 'rankCosts must be an array.'));
+        return undefined;
+    }
+
+    const numbers: number[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+        const item = value[index];
+        if (typeof item !== 'number' || !Number.isFinite(item)) {
+            diagnostics.push(makeDiagnostic('structural', 'CONFIG_INVALID_TYPE', filePath, `${configPath}[${index}]`, 'rankCosts entries must be finite numbers.'));
+            continue;
+        }
+        numbers.push(item);
+    }
+
+    return numbers;
+}
+
 function validateContentVersionConsistency(config: StructuredConfigSet, diagnostics: ConfigDiagnostic[]): void {
     const allEnvelopes = getAllEnvelopes(config);
     const firstVersion = allEnvelopes[0]?.contentVersion;
@@ -829,6 +1166,84 @@ function validateSemanticNumbers(config: StructuredConfigSet, diagnostics: Confi
             });
         });
     }
+
+    for (const envelope of config.permanentUpgrades) {
+        envelope.items.forEach((upgrade, index) => {
+            if (!SUPPORTED_PERMANENT_UPGRADE_BRANCHES.includes(upgrade.branch)) {
+                diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_BRANCH', envelope.filePath, `$.items[${index}].branch`, `Unsupported permanent upgrade branch "${upgrade.branch}".`));
+            }
+
+            if (!Number.isInteger(upgrade.maxRank) || upgrade.maxRank <= 0) {
+                diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].maxRank`, 'maxRank must be a positive integer.'));
+            }
+
+            if (upgrade.rankCosts.length !== upgrade.maxRank) {
+                diagnostics.push(makeDiagnostic('semantic', 'CONFIG_RANK_COST_LENGTH_MISMATCH', envelope.filePath, `$.items[${index}].rankCosts`, 'rankCosts length must match maxRank.'));
+            }
+
+            upgrade.rankCosts.forEach((cost, costIndex) => {
+                if (!Number.isInteger(cost) || cost <= 0) {
+                    diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].rankCosts[${costIndex}]`, 'rank cost must be a positive integer.'));
+                }
+            });
+
+            upgrade.prerequisites.forEach((prerequisite, prerequisiteIndex) => {
+                if (!Number.isInteger(prerequisite.rank) || prerequisite.rank <= 0) {
+                    diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].prerequisites[${prerequisiteIndex}].rank`, 'permanent upgrade prerequisite rank must be a positive integer.'));
+                }
+                if (prerequisite.upgradeId === upgrade.id) {
+                    diagnostics.push(makeDiagnostic('semantic', 'CONFIG_REFERENCE_CYCLE', envelope.filePath, `$.items[${index}].prerequisites[${prerequisiteIndex}].upgradeId`, `Permanent upgrade prerequisite cycle detected: ${upgrade.id} -> ${upgrade.id}.`));
+                }
+            });
+
+            upgrade.effects.forEach((effect, effectIndex) => {
+                if (
+                    (effect.type === 'globalProductionMultiplierPerRank' ||
+                        effect.type === 'automatedProducerMultiplierPerRank' ||
+                        effect.type === 'newProducerConstructionCostMultiplierPerRank') &&
+                    effect.multiplier <= 0
+                ) {
+                    diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].effects[${effectIndex}].multiplier`, 'permanent upgrade multiplier must be greater than 0.'));
+                }
+
+                if (effect.type === 'milestonePowerBonusPerRank' && (effect.bonus < 0 || effect.bonus > 1)) {
+                    diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].effects[${effectIndex}].bonus`, 'milestone power bonus must be between 0 and 1.'));
+                }
+
+                if (effect.type === 'majorRequirementReductionPerRank') {
+                    if (effect.reduction < 0 || effect.reduction >= 1) {
+                        diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].effects[${effectIndex}].reduction`, 'major requirement reduction must be greater than or equal to 0 and less than 1.'));
+                    }
+                    if (effect.roundingRule !== 'floor') {
+                        diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_ROUNDING_RULE', envelope.filePath, `$.items[${index}].effects[${effectIndex}].roundingRule`, `Unsupported rounding rule "${effect.roundingRule}".`));
+                    }
+                }
+
+                if (effect.type === 'breakthroughRequirementOverrideByRank') {
+                    const seenRanks = new Set<number>();
+                    effect.ranks.forEach((rankOverride, rankIndex) => {
+                        if (!Number.isInteger(rankOverride.rank) || rankOverride.rank <= 0 || rankOverride.rank > upgrade.maxRank) {
+                            diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].effects[${effectIndex}].ranks[${rankIndex}].rank`, 'rank override rank must be a positive integer no greater than maxRank.'));
+                        }
+                        if (seenRanks.has(rankOverride.rank)) {
+                            diagnostics.push(makeDiagnostic('semantic', 'CONFIG_DUPLICATE_RANK', envelope.filePath, `$.items[${index}].effects[${effectIndex}].ranks[${rankIndex}].rank`, `Duplicate rank override ${rankOverride.rank}.`));
+                        }
+                        seenRanks.add(rankOverride.rank);
+
+                        if (rankOverride.costMultiplier <= 0) {
+                            diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].effects[${effectIndex}].ranks[${rankIndex}].costMultiplier`, 'costMultiplier must be greater than 0.'));
+                        }
+
+                        rankOverride.producerLevelRequirements.forEach((requirement, requirementIndex) => {
+                            if (!Number.isInteger(requirement.level) || requirement.level <= 0) {
+                                diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].effects[${effectIndex}].ranks[${rankIndex}].producerLevelRequirements[${requirementIndex}].level`, 'producer requirement override level must be a positive integer.'));
+                            }
+                        });
+                    });
+                }
+            });
+        });
+    }
 }
 
 function validateKnownEffectTypes(config: StructuredConfigSet, diagnostics: ConfigDiagnostic[]): void {
@@ -843,6 +1258,42 @@ function validateKnownEffectTypes(config: StructuredConfigSet, diagnostics: Conf
             breakthrough.effects.forEach((effect, effectIndex) => {
                 if (!SUPPORTED_EFFECT_TYPES.includes(effect.type)) {
                     diagnostics.push(makeDiagnostic('semantic', 'CONFIG_UNKNOWN_EFFECT_TYPE', envelope.filePath, `$.items[${index}].effects[${effectIndex}].type`, `Unsupported effect type "${effect.type}".`));
+                }
+            });
+        });
+    }
+
+    for (const envelope of config.permanentUpgrades) {
+        envelope.items.forEach((upgrade, index) => {
+            upgrade.effects.forEach((effect, effectIndex) => {
+                if (!SUPPORTED_PERMANENT_UPGRADE_EFFECT_TYPES.includes(effect.type)) {
+                    diagnostics.push(makeDiagnostic('semantic', 'CONFIG_UNKNOWN_EFFECT_TYPE', envelope.filePath, `$.items[${index}].effects[${effectIndex}].type`, `Unsupported permanent upgrade effect type "${effect.type}".`));
+                }
+            });
+        });
+    }
+}
+
+function validatePermanentUpgradePrerequisiteRanks(config: StructuredConfigSet, diagnostics: ConfigDiagnostic[]): void {
+    const upgradeById = new Map<string, PermanentUpgradeConfig>();
+    for (const envelope of config.permanentUpgrades) {
+        for (const upgrade of envelope.items) {
+            upgradeById.set(upgrade.id, upgrade);
+        }
+    }
+
+    for (const envelope of config.permanentUpgrades) {
+        envelope.items.forEach((upgrade, index) => {
+            upgrade.prerequisites.forEach((prerequisite, prerequisiteIndex) => {
+                const prerequisiteUpgrade = upgradeById.get(prerequisite.upgradeId);
+                if (prerequisiteUpgrade !== undefined && prerequisite.rank > prerequisiteUpgrade.maxRank) {
+                    diagnostics.push(makeDiagnostic(
+                        'semantic',
+                        'CONFIG_INVALID_PREREQUISITE_RANK',
+                        envelope.filePath,
+                        `$.items[${index}].prerequisites[${prerequisiteIndex}].rank`,
+                        `Prerequisite rank ${prerequisite.rank} exceeds maxRank ${prerequisiteUpgrade.maxRank} for permanent upgrade "${prerequisite.upgradeId}".`,
+                    ));
                 }
             });
         });
@@ -934,6 +1385,26 @@ function validateReferenceCycles(config: StructuredConfigSet, diagnostics: Confi
             `Breakthrough prerequisite cycle detected: ${cycle.join(' -> ')}.`,
         ));
     }
+
+    const permanentUpgradeGraph = new Map<string, string[]>();
+    const permanentUpgradeFileById = new Map<string, { filePath: string; index: number }>();
+    for (const envelope of config.permanentUpgrades) {
+        envelope.items.forEach((upgrade, index) => {
+            permanentUpgradeGraph.set(upgrade.id, upgrade.prerequisites.map((prerequisite) => prerequisite.upgradeId));
+            permanentUpgradeFileById.set(upgrade.id, { filePath: envelope.filePath, index });
+        });
+    }
+
+    for (const cycle of findCycles(permanentUpgradeGraph)) {
+        const owner = permanentUpgradeFileById.get(cycle[0]);
+        diagnostics.push(makeDiagnostic(
+            'semantic',
+            'CONFIG_REFERENCE_CYCLE',
+            owner?.filePath ?? EMPTY_FILE_PATH,
+            owner === undefined ? '$.permanentUpgrades' : `$.items[${owner.index}].prerequisites`,
+            `Permanent upgrade prerequisite cycle detected: ${cycle.join(' -> ')}.`,
+        ));
+    }
 }
 
 function findCycles(graph: Map<string, string[]>): string[][] {
@@ -978,7 +1449,7 @@ function findCycles(graph: Map<string, string[]>): string[][] {
     }
 }
 
-function pushEnvelope(structured: StructuredConfigSet, envelope: ConfigEnvelope<ConfigFileKind, EraConfig | ProducerConfig | BreakthroughConfig | ProducerMilestoneConfig>): void {
+function pushEnvelope(structured: StructuredConfigSet, envelope: ConfigEnvelope<ConfigFileKind, EraConfig | ProducerConfig | BreakthroughConfig | ProducerMilestoneConfig | PermanentUpgradeConfig>): void {
     if (envelope.kind === 'eras') {
         structured.eras.push(envelope as ConfigEnvelope<'eras', EraConfig>);
         return;
@@ -994,7 +1465,12 @@ function pushEnvelope(structured: StructuredConfigSet, envelope: ConfigEnvelope<
         return;
     }
 
-    structured.milestones.push(envelope as ConfigEnvelope<'milestones', ProducerMilestoneConfig>);
+    if (envelope.kind === 'milestones') {
+        structured.milestones.push(envelope as ConfigEnvelope<'milestones', ProducerMilestoneConfig>);
+        return;
+    }
+
+    structured.permanentUpgrades.push(envelope as ConfigEnvelope<'permanent_upgrades', PermanentUpgradeConfig>);
 }
 
 function getAllEnvelopes(config: StructuredConfigSet): ConfigEnvelope<ConfigFileKind, unknown>[] {
@@ -1003,6 +1479,7 @@ function getAllEnvelopes(config: StructuredConfigSet): ConfigEnvelope<ConfigFile
         ...config.producers,
         ...config.breakthroughs,
         ...config.milestones,
+        ...config.permanentUpgrades,
     ].sort(compareEnvelope);
 }
 

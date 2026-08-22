@@ -1,0 +1,215 @@
+{
+  "kind": "permanent_upgrades",
+  "schemaVersion": 1,
+  "contentVersion": "0.1.0-aut-010",
+  "items": [
+    {
+      "id": "optimized_fabrication",
+      "branch": "production",
+      "displayNameKey": "permanent_upgrade.optimized_fabrication.name",
+      "maxRank": 3,
+      "rankCosts": [
+        1,
+        2,
+        4
+      ],
+      "prerequisites": [],
+      "effects": [
+        {
+          "type": "globalProductionMultiplierPerRank",
+          "multiplier": 1.25
+        }
+      ]
+    },
+    {
+      "id": "industrial_scaling",
+      "branch": "production",
+      "displayNameKey": "permanent_upgrade.industrial_scaling.name",
+      "maxRank": 3,
+      "rankCosts": [
+        2,
+        4,
+        7
+      ],
+      "prerequisites": [
+        {
+          "upgradeId": "optimized_fabrication",
+          "rank": 1
+        }
+      ],
+      "effects": [
+        {
+          "type": "milestonePowerBonusPerRank",
+          "bonus": 0.2
+        }
+      ]
+    },
+    {
+      "id": "autonomous_optimization",
+      "branch": "production",
+      "displayNameKey": "permanent_upgrade.autonomous_optimization.name",
+      "maxRank": 2,
+      "rankCosts": [
+        5,
+        10
+      ],
+      "prerequisites": [
+        {
+          "upgradeId": "optimized_fabrication",
+          "rank": 2
+        }
+      ],
+      "effects": [
+        {
+          "type": "automatedProducerMultiplierPerRank",
+          "multiplier": 1.5
+        }
+      ]
+    },
+    {
+      "id": "cached_procedures",
+      "branch": "automation",
+      "displayNameKey": "permanent_upgrade.cached_procedures.name",
+      "maxRank": 2,
+      "rankCosts": [
+        2,
+        5
+      ],
+      "prerequisites": [],
+      "effects": [
+        {
+          "type": "breakthroughRequirementOverrideByRank",
+          "breakthroughId": "auto_feeder",
+          "ranks": [
+            {
+              "rank": 1,
+              "producerLevelRequirements": [
+                {
+                  "producerId": "fabricator",
+                  "level": 10
+                }
+              ],
+              "availableImmediately": false,
+              "costMultiplier": 0.5
+            },
+            {
+              "rank": 2,
+              "producerLevelRequirements": [],
+              "availableImmediately": true,
+              "costMultiplier": 0.2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "worker_templates",
+      "branch": "automation",
+      "displayNameKey": "permanent_upgrade.worker_templates.name",
+      "maxRank": 2,
+      "rankCosts": [
+        3,
+        7
+      ],
+      "prerequisites": [
+        {
+          "upgradeId": "cached_procedures",
+          "rank": 1
+        }
+      ],
+      "effects": [
+        {
+          "type": "breakthroughRequirementOverrideByRank",
+          "breakthroughId": "worker_bot",
+          "ranks": [
+            {
+              "rank": 1,
+              "producerLevelRequirements": [
+                {
+                  "producerId": "assembly_station",
+                  "level": 7
+                }
+              ],
+              "availableImmediately": false,
+              "costMultiplier": 0.5
+            },
+            {
+              "rank": 2,
+              "producerLevelRequirements": [
+                {
+                  "producerId": "assembly_station",
+                  "level": 5
+                }
+              ],
+              "availableImmediately": false,
+              "costMultiplier": 0.25
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "inherited_automation",
+      "branch": "automation",
+      "displayNameKey": "permanent_upgrade.inherited_automation.name",
+      "maxRank": 1,
+      "rankCosts": [
+        12
+      ],
+      "prerequisites": [
+        {
+          "upgradeId": "worker_templates",
+          "rank": 2
+        }
+      ],
+      "effects": [
+        {
+          "type": "producerStartsAutomatedOnceConstructed",
+          "producerId": "assembly_station"
+        }
+      ]
+    },
+    {
+      "id": "compact_blueprints",
+      "branch": "expansion",
+      "displayNameKey": "permanent_upgrade.compact_blueprints.name",
+      "maxRank": 3,
+      "rankCosts": [
+        2,
+        4,
+        8
+      ],
+      "prerequisites": [],
+      "effects": [
+        {
+          "type": "newProducerConstructionCostMultiplierPerRank",
+          "multiplier": 0.85
+        }
+      ]
+    },
+    {
+      "id": "era_compression",
+      "branch": "expansion",
+      "displayNameKey": "permanent_upgrade.era_compression.name",
+      "maxRank": 3,
+      "rankCosts": [
+        4,
+        8,
+        15
+      ],
+      "prerequisites": [
+        {
+          "upgradeId": "compact_blueprints",
+          "rank": 2
+        }
+      ],
+      "effects": [
+        {
+          "type": "majorRequirementReductionPerRank",
+          "reduction": 0.1,
+          "roundingRule": "floor"
+        }
+      ]
+    }
+  ]
+}

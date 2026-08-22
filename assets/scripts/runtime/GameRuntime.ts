@@ -24,8 +24,13 @@ import {
     createTemporaryBoostModifierSet,
     getSecondsUntilNextTemporaryBoostTransition,
     purchaseBreakthrough,
+    createPermanentUpgradeModifierSet,
+    applyNewProducerConstructionCostMultiplier,
+    resolveEffectiveMajorRequirement,
+    resolveNewProducerConstructionCostMultiplier,
+    resolvePermanentMilestonePowerBonus,
 } from '../progression/index.ts';
-import type { AutomationRunState, GameState, ProducerRunState } from '../state/GameState.ts';
+import type { AutomationRunState, GameState, MetaState, ProducerRunState } from '../state/GameState.ts';
 import { cloneGameState, clonePlainData } from '../state/StateClone.ts';
 import { assertValidGameState } from '../state/StateValidation.ts';
 
@@ -208,15 +213,17 @@ function executeGameCommandInternal(
 
 export function calculateCurrentProductionPerSecond(repository: GameConfigRepository, state: GameState): number {
     const milestones = repository.listMilestones();
+    const milestonePowerBonus = resolvePermanentMilestonePowerBonus(repository, state.meta);
     const modifierSet = combineModifierSets([
         createBreakthroughModifierSet(repository, state),
+        createPermanentUpgradeModifierSet(repository, state),
         createTemporaryBoostModifierSet(state.boosts),
     ]);
     let total = 0;
 
     for (const producer of repository.listProducers()) {
         const level = state.run.producers[producer.id]?.level ?? 0;
-        const milestoneAdjusted = calculateMilestoneAdjustedProducerOutput(producer, level, milestones);
+        const milestoneAdjusted = calculateMilestoneAdjustedProducerOutput(producer, level, milestones, milestonePowerBonus);
         const modifier = resolveEffectiveProducerProductionMultiplier(modifierSet, producer.id);
         total = addFinite(total, applyProductionMultiplier(milestoneAdjusted, modifier), 'productionPerSecond');
     }
@@ -229,21 +236,27 @@ export function calculateCurrentRobotsBuiltPerSecond(state: GameState): number {
 }
 
 function calculateRuntimeProducerPurchase(
+    repository: GameConfigRepository,
+    meta: MetaState,
     producer: ProducerConfig,
     currentLevel: number,
     quantity: number,
 ): RuntimeProducerPurchase {
     if (!isRobotLineConstructionPurchase(producer.id, currentLevel)) {
+        if (currentLevel === 0) {
+            return calculateConstructionAdjustedProducerPurchase(repository, meta, producer, quantity);
+        }
         return calculateProducerPurchaseCost(producer, currentLevel, quantity);
     }
 
+    const constructionCost = applyNewProducerConstructionCostMultiplier(repository, meta, ROBOT_LINE_CONSTRUCTION_COST);
     if (quantity === 1) {
         return {
             producerId: producer.id,
             currentLevel,
             quantity,
             nextLevel: 1,
-            cost: ROBOT_LINE_CONSTRUCTION_COST,
+            cost: constructionCost,
         };
     }
 
@@ -253,20 +266,26 @@ function calculateRuntimeProducerPurchase(
         currentLevel,
         quantity,
         nextLevel: quantity,
-        cost: addFinite(ROBOT_LINE_CONSTRUCTION_COST, additionalLevels.cost, 'robotLineConstructionCost'),
+        cost: addFinite(constructionCost, additionalLevels.cost, 'robotLineConstructionCost'),
     };
 }
 
 function calculateMaxAffordableRuntimeProducerPurchase(
+    repository: GameConfigRepository,
+    meta: MetaState,
     producer: ProducerConfig,
     currentLevel: number,
     balance: number,
 ): RuntimeProducerPurchase {
     if (!isRobotLineConstructionPurchase(producer.id, currentLevel)) {
+        if (currentLevel === 0) {
+            return calculateMaxAffordableConstructionAdjustedProducerPurchase(repository, meta, producer, balance);
+        }
         return calculateMaxAffordableProducerPurchase(producer, currentLevel, balance);
     }
 
-    if (balance < ROBOT_LINE_CONSTRUCTION_COST) {
+    const constructionCost = applyNewProducerConstructionCostMultiplier(repository, meta, ROBOT_LINE_CONSTRUCTION_COST);
+    if (balance < constructionCost) {
         return {
             producerId: producer.id,
             currentLevel,
@@ -279,7 +298,7 @@ function calculateMaxAffordableRuntimeProducerPurchase(
     const additionalLevels = calculateMaxAffordableProducerPurchase(
         producer,
         1,
-        balance - ROBOT_LINE_CONSTRUCTION_COST,
+        balance - constructionCost,
     );
     const quantity = 1 + additionalLevels.quantity;
 
@@ -288,7 +307,72 @@ function calculateMaxAffordableRuntimeProducerPurchase(
         currentLevel,
         quantity,
         nextLevel: quantity,
-        cost: addFinite(ROBOT_LINE_CONSTRUCTION_COST, additionalLevels.cost, 'robotLineConstructionCost'),
+        cost: addFinite(constructionCost, additionalLevels.cost, 'robotLineConstructionCost'),
+    };
+}
+
+function calculateConstructionAdjustedProducerPurchase(
+    repository: GameConfigRepository,
+    meta: MetaState,
+    producer: ProducerConfig,
+    quantity: number,
+): RuntimeProducerPurchase {
+    const constructionMultiplier = resolveNewProducerConstructionCostMultiplier(repository, meta);
+    if (constructionMultiplier === 1) {
+        return calculateProducerPurchaseCost(producer, 0, quantity);
+    }
+
+    const constructionCost = producer.baseCost * constructionMultiplier;
+    if (quantity === 1) {
+        return {
+            producerId: producer.id,
+            currentLevel: 0,
+            quantity,
+            nextLevel: 1,
+            cost: constructionCost,
+        };
+    }
+
+    const additionalLevels = calculateProducerPurchaseCost(producer, 1, quantity - 1);
+    return {
+        producerId: producer.id,
+        currentLevel: 0,
+        quantity,
+        nextLevel: quantity,
+        cost: addFinite(constructionCost, additionalLevels.cost, `${producer.id}ConstructionCost`),
+    };
+}
+
+function calculateMaxAffordableConstructionAdjustedProducerPurchase(
+    repository: GameConfigRepository,
+    meta: MetaState,
+    producer: ProducerConfig,
+    balance: number,
+): RuntimeProducerPurchase {
+    const constructionMultiplier = resolveNewProducerConstructionCostMultiplier(repository, meta);
+    if (constructionMultiplier === 1) {
+        return calculateMaxAffordableProducerPurchase(producer, 0, balance);
+    }
+
+    const constructionCost = producer.baseCost * constructionMultiplier;
+    if (balance < constructionCost) {
+        return {
+            producerId: producer.id,
+            currentLevel: 0,
+            quantity: 0,
+            nextLevel: 0,
+            cost: 0,
+        };
+    }
+
+    const additionalLevels = calculateMaxAffordableProducerPurchase(producer, 1, balance - constructionCost);
+    const quantity = 1 + additionalLevels.quantity;
+    return {
+        producerId: producer.id,
+        currentLevel: 0,
+        quantity,
+        nextLevel: quantity,
+        cost: addFinite(constructionCost, additionalLevels.cost, `${producer.id}ConstructionCost`),
     };
 }
 
@@ -442,13 +526,13 @@ function executeBuyProducerLevels(
 
     const currentLevel = state.run.producers[producer.id]?.level ?? 0;
     if (currentLevel === 0) {
-        const constructionLock = evaluateProducerConstructionLock(state, producer.id);
+        const constructionLock = evaluateProducerConstructionLock(repository, state, producer.id);
         if (constructionLock !== undefined) {
             return reject('locked_producer', `Producer "${producer.id}" is locked for construction.`, constructionLock);
         }
     }
 
-    const purchase = calculateRuntimeProducerPurchase(producer, currentLevel, command.quantity);
+    const purchase = calculateRuntimeProducerPurchase(repository, state.meta, producer, currentLevel, command.quantity);
     if (purchase.cost > state.run.industrialOutput) {
         return reject('insufficient_balance', 'Insufficient Industrial Output for producer purchase.', {
             producerId: producer.id,
@@ -472,13 +556,13 @@ function executeBuyMaxProducerLevels(
 
     const currentLevel = state.run.producers[producer.id]?.level ?? 0;
     if (currentLevel === 0) {
-        const constructionLock = evaluateProducerConstructionLock(state, producer.id);
+        const constructionLock = evaluateProducerConstructionLock(repository, state, producer.id);
         if (constructionLock !== undefined) {
             return reject('locked_producer', `Producer "${producer.id}" is locked for construction.`, constructionLock);
         }
     }
 
-    const purchase = calculateMaxAffordableRuntimeProducerPurchase(producer, currentLevel, state.run.industrialOutput);
+    const purchase = calculateMaxAffordableRuntimeProducerPurchase(repository, state.meta, producer, currentLevel, state.run.industrialOutput);
     if (purchase.quantity === 0) {
         return reject('no_affordable_levels', 'No affordable producer levels are available.', {
             producerId: producer.id,
@@ -873,6 +957,7 @@ function createBoostActivationRejectionMessage(
 }
 
 function evaluateProducerConstructionLock(
+    repository: GameConfigRepository,
     state: GameState,
     producerId: string,
 ): Readonly<Record<string, unknown>> | undefined {
@@ -887,11 +972,13 @@ function evaluateProducerConstructionLock(
     }
 
     if (producerId === ROBOT_LINE_PRODUCER_ID) {
+        const requiredFabricatorLevel = resolveEffectiveMajorRequirement(repository, state.meta, 50);
+        const requiredAssemblyLevel = resolveEffectiveMajorRequirement(repository, state.meta, 25);
         const missingBreakthroughIds = ['auto_feeder', 'worker_bot', 'robotic_logistics']
             .filter((breakthroughId) => !state.run.purchasedBreakthroughIds.includes(breakthroughId));
         const missingProducerLevels = [
-            { producerId: 'fabricator', level: 50, currentLevel: state.run.producers.fabricator?.level ?? 0 },
-            { producerId: 'assembly_station', level: 25, currentLevel: state.run.producers.assembly_station?.level ?? 0 },
+            { producerId: 'fabricator', level: requiredFabricatorLevel, currentLevel: state.run.producers.fabricator?.level ?? 0 },
+            { producerId: 'assembly_station', level: requiredAssemblyLevel, currentLevel: state.run.producers.assembly_station?.level ?? 0 },
         ].filter((requirement) => requirement.currentLevel < requirement.level);
 
         if (missingBreakthroughIds.length === 0 && missingProducerLevels.length === 0) {

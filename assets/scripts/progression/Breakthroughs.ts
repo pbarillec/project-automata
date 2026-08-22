@@ -14,6 +14,7 @@ import type { GameState, ProducerRunState } from '../state/GameState.ts';
 import { cloneGameState } from '../state/StateClone.ts';
 import { applyDefaultAutomationForConstructedProducer } from './AutomationState.ts';
 import { applyEraTransition, isCurrentEraAtLeast } from './EraProgression.ts';
+import { resolveEffectiveBreakthroughDefinition } from './PermanentUpgrades.ts';
 
 export type BreakthroughEligibilityStatus =
     | 'eligible'
@@ -117,14 +118,15 @@ export function evaluateBreakthroughEligibility(
         };
     }
 
-    const lockedRequirements = evaluateLockedRequirements(repository, state, breakthrough.requirements);
+    const effectiveBreakthrough = resolveEffectiveBreakthroughDefinition(repository, state, breakthroughId);
+    const lockedRequirements = evaluateLockedRequirements(repository, state, effectiveBreakthrough.requirements);
     if (lockedRequirements.length > 0) {
         return {
             status: 'locked',
             breakthroughId,
-            cost: breakthrough.cost,
+            cost: effectiveBreakthrough.cost,
             balance,
-            isAffordable: balance >= breakthrough.cost,
+            isAffordable: balance >= effectiveBreakthrough.cost,
             lockedRequirements,
         };
     }
@@ -132,9 +134,9 @@ export function evaluateBreakthroughEligibility(
     return {
         status: 'eligible',
         breakthroughId,
-        cost: breakthrough.cost,
+        cost: effectiveBreakthrough.cost,
         balance,
-        isAffordable: balance >= breakthrough.cost,
+        isAffordable: balance >= effectiveBreakthrough.cost,
         lockedRequirements: [],
     };
 }
@@ -166,21 +168,22 @@ export function purchaseBreakthrough(
         return { status: 'unknown_breakthrough', breakthroughId };
     }
 
-    if (state.run.industrialOutput < breakthrough.cost) {
+    const effectiveBreakthrough = resolveEffectiveBreakthroughDefinition(repository, state, breakthrough.id);
+    if (state.run.industrialOutput < effectiveBreakthrough.cost) {
         return {
             status: 'insufficient_balance',
             breakthroughId,
-            cost: breakthrough.cost,
+            cost: effectiveBreakthrough.cost,
             balance: state.run.industrialOutput,
         };
     }
 
     const draft = cloneGameState(state);
-    draft.run.industrialOutput = subtractFinite(draft.run.industrialOutput, breakthrough.cost, 'industrialOutput');
+    draft.run.industrialOutput = subtractFinite(draft.run.industrialOutput, effectiveBreakthrough.cost, 'industrialOutput');
     draft.run.industrialOutput = clampNegativeZero(draft.run.industrialOutput);
     draft.run.statistics.industrialOutputSpent = addFinite(
         draft.run.statistics.industrialOutputSpent,
-        breakthrough.cost,
+        effectiveBreakthrough.cost,
         'run.statistics.industrialOutputSpent',
     );
     draft.run.statistics.breakthroughsPurchased += 1;
@@ -192,7 +195,7 @@ export function purchaseBreakthrough(
         status: 'success',
         breakthroughId,
         state: draft,
-        cost: breakthrough.cost,
+        cost: effectiveBreakthrough.cost,
     };
 }
 

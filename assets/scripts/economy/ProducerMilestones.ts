@@ -18,14 +18,20 @@ export class ProducerMilestoneInputError extends RangeError {
 export function calculateCumulativeMilestoneMultiplier(
     milestones: readonly ProducerMilestoneConfig[],
     level: number,
+    milestonePowerBonus = 0,
 ): number {
     validateMilestoneCollection(milestones);
     validateMilestoneLevel(level, 'level');
+    validateMilestonePowerBonus(milestonePowerBonus);
 
     let multiplier = 1;
     for (const milestone of milestones) {
         if (level >= milestone.threshold) {
-            multiplier = multiplyFinite(multiplier, milestone.productionMultiplier, 'cumulative milestone multiplier');
+            multiplier = multiplyFinite(
+                multiplier,
+                calculateEffectiveMilestoneProductionMultiplier(milestone.productionMultiplier, milestonePowerBonus),
+                'cumulative milestone multiplier',
+            );
         }
     }
 
@@ -72,9 +78,10 @@ export function calculateMilestoneAdjustedProducerOutput(
     producer: ProducerConfig,
     level: number,
     milestones: readonly ProducerMilestoneConfig[],
+    milestonePowerBonus = 0,
 ): number {
     const baseOutput = calculateProducerBaseOutput(producer, level);
-    const milestoneMultiplier = calculateCumulativeMilestoneMultiplier(milestones, level);
+    const milestoneMultiplier = calculateCumulativeMilestoneMultiplier(milestones, level, milestonePowerBonus);
     return multiplyFinite(baseOutput, milestoneMultiplier, `producer ${producer.id} milestone-adjusted output`);
 }
 
@@ -82,10 +89,12 @@ export function calculateTotalMilestoneAdjustedProductionPerSecond(
     producers: readonly ProducerConfig[],
     levelsByProducerId: Readonly<Record<string, number>>,
     milestones: readonly ProducerMilestoneConfig[],
+    milestonePowerBonus = 0,
 ): number {
     validateProducerCollection(producers);
     validateProducerLevelRecord(levelsByProducerId);
     validateMilestoneCollection(milestones);
+    validateMilestonePowerBonus(milestonePowerBonus);
 
     const producerIds = new Set(producers.map((producer) => producer.id));
     for (const producerId of Object.keys(levelsByProducerId).sort()) {
@@ -97,11 +106,23 @@ export function calculateTotalMilestoneAdjustedProductionPerSecond(
     let total = 0;
     for (const producer of producers) {
         const level = levelsByProducerId[producer.id] ?? 0;
-        const output = calculateMilestoneAdjustedProducerOutput(producer, level, milestones);
+        const output = calculateMilestoneAdjustedProducerOutput(producer, level, milestones, milestonePowerBonus);
         total = addFinite(total, output, 'total milestone-adjusted productionPerSecond');
     }
 
     return total;
+}
+
+export function calculateEffectiveMilestoneProductionMultiplier(
+    baseProductionMultiplier: number,
+    milestonePowerBonus: number,
+): number {
+    if (!Number.isFinite(baseProductionMultiplier) || baseProductionMultiplier <= 0) {
+        throw new ProducerMilestoneInputError('baseProductionMultiplier must be a positive finite number.');
+    }
+    validateMilestonePowerBonus(milestonePowerBonus);
+
+    return 1 + (baseProductionMultiplier - 1) * (1 + milestonePowerBonus);
 }
 
 function validateMilestoneCollection(milestones: readonly ProducerMilestoneConfig[]): void {
@@ -149,6 +170,12 @@ function validateMilestoneConfig(milestone: ProducerMilestoneConfig): void {
 function validateMilestoneLevel(level: number, label: string): void {
     if (!Number.isSafeInteger(level) || level < 0) {
         throw new ProducerMilestoneInputError(`${label} must be a non-negative safe integer.`);
+    }
+}
+
+function validateMilestonePowerBonus(milestonePowerBonus: number): void {
+    if (!Number.isFinite(milestonePowerBonus) || milestonePowerBonus < 0) {
+        throw new ProducerMilestoneInputError('milestonePowerBonus must be a non-negative finite number.');
     }
 }
 

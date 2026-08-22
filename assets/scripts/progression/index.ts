@@ -49,6 +49,30 @@ export {
     suspendTemporaryBoost,
 } from './TemporaryBoosts.ts';
 
+export {
+    AUTONOMOUS_OPTIMIZATION_UPGRADE_ID,
+    CACHED_PROCEDURES_UPGRADE_ID,
+    COMPACT_BLUEPRINTS_UPGRADE_ID,
+    ERA_COMPRESSION_UPGRADE_ID,
+    INHERITED_AUTOMATION_UPGRADE_ID,
+    INDUSTRIAL_SCALING_UPGRADE_ID,
+    OPTIMIZED_FABRICATION_UPGRADE_ID,
+    PermanentUpgradeInputError,
+    WORKER_TEMPLATES_UPGRADE_ID,
+    applyNewProducerConstructionCostMultiplier,
+    createPermanentUpgradeModifierSet,
+    evaluatePermanentUpgradeRankState,
+    getNextPermanentUpgradeRankCost,
+    getPermanentUpgradeRank,
+    resolveEffectiveBreakthroughDefinition,
+    resolveEffectiveMajorRequirement,
+    resolveNewProducerConstructionCostMultiplier,
+    resolvePermanentMajorRequirementReduction,
+    resolvePermanentMilestonePowerBonus,
+    shouldProducerStartAutomatedOnceConstructed,
+    validatePermanentUpgradeRanks,
+} from './PermanentUpgrades.ts';
+
 export type {
     EraTransitionResult,
 } from './EraProgression.ts';
@@ -78,3 +102,10 @@ export type {
     TemporaryBoostTransitionResult,
     TemporaryBoostTransitionStatus,
 } from './TemporaryBoosts.ts';
+
+export type {
+    EffectiveBreakthroughDefinition,
+    MissingPermanentUpgradePrerequisite,
+    PermanentUpgradeRankState,
+    PermanentUpgradeRankStatus,
+} from './PermanentUpgrades.ts';

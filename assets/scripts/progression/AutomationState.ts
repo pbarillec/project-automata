@@ -34,6 +34,14 @@ export function resolveEffectiveProducerAutomationState(
         };
     }
 
+    if (hasPermanentStartAutomatedEffect(repository, state, producerId)) {
+        return {
+            isAutomated: true,
+            isOfflineEligible: true,
+            unlockedByBreakthroughId: null,
+        };
+    }
+
     if (isProducerDefaultAutomatedWhenBuilt(repository, producerId)) {
         return {
             isAutomated: true,
@@ -55,7 +63,7 @@ export function applyDefaultAutomationForConstructedProducer(
         return false;
     }
 
-    if (!isProducerDefaultAutomatedWhenBuilt(repository, producerId)) {
+    if (!hasPermanentStartAutomatedEffect(repository, state, producerId) && !isProducerDefaultAutomatedWhenBuilt(repository, producerId)) {
         return false;
     }
 
@@ -65,6 +73,27 @@ export function applyDefaultAutomationForConstructedProducer(
         unlockedByBreakthroughId: breakthroughId,
     };
     return true;
+}
+
+function hasPermanentStartAutomatedEffect(
+    repository: GameConfigRepository,
+    state: GameState,
+    producerId: string,
+): boolean {
+    for (const upgrade of repository.listPermanentUpgrades()) {
+        const rank = state.meta.permanentUpgradeRanks[upgrade.id] ?? 0;
+        if (!Number.isInteger(rank) || rank <= 0) {
+            continue;
+        }
+
+        for (const effect of upgrade.effects) {
+            if (effect.type === 'producerStartsAutomatedOnceConstructed' && effect.producerId === producerId) {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 export function isProducerDefaultAutomatedWhenBuilt(

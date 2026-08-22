@@ -35,6 +35,7 @@ export {
 export {
     ProducerMilestoneInputError,
     calculateCumulativeMilestoneMultiplier,
+    calculateEffectiveMilestoneProductionMultiplier,
     calculateMilestoneAdjustedProducerOutput,
     calculateTotalMilestoneAdjustedProductionPerSecond,
     resolveCrossedProducerMilestones,

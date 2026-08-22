@@ -71,6 +71,11 @@ async function sourcesWithInvalidFixture(fixtureName, fileName) {
 
     if (fileName === 'producers.json') {
         replacementSources.push(emptyBreakthroughsSource());
+        replacementSources.push(emptyPermanentUpgradesSource());
+    }
+
+    if (fileName === 'breakthroughs.json') {
+        replacementSources.push(emptyPermanentUpgradesSource());
     }
 
     return validSources
@@ -78,7 +83,14 @@ async function sourcesWithInvalidFixture(fixtureName, fileName) {
             if (source.filePath === sourceSuffix) {
                 return false;
             }
-            return fileName !== 'producers.json' || source.filePath !== 'data/economy/breakthroughs.json';
+            if (fileName === 'producers.json') {
+                return source.filePath !== 'data/economy/breakthroughs.json' &&
+                    source.filePath !== 'data/economy/permanent_upgrades.json';
+            }
+            if (fileName === 'breakthroughs.json') {
+                return source.filePath !== 'data/economy/permanent_upgrades.json';
+            }
+            return true;
         })
         .concat(replacementSources)
         .sort((left, right) => left.filePath.localeCompare(right.filePath));
@@ -97,8 +109,10 @@ async function sourcesWithProducerItems(items) {
     };
 
     return validSources
-        .filter((source) => source.filePath !== producerSource.filePath && source.filePath !== 'data/economy/breakthroughs.json')
-        .concat(producerSource, emptyBreakthroughsSource())
+        .filter((source) => source.filePath !== producerSource.filePath &&
+            source.filePath !== 'data/economy/breakthroughs.json' &&
+            source.filePath !== 'data/economy/permanent_upgrades.json')
+        .concat(producerSource, emptyBreakthroughsSource(), emptyPermanentUpgradesSource())
         .sort((left, right) => left.filePath.localeCompare(right.filePath));
 }
 
@@ -107,6 +121,18 @@ function emptyBreakthroughsSource() {
         filePath: 'data/economy/breakthroughs.json',
         text: JSON.stringify({
             kind: 'breakthroughs',
+            schemaVersion: 1,
+            contentVersion: '0.1.0-aut-010',
+            items: [],
+        }),
+    };
+}
+
+function emptyPermanentUpgradesSource() {
+    return {
+        filePath: 'data/economy/permanent_upgrades.json',
+        text: JSON.stringify({
+            kind: 'permanent_upgrades',
             schemaVersion: 1,
             contentVersion: '0.1.0-aut-010',
             items: [],
@@ -135,6 +161,7 @@ test('valid representative multi-file config loads into typed repository', async
     assert.equal(repository.listProducers().length, 5);
     assert.equal(repository.listBreakthroughs().length, 6);
     assert.equal(repository.listMilestones().length, 4);
+    assert.equal(repository.listPermanentUpgrades().length, 8);
     assert.equal(repository.getProducer('fabricator')?.baseCost, 10);
 });
 
@@ -319,6 +346,40 @@ test('approved standard MVP breakthroughs match Economy costs, requirements and 
                 { type: 'enterEra', eraId: 'robotics_complex' },
             ],
         },
+    ]);
+});
+
+test('approved permanent upgrades match Economy branches, ranks, costs and prerequisites', async () => {
+    const { loadGameConfigFromSources } = await configModule();
+    const repository = loadGameConfigFromSources(await collectJsonSources(dataRoot));
+    const upgrades = repository.listPermanentUpgrades();
+
+    assert.deepEqual(upgrades.map((upgrade) => upgrade.id), [
+        'optimized_fabrication',
+        'industrial_scaling',
+        'autonomous_optimization',
+        'cached_procedures',
+        'worker_templates',
+        'inherited_automation',
+        'compact_blueprints',
+        'era_compression',
+    ]);
+    assert.equal(upgrades.reduce((sum, upgrade) => sum + upgrade.maxRank, 0), 19);
+    assert.deepEqual(upgrades.map((upgrade) => ({
+        id: upgrade.id,
+        branch: upgrade.branch,
+        maxRank: upgrade.maxRank,
+        rankCosts: upgrade.rankCosts,
+        prerequisites: upgrade.prerequisites,
+    })), [
+        { id: 'optimized_fabrication', branch: 'production', maxRank: 3, rankCosts: [1, 2, 4], prerequisites: [] },
+        { id: 'industrial_scaling', branch: 'production', maxRank: 3, rankCosts: [2, 4, 7], prerequisites: [{ upgradeId: 'optimized_fabrication', rank: 1 }] },
+        { id: 'autonomous_optimization', branch: 'production', maxRank: 2, rankCosts: [5, 10], prerequisites: [{ upgradeId: 'optimized_fabrication', rank: 2 }] },
+        { id: 'cached_procedures', branch: 'automation', maxRank: 2, rankCosts: [2, 5], prerequisites: [] },
+        { id: 'worker_templates', branch: 'automation', maxRank: 2, rankCosts: [3, 7], prerequisites: [{ upgradeId: 'cached_procedures', rank: 1 }] },
+        { id: 'inherited_automation', branch: 'automation', maxRank: 1, rankCosts: [12], prerequisites: [{ upgradeId: 'worker_templates', rank: 2 }] },
+        { id: 'compact_blueprints', branch: 'expansion', maxRank: 3, rankCosts: [2, 4, 8], prerequisites: [] },
+        { id: 'era_compression', branch: 'expansion', maxRank: 3, rankCosts: [4, 8, 15], prerequisites: [{ upgradeId: 'compact_blueprints', rank: 2 }] },
     ]);
 });
 
