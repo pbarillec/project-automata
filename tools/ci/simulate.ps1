@@ -17,7 +17,7 @@ try {
         exit 1
     }
 
-    & node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON $SimulationScript
+    & node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON $SimulationScript @args
     exit $LASTEXITCODE
 }
 finally {

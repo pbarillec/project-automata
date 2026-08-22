@@ -115,6 +115,16 @@ function readTextIfExists(filePath) {
   }
 }
 
+function canOpenReadWrite(filePath) {
+  try {
+    const fd = fs.openSync(filePath, 'r+');
+    fs.closeSync(fd);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
@@ -240,9 +250,11 @@ function copyDirectoryContents(source, destination) {
   }
 }
 
-function ensureWritableEngineMirror(sourceEnginePath) {
-  const mirrorRoot = path.join(repoRoot, 'temp', 'ci', `cocos-engine-${requiredCreatorVersion}`);
-  const markerPath = path.join(mirrorRoot, '.automata-engine-mirror.json');
+function ensureWritableEngineMirror(sourceEnginePath, fallbackParent) {
+  const defaultMirrorRoot = path.join(repoRoot, 'temp', 'ci', `cocos-engine-${requiredCreatorVersion}`);
+  let mirrorRoot = defaultMirrorRoot;
+  let markerPath = path.join(mirrorRoot, '.automata-engine-mirror.json');
+  let importMapPath = path.join(mirrorRoot, 'bin', '.cache', 'dev', 'editor', 'import-map.json');
   const sourcePackage = readJson(path.join(sourceEnginePath, 'package.json'));
   const expectedMarker = {
     source: sourceEnginePath,
@@ -254,11 +266,19 @@ function ensureWritableEngineMirror(sourceEnginePath) {
     if (marker.source === expectedMarker.source
       && marker.version === expectedMarker.version
       && fileExists(path.join(mirrorRoot, 'package.json'))
-      && fileExists(path.join(mirrorRoot, 'bin', '.cache', 'dev', 'editor', 'import-map.json'))) {
+      && fileExists(importMapPath)
+      && canOpenReadWrite(importMapPath)) {
       logPhase(`Cocos engine mirror: reusing ${mirrorRoot}`);
       return mirrorRoot;
     }
   } catch {
+  }
+
+  if (fs.existsSync(defaultMirrorRoot)) {
+    mirrorRoot = path.join(fallbackParent, `cocos-engine-${requiredCreatorVersion}`);
+    markerPath = path.join(mirrorRoot, '.automata-engine-mirror.json');
+    importMapPath = path.join(mirrorRoot, 'bin', '.cache', 'dev', 'editor', 'import-map.json');
+    logPhase(`Cocos engine mirror: default mirror is not writable; using per-run mirror at ${mirrorRoot}`);
   }
 
   assertInside(repoRoot, mirrorRoot);
@@ -351,12 +371,32 @@ function testCocosBuildLogCompleted(logPath, sinceMs) {
   return readTextIfExists(logPath).includes(`build Task (${taskName}) Finished`);
 }
 
-function testKnownCocosPostBuildMetricError(logPaths) {
-  return logPaths.some((logPath) => {
-    const log = readTextIfExists(logPath);
-    return log.includes('Missing class')
-      && log.includes("Cannot read properties of null (reading 'constructor')");
-  });
+function findFatalCocosDiagnostics(logPaths) {
+  const logs = logPaths.map(readTextIfExists).join('\n');
+  const fatalPatterns = [
+    /Missing class/u,
+    /is missing or invalid/u,
+    /SyntaxError/u,
+    /buildScriptCommand[^\r\n]*(?:fail|error)/iu,
+    /(?:fail|error)[^\r\n]*buildScriptCommand/iu,
+    /EPERM/u,
+    /Access is denied/u,
+    /Failed to load the custom engine/u,
+    /Load engine modules or register macro config failed/u,
+    /Message does not exist: engine - query-engine-info/u,
+  ];
+
+  return fatalPatterns
+    .map((pattern) => pattern.exec(logs)?.[0] || '')
+    .filter(Boolean);
+}
+
+function testAcceptableCocosPostSuccessExit(exitCode, startedAtMs, cocosBuildLog, logPaths) {
+  return exitCode === 36
+    && testFreshCocosGeneratedOutput(startedAtMs)
+    && testCocosBuildLogCompleted(cocosBuildLog, startedAtMs)
+    && testCocosOutputShape()
+    && findFatalCocosDiagnostics(logPaths).length === 0;
 }
 
 function testCocosGenerationSucceeded(sinceMs, cocosBuildLog) {
@@ -487,7 +527,7 @@ function closeStream(stream) {
 }
 
 async function runCocosGeneration(options, startedAtMs, sdkPath, ndkPath, javaHome, javaPath, sourceEnginePath) {
-  const logDir = path.join(repoRoot, 'temp', 'ci');
+  const logDir = path.join(repoRoot, 'temp', 'ci', `cocos-run-${process.pid}-${Date.now()}`);
   ensureDir(logDir);
 
   const stdoutLog = path.join(logDir, 'cocos_android_build.stdout.log');
@@ -514,7 +554,7 @@ async function runCocosGeneration(options, startedAtMs, sdkPath, ndkPath, javaHo
   const cocosUserData = path.join(cocosProfileRoot, 'ElectronUserData');
   const cocosDiskCache = path.join(cocosProfileRoot, 'DiskCache');
   [cocosHome, cocosCreatorHome, cocosUserData, cocosDiskCache].forEach(ensureDir);
-  const writableEnginePath = ensureWritableEngineMirror(sourceEnginePath);
+  const writableEnginePath = ensureWritableEngineMirror(sourceEnginePath, logDir);
   writeCocosEngineProfile(cocosHome, writableEnginePath);
 
   logPhase(`${phase}: start`);
@@ -639,13 +679,16 @@ async function runCocosGeneration(options, startedAtMs, sdkPath, ndkPath, javaHo
       fail(`Cocos Android generation failed with exit code ${exitCode}. Logs: ${cocosBuildLog} ${stdoutLog} ${stderrLog}`);
     }
 
-    if (exitCode !== 0 && !testKnownCocosPostBuildMetricError([cocosBuildLog, stdoutLog, stderrLog])) {
+    const cocosLogPaths = [cocosBuildLog, stdoutLog, stderrLog];
+    if (exitCode !== 0 && !testAcceptableCocosPostSuccessExit(exitCode, startedAtMs, cocosBuildLog, cocosLogPaths)) {
       printLastRelevantLogLines([cocosBuildLog, stdoutLog, stderrLog]);
-      fail(`Cocos Android generation exited with code ${exitCode} after success evidence, but not with the known post-build metrics exception. Logs: ${cocosBuildLog} ${stdoutLog} ${stderrLog}`);
+      const fatalDiagnostics = findFatalCocosDiagnostics(cocosLogPaths);
+      const fatalDetail = fatalDiagnostics.length > 0 ? ` Fatal diagnostics: ${fatalDiagnostics.join('; ')}` : '';
+      fail(`Cocos Android generation exited with code ${exitCode} without acceptable deterministic success evidence.${fatalDetail} Logs: ${cocosBuildLog} ${stdoutLog} ${stderrLog}`);
     }
 
     if (exitCode !== 0) {
-      logPhase(`${phase}: Creator exited with code ${exitCode} after successful generation with the known post-build metrics exception; continuing to Gradle verification`);
+      logPhase(`${phase}: Creator exited with code ${exitCode} after fresh generated outputs, completion marker, expected Android project shape, and no fatal Cocos diagnostics; continuing to Gradle verification`);
     }
   }
 
@@ -725,7 +768,11 @@ function removeExistingApks(buildPath) {
   assertInside(repoRoot, buildPath);
   for (const filePath of walkFiles(buildPath)) {
     if (filePath.toLowerCase().endsWith('.apk')) {
-      fs.rmSync(filePath, { force: true });
+      try {
+        fs.rmSync(filePath, { force: true });
+      } catch (error) {
+        console.warn(`Could not remove stale APK ${filePath}; continuing because fresh APK verification uses build start time. ${error.message}`);
+      }
     }
   }
 }
@@ -1113,6 +1160,7 @@ async function main() {
   if (options.gradleOffline) {
     gradleArgs.splice(3, 0, '--offline');
   }
+  const gradleLogDir = path.join(repoRoot, 'temp', 'ci', `gradle-run-${process.pid}-${Date.now()}`);
   await runTimedLoggedChild({
     phase: 'Gradle build',
     command: 'cmd.exe',
@@ -1120,8 +1168,8 @@ async function main() {
     cwd: gradleProject,
     env: gradleEnv,
     timeoutSeconds: options.gradleTimeoutSeconds,
-    stdoutLog: path.join(repoRoot, 'temp', 'ci', 'gradle_android_build.stdout.log'),
-    stderrLog: path.join(repoRoot, 'temp', 'ci', 'gradle_android_build.stderr.log'),
+    stdoutLog: path.join(gradleLogDir, 'gradle_android_build.stdout.log'),
+    stderrLog: path.join(gradleLogDir, 'gradle_android_build.stderr.log'),
   });
 
   logPhase('APK verification: locating fresh non-empty debug APK');

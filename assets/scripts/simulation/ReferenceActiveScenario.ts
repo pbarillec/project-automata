@@ -277,7 +277,7 @@ function satisfyLockedBreakthroughRequirements(
     repository: GameConfigRepository,
     simulator: HeadlessSimulator,
     settings: Required<ReferenceActiveScenarioOptions>,
-    requirements: readonly ReturnType<typeof evaluateBreakthroughEligibility>['lockedRequirements'],
+    requirements: ReturnType<typeof evaluateBreakthroughEligibility>['lockedRequirements'],
 ): void {
     for (const item of requirements) {
         const requirement = item.requirement;

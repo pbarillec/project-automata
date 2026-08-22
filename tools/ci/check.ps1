@@ -20,7 +20,8 @@ try {
     }
 
     Write-Host 'AUT-022 check: Pacing regression'
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $SimulationScript
+    $PacingReportPath = Join-Path $RepoRoot 'temp\ci\pacing_regression_check_report.json'
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $SimulationScript --out $PacingReportPath
     exit $LASTEXITCODE
 }
 finally {
