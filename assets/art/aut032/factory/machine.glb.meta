@@ -1,0 +1,123 @@
+{
+  "ver": "2.3.14",
+  "importer": "gltf",
+  "imported": true,
+  "uuid": "a0320000-0000-4000-8000-00000000000a",
+  "files": [],
+  "subMetas": {
+    "a310f": {
+      "importer": "gltf-mesh",
+      "uuid": "a0320000-0000-4000-8000-00000000000a@a310f",
+      "displayName": "",
+      "id": "a310f",
+      "name": "machine.mesh",
+      "userData": {
+        "gltfIndex": 0,
+        "triangleCount": 268
+      },
+      "ver": "1.1.1",
+      "imported": true,
+      "files": [
+        ".bin",
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "96c50": {
+      "importer": "texture",
+      "uuid": "a0320000-0000-4000-8000-00000000000a@96c50",
+      "displayName": "",
+      "id": "96c50",
+      "name": "colormap.texture",
+      "userData": {
+        "wrapModeS": "repeat",
+        "wrapModeT": "repeat",
+        "minfilter": "linear",
+        "magfilter": "linear",
+        "mipfilter": "linear",
+        "anisotropy": 0,
+        "isUuid": false,
+        "imageUuidOrDatabaseUri": "db://assets/art/aut032/factory/Textures/colormap.png"
+      },
+      "ver": "1.0.22",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "9991c": {
+      "importer": "gltf-material",
+      "uuid": "a0320000-0000-4000-8000-00000000000a@9991c",
+      "displayName": "",
+      "id": "9991c",
+      "name": "colormap.material",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "ce0e9": {
+      "importer": "gltf-scene",
+      "uuid": "a0320000-0000-4000-8000-00000000000a@ce0e9",
+      "displayName": "",
+      "id": "ce0e9",
+      "name": "machine.prefab",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    }
+  },
+  "userData": {
+    "imageMetas": [
+      {
+        "name": "colormap",
+        "uri": "db://assets/art/aut032/factory/Textures/colormap.png"
+      }
+    ],
+    "lods": {
+      "enable": false,
+      "hasBuiltinLOD": false,
+      "options": [
+        {
+          "screenRatio": 0.25,
+          "faceCount": 1
+        },
+        {
+          "screenRatio": 0.125,
+          "faceCount": 0.25
+        },
+        {
+          "screenRatio": 0.01,
+          "faceCount": 0.1
+        }
+      ]
+    },
+    "assetFinder": {
+      "meshes": [
+        "a0320000-0000-4000-8000-00000000000a@a310f"
+      ],
+      "skeletons": [],
+      "textures": [
+        "a0320000-0000-4000-8000-00000000000a@96c50"
+      ],
+      "materials": [
+        "a0320000-0000-4000-8000-00000000000a@9991c"
+      ],
+      "scenes": [
+        "a0320000-0000-4000-8000-00000000000a@ce0e9"
+      ]
+    }
+  }
+}

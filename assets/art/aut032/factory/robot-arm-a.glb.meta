@@ -1,0 +1,275 @@
+{
+  "ver": "2.3.14",
+  "importer": "gltf",
+  "imported": true,
+  "uuid": "a0320000-0000-4000-8000-00000000000c",
+  "files": [],
+  "subMetas": {
+    "45051": {
+      "importer": "gltf-mesh",
+      "uuid": "a0320000-0000-4000-8000-00000000000c@45051",
+      "displayName": "",
+      "id": "45051",
+      "name": "claw-a.mesh",
+      "userData": {
+        "gltfIndex": 7,
+        "triangleCount": 28
+      },
+      "ver": "1.1.1",
+      "imported": true,
+      "files": [
+        ".bin",
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "3e402": {
+      "importer": "gltf-mesh",
+      "uuid": "a0320000-0000-4000-8000-00000000000c@3e402",
+      "displayName": "",
+      "id": "3e402",
+      "name": "robot-arm-a.mesh",
+      "userData": {
+        "gltfIndex": 0,
+        "triangleCount": 28
+      },
+      "ver": "1.1.1",
+      "imported": true,
+      "files": [
+        ".bin",
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "fed0e": {
+      "importer": "gltf-mesh",
+      "uuid": "a0320000-0000-4000-8000-00000000000c@fed0e",
+      "displayName": "",
+      "id": "fed0e",
+      "name": "element-a.mesh",
+      "userData": {
+        "gltfIndex": 1,
+        "triangleCount": 50
+      },
+      "ver": "1.1.1",
+      "imported": true,
+      "files": [
+        ".bin",
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "fd7ea": {
+      "importer": "gltf-mesh",
+      "uuid": "a0320000-0000-4000-8000-00000000000c@fd7ea",
+      "displayName": "",
+      "id": "fd7ea",
+      "name": "element-b.mesh",
+      "userData": {
+        "gltfIndex": 2,
+        "triangleCount": 72
+      },
+      "ver": "1.1.1",
+      "imported": true,
+      "files": [
+        ".bin",
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "a635f": {
+      "importer": "gltf-mesh",
+      "uuid": "a0320000-0000-4000-8000-00000000000c@a635f",
+      "displayName": "",
+      "id": "a635f",
+      "name": "element-c.mesh",
+      "userData": {
+        "gltfIndex": 3,
+        "triangleCount": 60
+      },
+      "ver": "1.1.1",
+      "imported": true,
+      "files": [
+        ".bin",
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "cf0f8": {
+      "importer": "gltf-mesh",
+      "uuid": "a0320000-0000-4000-8000-00000000000c@cf0f8",
+      "displayName": "",
+      "id": "cf0f8",
+      "name": "element-d.mesh",
+      "userData": {
+        "gltfIndex": 4,
+        "triangleCount": 72
+      },
+      "ver": "1.1.1",
+      "imported": true,
+      "files": [
+        ".bin",
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "43e5d": {
+      "importer": "gltf-mesh",
+      "uuid": "a0320000-0000-4000-8000-00000000000c@43e5d",
+      "displayName": "",
+      "id": "43e5d",
+      "name": "element-e.mesh",
+      "userData": {
+        "gltfIndex": 5,
+        "triangleCount": 60
+      },
+      "ver": "1.1.1",
+      "imported": true,
+      "files": [
+        ".bin",
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "27c21": {
+      "importer": "gltf-mesh",
+      "uuid": "a0320000-0000-4000-8000-00000000000c@27c21",
+      "displayName": "",
+      "id": "27c21",
+      "name": "element-f.mesh",
+      "userData": {
+        "gltfIndex": 6,
+        "triangleCount": 74
+      },
+      "ver": "1.1.1",
+      "imported": true,
+      "files": [
+        ".bin",
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "b0681": {
+      "importer": "gltf-mesh",
+      "uuid": "a0320000-0000-4000-8000-00000000000c@b0681",
+      "displayName": "",
+      "id": "b0681",
+      "name": "claw-b.mesh",
+      "userData": {
+        "gltfIndex": 8,
+        "triangleCount": 28
+      },
+      "ver": "1.1.1",
+      "imported": true,
+      "files": [
+        ".bin",
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "96c50": {
+      "importer": "texture",
+      "uuid": "a0320000-0000-4000-8000-00000000000c@96c50",
+      "displayName": "",
+      "id": "96c50",
+      "name": "colormap.texture",
+      "userData": {
+        "wrapModeS": "repeat",
+        "wrapModeT": "repeat",
+        "minfilter": "linear",
+        "magfilter": "linear",
+        "mipfilter": "linear",
+        "anisotropy": 0,
+        "isUuid": false,
+        "imageUuidOrDatabaseUri": "db://assets/art/aut032/factory/Textures/colormap.png"
+      },
+      "ver": "1.0.22",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "9991c": {
+      "importer": "gltf-material",
+      "uuid": "a0320000-0000-4000-8000-00000000000c@9991c",
+      "displayName": "",
+      "id": "9991c",
+      "name": "colormap.material",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    },
+    "ace94": {
+      "importer": "gltf-scene",
+      "uuid": "a0320000-0000-4000-8000-00000000000c@ace94",
+      "displayName": "",
+      "id": "ace94",
+      "name": "robot-arm-a.prefab",
+      "userData": {
+        "gltfIndex": 0
+      },
+      "ver": "1.0.14",
+      "imported": true,
+      "files": [
+        ".json"
+      ],
+      "subMetas": {}
+    }
+  },
+  "userData": {
+    "imageMetas": [
+      {
+        "name": "colormap",
+        "uri": "db://assets/art/aut032/factory/Textures/colormap.png"
+      }
+    ],
+    "lods": {
+      "enable": false,
+      "hasBuiltinLOD": false,
+      "options": [
+        {
+          "screenRatio": 0.25,
+          "faceCount": 1
+        },
+        {
+          "screenRatio": 0.125,
+          "faceCount": 0.25
+        },
+        {
+          "screenRatio": 0.01,
+          "faceCount": 0.1
+        }
+      ]
+    },
+    "assetFinder": {
+      "meshes": [
+        "a0320000-0000-4000-8000-00000000000c@3e402",
+        "a0320000-0000-4000-8000-00000000000c@fed0e",
+        "a0320000-0000-4000-8000-00000000000c@fd7ea",
+        "a0320000-0000-4000-8000-00000000000c@a635f",
+        "a0320000-0000-4000-8000-00000000000c@cf0f8",
+        "a0320000-0000-4000-8000-00000000000c@43e5d",
+        "a0320000-0000-4000-8000-00000000000c@27c21",
+        "a0320000-0000-4000-8000-00000000000c@45051",
+        "a0320000-0000-4000-8000-00000000000c@b0681"
+      ],
+      "skeletons": [],
+      "textures": [
+        "a0320000-0000-4000-8000-00000000000c@96c50"
+      ],
+      "materials": [
+        "a0320000-0000-4000-8000-00000000000c@9991c"
+      ],
+      "scenes": [
+        "a0320000-0000-4000-8000-00000000000c@ace94"
+      ]
+    }
+  }
+}
