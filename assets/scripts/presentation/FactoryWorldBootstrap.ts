@@ -20,6 +20,7 @@ import { PresentationController } from './PresentationController';
 import { FabricatorVisualController } from './FabricatorVisualController';
 import { ProducerSelectionController } from './ProducerSelectionController';
 import { CoreHudController } from './CoreHudController';
+import { ProducerPanelController } from './ProducerPanelController';
 
 const { ccclass } = _decorator;
 
@@ -52,8 +53,10 @@ export class FactoryWorldBootstrap extends Component {
         this.createCameraRig(site);
         if (!site.getChildByName('NeutralFactoryKeyLight')) this.createLighting(site);
         this.createPresentationRegistry(site);
-        this.createProducerSelection(site);
+        const selection = this.createProducerSelection(site);
         this.createCoreHud();
+        const panel = this.createProducerPanel();
+        selection.onSelectionChanged = (producerId) => panel.replaceSelection(producerId);
     }
 
     private createShell(parent: Node): void {
@@ -140,7 +143,7 @@ export class FactoryWorldBootstrap extends Component {
         controller.compositionAnchors = FACTORY_ZONE_IDS.map((id) => parent.getChildByName(`Zone_${id}`)?.getChildByName(`${id}_CompositionAnchor`)).filter((node): node is Node => node !== null && node !== undefined);
     }
 
-    private createProducerSelection(parent: Node): void {
+    private createProducerSelection(parent: Node): ProducerSelectionController {
         const registry = parent.getChildByName('ProducerSelection') ?? new Node('ProducerSelection');
         registry.parent = parent;
         const controller = registry.getComponent(ProducerSelectionController) ?? registry.addComponent(ProducerSelectionController);
@@ -150,6 +153,7 @@ export class FactoryWorldBootstrap extends Component {
         controller.selectableTargets = FACTORY_ZONE_IDS.map((id) => parent.getChildByName(`Zone_${id}`)?.getChildByName(`${id}_SelectableTarget`)).filter((node): node is Node => node !== null && node !== undefined);
         controller.uiBlockerNodes = controller.cameraController?.uiBlockerNodes ?? [];
         controller.dragThresholdPixels = controller.cameraController?.dragThresholdPixels ?? controller.dragThresholdPixels;
+        return controller;
     }
 
     private createCoreHud(): void {
@@ -165,6 +169,19 @@ export class FactoryWorldBootstrap extends Component {
         hud.layer = Layers.Enum.UI_2D;
         hud.setPosition(28, 560, 0);
         hud.getComponent(CoreHudController) ?? hud.addComponent(CoreHudController);
+    }
+
+    private createProducerPanel(): ProducerPanelController {
+        const canvas = this.node.getChildByName('CoreHudCanvas') ?? new Node('CoreHudCanvas');
+        canvas.parent = this.node;
+        canvas.layer = Layers.Enum.UI_2D;
+        canvas.getComponent(Canvas) ?? canvas.addComponent(Canvas);
+        canvas.getComponent(UITransform) ?? canvas.addComponent(UITransform);
+        const panel = canvas.getChildByName('ProducerPanel') ?? new Node('ProducerPanel');
+        panel.parent = canvas;
+        panel.layer = Layers.Enum.UI_2D;
+        panel.setPosition(28, 150, 0);
+        return panel.getComponent(ProducerPanelController) ?? panel.addComponent(ProducerPanelController);
     }
 
     private createBox(parent: Node, name: string, size: Vec3, position: Vec3, color: Color): Node {
