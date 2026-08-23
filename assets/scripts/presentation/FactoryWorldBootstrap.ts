@@ -16,6 +16,7 @@ import {
 import { MobileCameraController } from '../camera/MobileCameraController';
 import { PresentationController } from './PresentationController';
 import { FabricatorVisualController } from './FabricatorVisualController';
+import { ProducerSelectionController } from './ProducerSelectionController';
 
 const { ccclass } = _decorator;
 
@@ -48,6 +49,7 @@ export class FactoryWorldBootstrap extends Component {
         this.createCameraRig(site);
         if (!site.getChildByName('NeutralFactoryKeyLight')) this.createLighting(site);
         this.createPresentationRegistry(site);
+        this.createProducerSelection(site);
     }
 
     private createShell(parent: Node): void {
@@ -73,6 +75,10 @@ export class FactoryWorldBootstrap extends Component {
             const focus = zone.getChildByName(`${zoneId}_FocusAnchor`) ?? new Node(`${zoneId}_FocusAnchor`);
             focus.parent = zone;
             focus.setPosition(0, 0.2, 0);
+            const target = zone.getChildByName(`${zoneId}_SelectableTarget`) ?? new Node(`${zoneId}_SelectableTarget`);
+            target.parent = zone;
+            target.setPosition(0, 0.2, 0);
+            target.setScale(layout.width, 1, layout.depth);
 
             const isOpening = zoneId === 'Fabricator';
             if (zone.getChildByName('WorkshopFoundation') || zone.getChildByName(`${zoneId}_FutureFoundation`)) continue;
@@ -128,6 +134,18 @@ export class FactoryWorldBootstrap extends Component {
         const controller = registry.getComponent(PresentationController) ?? registry.addComponent(PresentationController);
         controller.focusAnchors = FACTORY_ZONE_IDS.map((id) => parent.getChildByName(`Zone_${id}`)?.getChildByName(`${id}_FocusAnchor`)).filter((node): node is Node => node !== null && node !== undefined);
         controller.compositionAnchors = FACTORY_ZONE_IDS.map((id) => parent.getChildByName(`Zone_${id}`)?.getChildByName(`${id}_CompositionAnchor`)).filter((node): node is Node => node !== null && node !== undefined);
+    }
+
+    private createProducerSelection(parent: Node): void {
+        const registry = parent.getChildByName('ProducerSelection') ?? new Node('ProducerSelection');
+        registry.parent = parent;
+        const controller = registry.getComponent(ProducerSelectionController) ?? registry.addComponent(ProducerSelectionController);
+        const rig = parent.getChildByName('CameraRig');
+        controller.cameraComponent = rig?.getChildByName('WorldCamera')?.getComponent(Camera) ?? null;
+        controller.cameraController = rig?.getComponent(MobileCameraController) ?? null;
+        controller.selectableTargets = FACTORY_ZONE_IDS.map((id) => parent.getChildByName(`Zone_${id}`)?.getChildByName(`${id}_SelectableTarget`)).filter((node): node is Node => node !== null && node !== undefined);
+        controller.uiBlockerNodes = controller.cameraController?.uiBlockerNodes ?? [];
+        controller.dragThresholdPixels = controller.cameraController?.dragThresholdPixels ?? controller.dragThresholdPixels;
     }
 
     private createBox(parent: Node, name: string, size: Vec3, position: Vec3, color: Color): Node {
