@@ -15,6 +15,7 @@ import {
 } from 'cc';
 import { MobileCameraController } from '../camera/MobileCameraController';
 import { PresentationController } from './PresentationController';
+import { FabricatorVisualController } from './FabricatorVisualController';
 
 const { ccclass } = _decorator;
 
@@ -63,8 +64,12 @@ export class FactoryWorldBootstrap extends Component {
             zone.parent = parent;
             zone.setPosition(layout.x, 0, layout.z);
 
-            const composition = zone.getChildByName(`${zoneId}_CompositionAnchor`) ?? new Node(`${zoneId}_CompositionAnchor`);
+            const compositionAnchorName = zoneId === 'Fabricator'
+                ? 'Fabricator_CompositionAnchor'
+                : `${zoneId}_CompositionAnchor`;
+            const composition = zone.getChildByName(compositionAnchorName) ?? new Node(compositionAnchorName);
             composition.parent = zone;
+            if (zoneId === 'Fabricator') composition.getComponent(FabricatorVisualController) ?? composition.addComponent(FabricatorVisualController);
             const focus = zone.getChildByName(`${zoneId}_FocusAnchor`) ?? new Node(`${zoneId}_FocusAnchor`);
             focus.parent = zone;
             focus.setPosition(0, 0.2, 0);
