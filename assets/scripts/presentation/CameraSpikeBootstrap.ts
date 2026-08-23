@@ -28,6 +28,7 @@ export class CameraSpikeBootstrap extends Component {
 
     private controller: MobileCameraController | null = null;
     private readonly robotLineFocus = new Vec3(4.5, 0, 2.5);
+    private placeholderCount = 0;
 
     public start(): void {
         const camera = this.cameraComponent ?? this.createCamera();
@@ -48,13 +49,19 @@ export class CameraSpikeBootstrap extends Component {
         this.controller.defaultPitchDeg = 48;
         this.controller.defaultDistance = 15;
         this.controller.snapToWorldTarget(new Vec3(0, 0, 0));
+
+        console.info(`[AUT-031] CameraSpike initialized: camera=${camera.node.name}, placeholders=${this.placeholderCount}, uiBlockers=${uiBlockers.length}`);
     }
 
     private createCamera(): Camera {
         const cameraNode = new Node('Camera');
         cameraNode.layer = Layers.Enum.DEFAULT;
+        cameraNode.active = true;
         cameraNode.parent = this.node;
         const camera = cameraNode.addComponent(Camera);
+        camera.enabled = true;
+        camera.projection = Camera.ProjectionType.PERSPECTIVE;
+        camera.visibility = Layers.Enum.ALL;
         camera.fov = 45;
         camera.near = 0.1;
         camera.far = 200;
@@ -70,6 +77,7 @@ export class CameraSpikeBootstrap extends Component {
     }
 
     private createPlaceholderFactory(): void {
+        this.placeholderCount = 0;
         const factoryRoot = new Node('Placeholder Factory Diorama');
         factoryRoot.parent = this.node;
 
@@ -157,15 +165,22 @@ export class CameraSpikeBootstrap extends Component {
 
         renderer.mesh = mesh as Mesh;
         renderer.setMaterial(this.createMaterial(color), 0);
+        this.placeholderCount += 1;
         return node;
     }
 
     private createMaterial(color: Color): Material {
         const material = new Material();
+
         material.initialize({
-            effectName: 'builtin-standard',
+            effectName: 'builtin-unlit',
+            defines: {
+                USE_COLOR: true,
+            },
         });
+
         material.setProperty('mainColor', color);
+
         return material;
     }
 }

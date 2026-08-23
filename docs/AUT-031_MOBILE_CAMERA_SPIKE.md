@@ -21,6 +21,16 @@ The scene uses `CameraSpikeBootstrap` to create placeholder geometry at runtime:
 
 The Android debug build config starts from `CameraSpike.scene` for this spike so the existing wrapper can produce a real-device APK for the camera gate.
 
+For AUT-R-031 recovery, the Android debug build config is intentionally camera-only. The previous Factory/local discrepancy came from treating Cocos post-generation evidence as sufficient while the build logs could still contain fatal Cocos diagnostics from non-camera project content, including `Missing class`, invalid scene script, and `SyntaxError` entries. A completion marker or generated files alone are no longer enough to accept generation.
+
+The final wrapper rule is:
+
+- Cocos generation success requires fresh generated Android outputs from the current invocation, a fresh `build Task (AUT-CX-004 Android Debug) Finished` marker, the expected Android project shape, and no known fatal Cocos diagnostics.
+- Creator exit code `36` is accepted only under that same clean success evidence.
+- Any other non-zero Creator exit fails.
+- Known fatal Cocos diagnostics always fail before Gradle verification.
+- Gradle must still run afterward, report `BUILD SUCCESSFUL`, produce a fresh `ProjectAutomata-debug.apk`, and pass 16 KB native-library alignment verification.
+
 ## Control Scheme
 
 - One-finger drag: orbit around the current focus target.

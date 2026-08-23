@@ -12,6 +12,7 @@ const gradleProject = path.join(buildRoot, 'proj');
 const gradleWrapper = path.join(gradleProject, 'gradlew.bat');
 const gradleProperties = path.join(gradleProject, 'gradle.properties');
 const gradleModule = 'ProjectAutomata';
+const expectedDebugApkName = 'ProjectAutomata-debug.apk';
 const taskName = 'AUT-CX-004 Android Debug';
 const progressIntervalMs = 30000;
 const requiredCreatorVersion = '3.8.8';
@@ -371,40 +372,105 @@ function testCocosBuildLogCompleted(logPath, sinceMs) {
   return readTextIfExists(logPath).includes(`build Task (${taskName}) Finished`);
 }
 
-function findFatalCocosDiagnostics(logPaths) {
-  const logs = logPaths.map(readTextIfExists).join('\n');
-  const fatalPatterns = [
-    /Missing class/u,
-    /is missing or invalid/u,
-    /SyntaxError/u,
-    /buildScriptCommand[^\r\n]*(?:fail|error)/iu,
-    /(?:fail|error)[^\r\n]*buildScriptCommand/iu,
-    /EPERM/u,
-    /Access is denied/u,
-    /Failed to load the custom engine/u,
-    /Load engine modules or register macro config failed/u,
-    /Message does not exist: engine - query-engine-info/u,
-  ];
+const fatalCocosDiagnosticPatterns = [
+  /Missing class/iu,
+  /is missing or invalid/iu,
+  /invalid scene script/iu,
+  /SyntaxError/iu,
+  /buildScriptCommand[^\r\n]*(?:fail|error)/iu,
+  /(?:fail|error)[^\r\n]*buildScriptCommand/iu,
+  /build task[^\r\n]*(?:fail|error)/iu,
+  /(?:fail|error)[^\r\n]*build task/iu,
+  /EPERM/iu,
+  /Access is denied/iu,
+  /Failed to load the custom engine/iu,
+  /Load engine modules or register macro config failed/iu,
+  /Message does not exist: engine - query-engine-info/iu,
+];
 
-  return fatalPatterns
+function findFatalCocosDiagnosticsInText(logs) {
+  return fatalCocosDiagnosticPatterns
     .map((pattern) => pattern.exec(logs)?.[0] || '')
     .filter(Boolean);
 }
 
-function testAcceptableCocosPostSuccessExit(exitCode, startedAtMs, cocosBuildLog, logPaths) {
-  return exitCode === 36
-    && testFreshCocosGeneratedOutput(startedAtMs)
-    && testCocosBuildLogCompleted(cocosBuildLog, startedAtMs)
-    && testCocosOutputShape()
-    && findFatalCocosDiagnostics(logPaths).length === 0;
+function findFatalCocosDiagnostics(logPaths) {
+  return findFatalCocosDiagnosticsInText(logPaths.map(readTextIfExists).join('\n'));
 }
 
-function testCocosGenerationSucceeded(sinceMs, cocosBuildLog) {
-  if (testFreshCocosGeneratedOutput(sinceMs)) {
-    return true;
+function collectCocosGenerationEvidence(sinceMs, cocosBuildLog, logPaths) {
+  const freshGeneratedOutputs = testFreshCocosGeneratedOutput(sinceMs);
+  const completionMarker = testCocosBuildLogCompleted(cocosBuildLog, sinceMs);
+  const outputShape = testCocosOutputShape();
+  const fatalDiagnostics = findFatalCocosDiagnostics(logPaths);
+
+  return {
+    freshGeneratedOutputs,
+    completionMarker,
+    outputShape,
+    fatalDiagnostics,
+    succeeded: isAcceptableCocosGenerationEvidence({
+      freshGeneratedOutputs,
+      completionMarker,
+      outputShape,
+      fatalDiagnostics,
+    }),
+  };
+}
+
+function isAcceptableCocosGenerationEvidence(evidence) {
+  return evidence.freshGeneratedOutputs
+    && evidence.completionMarker
+    && evidence.outputShape
+    && evidence.fatalDiagnostics.length === 0;
+}
+
+function isAcceptableCocosExit(exitCode, evidence) {
+  if (!isAcceptableCocosGenerationEvidence(evidence)) {
+    return false;
   }
 
-  return testCocosBuildLogCompleted(cocosBuildLog, sinceMs) && testCocosOutputShape();
+  return exitCode === 0 || exitCode === 36;
+}
+
+function formatCocosEvidence(evidence) {
+  return `freshOutputs=${evidence.freshGeneratedOutputs}; completionMarker=${evidence.completionMarker}; outputShape=${evidence.outputShape}; fatalDiagnostics=${evidence.fatalDiagnostics.length}`;
+}
+
+function failCocosGeneration(message, logPaths, evidence) {
+  printLastRelevantLogLines(logPaths);
+  const fatalDetail = evidence?.fatalDiagnostics?.length > 0
+    ? ` Fatal diagnostics: ${evidence.fatalDiagnostics.join('; ')}.`
+    : '';
+  const evidenceDetail = evidence ? ` Evidence: ${formatCocosEvidence(evidence)}.` : '';
+  fail(`${message}${fatalDetail}${evidenceDetail} Logs: ${logPaths.join(' ')}`);
+}
+
+function assertAcceptedCocosGeneration(sinceMs, cocosBuildLog, logPaths) {
+  const evidence = collectCocosGenerationEvidence(sinceMs, cocosBuildLog, logPaths);
+  if (!evidence.succeeded) {
+    failCocosGeneration('Cocos Android generation did not produce acceptable deterministic success evidence.', logPaths, evidence);
+  }
+
+  return evidence;
+}
+
+function assertAcceptableCocosExit(exitCode, startedAtMs, cocosBuildLog, logPaths) {
+  const evidence = collectCocosGenerationEvidence(startedAtMs, cocosBuildLog, logPaths);
+  if (isAcceptableCocosExit(exitCode, evidence)) {
+    return evidence;
+  }
+
+  failCocosGeneration(`Cocos Android generation exited with code ${exitCode} without acceptable deterministic success evidence.`, logPaths, evidence);
+}
+
+function testAcceptableCocosPostSuccessExit(exitCode, startedAtMs, cocosBuildLog, logPaths) {
+  const evidence = collectCocosGenerationEvidence(startedAtMs, cocosBuildLog, logPaths);
+  return exitCode === 36 && evidence.succeeded;
+}
+
+function testCocosGenerationSucceeded(sinceMs, cocosBuildLog, logPaths = [cocosBuildLog]) {
+  return collectCocosGenerationEvidence(sinceMs, cocosBuildLog, logPaths).succeeded;
 }
 
 function sleep(ms) {
@@ -533,6 +599,7 @@ async function runCocosGeneration(options, startedAtMs, sdkPath, ndkPath, javaHo
   const stdoutLog = path.join(logDir, 'cocos_android_build.stdout.log');
   const stderrLog = path.join(logDir, 'cocos_android_build.stderr.log');
   const cocosBuildLog = path.join(logDir, 'cocos-cli.log');
+  const cocosLogPaths = [cocosBuildLog, stdoutLog, stderrLog];
   const resolvedBuildConfig = createResolvedCocosBuildConfig(logDir, sdkPath, ndkPath, javaHome, javaPath);
 
   [
@@ -626,21 +693,21 @@ async function runCocosGeneration(options, startedAtMs, sdkPath, ndkPath, javaHo
     while (!exitResult) {
       if (Date.now() > deadlineMs) {
         logPhase(`${phase}: timed out after ${formatElapsed(phaseStartMs)}; Creator PID ${child.pid}`);
-        printLastRelevantLogLines([cocosBuildLog, stdoutLog, stderrLog]);
+        printLastRelevantLogLines(cocosLogPaths);
         await stopSpawnedProcessTree(child, phase);
-        fail(`Cocos Android generation timed out after ${options.cocosTimeoutSeconds} seconds. Logs: ${cocosBuildLog} ${stdoutLog} ${stderrLog}`);
+        fail(`Cocos Android generation timed out after ${options.cocosTimeoutSeconds} seconds. Logs: ${cocosLogPaths.join(' ')}`);
       }
 
-      const freshGenerated = testFreshCocosGeneratedOutput(startedAtMs);
-      const logCompleted = testCocosBuildLogCompleted(cocosBuildLog, startedAtMs);
-      const outputShape = testCocosOutputShape();
-      const generationSucceeded = freshGenerated || (logCompleted && outputShape);
+      const evidence = collectCocosGenerationEvidence(startedAtMs, cocosBuildLog, cocosLogPaths);
+      if (evidence.fatalDiagnostics.length > 0) {
+        await stopSpawnedProcessTree(child, phase);
+        failCocosGeneration('Cocos Android generation produced a fatal diagnostic.', cocosLogPaths, evidence);
+      }
 
-      if (generationSucceeded) {
+      if (evidence.succeeded) {
         if (successSinceMs === 0) {
           successSinceMs = Date.now();
-          const evidence = freshGenerated ? 'fresh generated outputs' : 'Cocos log completion marker plus generated project shape';
-          logPhase(`${phase}: generation evidence detected via ${evidence}; waiting 5s before terminating Creator if it remains alive`);
+          logPhase(`${phase}: generation evidence detected (${formatCocosEvidence(evidence)}); waiting 5s before terminating Creator if it remains alive`);
         } else if (Date.now() - successSinceMs >= 5000) {
           logPhase(`${phase}: Creator still alive after success evidence`);
           await stopSpawnedProcessTree(child, phase);
@@ -651,7 +718,7 @@ async function runCocosGeneration(options, startedAtMs, sdkPath, ndkPath, javaHo
 
       if (Date.now() >= nextProgressMs) {
         const logSize = fileExists(cocosBuildLog) ? fs.statSync(cocosBuildLog).size : 0;
-        logPhase(`${phase}: still waiting after ${formatElapsed(phaseStartMs)}; PID ${child.pid}; freshOutputs=${freshGenerated}; logCompleted=${logCompleted}; outputShape=${outputShape}; logBytes=${logSize}`);
+        logPhase(`${phase}: still waiting after ${formatElapsed(phaseStartMs)}; PID ${child.pid}; ${formatCocosEvidence(evidence)}; logBytes=${logSize}`);
         nextProgressMs += progressIntervalMs;
       }
 
@@ -671,31 +738,15 @@ async function runCocosGeneration(options, startedAtMs, sdkPath, ndkPath, javaHo
 
   if (!terminatedAfterGeneration) {
     logPhase(`${phase}: Creator exited after ${formatElapsed(phaseStartMs)} with code=${exitResult?.code ?? '<none>'} signal=${exitResult?.signal || '<none>'}`);
-    const generationSucceeded = testCocosGenerationSucceeded(startedAtMs, cocosBuildLog);
     const exitCode = exitResult?.code ?? 1;
-
-    if (exitCode !== 0 && !generationSucceeded) {
-      printLastRelevantLogLines([cocosBuildLog, stdoutLog, stderrLog]);
-      fail(`Cocos Android generation failed with exit code ${exitCode}. Logs: ${cocosBuildLog} ${stdoutLog} ${stderrLog}`);
-    }
-
-    const cocosLogPaths = [cocosBuildLog, stdoutLog, stderrLog];
-    if (exitCode !== 0 && !testAcceptableCocosPostSuccessExit(exitCode, startedAtMs, cocosBuildLog, cocosLogPaths)) {
-      printLastRelevantLogLines([cocosBuildLog, stdoutLog, stderrLog]);
-      const fatalDiagnostics = findFatalCocosDiagnostics(cocosLogPaths);
-      const fatalDetail = fatalDiagnostics.length > 0 ? ` Fatal diagnostics: ${fatalDiagnostics.join('; ')}` : '';
-      fail(`Cocos Android generation exited with code ${exitCode} without acceptable deterministic success evidence.${fatalDetail} Logs: ${cocosBuildLog} ${stdoutLog} ${stderrLog}`);
-    }
+    assertAcceptableCocosExit(exitCode, startedAtMs, cocosBuildLog, cocosLogPaths);
 
     if (exitCode !== 0) {
       logPhase(`${phase}: Creator exited with code ${exitCode} after fresh generated outputs, completion marker, expected Android project shape, and no fatal Cocos diagnostics; continuing to Gradle verification`);
     }
   }
 
-  if (!testCocosGenerationSucceeded(startedAtMs, cocosBuildLog)) {
-    printLastRelevantLogLines([cocosBuildLog, stdoutLog, stderrLog]);
-    fail(`Cocos Android generation did not produce expected success evidence under build/android. Logs: ${cocosBuildLog} ${stdoutLog} ${stderrLog}`);
-  }
+  assertAcceptedCocosGeneration(startedAtMs, cocosBuildLog, cocosLogPaths);
 
   logPhase(`${phase}: complete after ${formatElapsed(phaseStartMs)}`);
 }
@@ -880,12 +931,21 @@ async function runTimedLoggedChild({
   }
 }
 
-function findFreshApk(sinceMs) {
+function findFreshDebugApk(sinceMs) {
   return walkFiles(path.join(gradleProject, 'build'))
     .filter((filePath) => filePath.toLowerCase().endsWith('.apk'))
+    .filter((filePath) => path.basename(filePath) === expectedDebugApkName)
     .map((filePath) => ({ filePath, stat: fs.statSync(filePath) }))
     .filter((item) => item.stat.size > 0 && item.stat.mtimeMs >= sinceMs)
     .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs)[0]?.filePath || '';
+}
+
+function assertGradleBuildSuccessful(stdoutLog, stderrLog) {
+  const logs = `${readTextIfExists(stdoutLog)}\n${readTextIfExists(stderrLog)}`;
+  if (!/\bBUILD SUCCESSFUL\b/u.test(logs)) {
+    printLastRelevantLogLines([stdoutLog, stderrLog]);
+    fail(`Gradle completed with exit code 0 but did not report BUILD SUCCESSFUL. Logs: ${stdoutLog} ${stderrLog}`);
+  }
 }
 
 function findEndOfCentralDirectory(zipBuffer) {
@@ -1161,6 +1221,8 @@ async function main() {
     gradleArgs.splice(3, 0, '--offline');
   }
   const gradleLogDir = path.join(repoRoot, 'temp', 'ci', `gradle-run-${process.pid}-${Date.now()}`);
+  const gradleStdoutLog = path.join(gradleLogDir, 'gradle_android_build.stdout.log');
+  const gradleStderrLog = path.join(gradleLogDir, 'gradle_android_build.stderr.log');
   await runTimedLoggedChild({
     phase: 'Gradle build',
     command: 'cmd.exe',
@@ -1168,14 +1230,15 @@ async function main() {
     cwd: gradleProject,
     env: gradleEnv,
     timeoutSeconds: options.gradleTimeoutSeconds,
-    stdoutLog: path.join(gradleLogDir, 'gradle_android_build.stdout.log'),
-    stderrLog: path.join(gradleLogDir, 'gradle_android_build.stderr.log'),
+    stdoutLog: gradleStdoutLog,
+    stderrLog: gradleStderrLog,
   });
+  assertGradleBuildSuccessful(gradleStdoutLog, gradleStderrLog);
 
-  logPhase('APK verification: locating fresh non-empty debug APK');
-  const apkPath = findFreshApk(gradleStartedAtMs);
+  logPhase(`APK verification: locating fresh non-empty ${expectedDebugApkName}`);
+  const apkPath = findFreshDebugApk(gradleStartedAtMs);
   if (!apkPath) {
-    fail(`Gradle completed but no fresh non-empty debug APK was found under ${path.join(gradleProject, 'build')}.`);
+    fail(`Gradle completed but no fresh non-empty ${expectedDebugApkName} was found under ${path.join(gradleProject, 'build')}.`);
   }
   logPhase(`APK verification: found ${apkPath}`);
 
@@ -1197,6 +1260,17 @@ async function main() {
   console.log(`Debug APK: ${apkPath}`);
 }
 
-main().catch((error) => {
-  fail(error?.stack || String(error));
-});
+if (require.main === module) {
+  main().catch((error) => {
+    fail(error?.stack || String(error));
+  });
+} else {
+  module.exports = {
+    findFatalCocosDiagnosticsInText,
+    formatCocosEvidence,
+    isAcceptableCocosExit,
+    isAcceptableCocosGenerationEvidence,
+    testAcceptableCocosPostSuccessExit,
+    testCocosGenerationSucceeded,
+  };
+}

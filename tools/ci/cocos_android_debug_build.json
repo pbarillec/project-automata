@@ -45,10 +45,6 @@
   "taskName": "AUT-CX-004 Android Debug",
   "scenes": [
     {
-      "url": "db://assets/scenes/app/Main.scene",
-      "uuid": "c0cf02d5-0cbe-4ffa-8d3c-efb398660d9e"
-    },
-    {
       "url": "db://assets/scenes/camera/CameraSpike.scene",
       "uuid": "f8adf834-2374-4aef-a9d6-3f5ac4569a28"
     }

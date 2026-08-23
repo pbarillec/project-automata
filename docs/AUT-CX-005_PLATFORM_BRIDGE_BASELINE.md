@@ -80,6 +80,8 @@ Dependency notes:
 
 No third-party monetization plugin is used.
 
+Because this baseline is compile-only and `AutomataPlatformBridge` intentionally returns Ads as unavailable, the app manifest removes the Ads SDK's automatic `MobileAdsInitProvider`. This keeps debug/baseline startup independent of production credentials while retaining the SDK dependency for the future AUT-057 provider. A production provider may later replace that removal with `com.google.android.gms.ads.APPLICATION_ID` supplied by a real App ID configuration; no production App ID belongs in this baseline.
+
 ## Android Dependency Resolution
 
 AUT-CX-005 intentionally adds new official Google Maven dependencies to the Android compile baseline. The AUT-CX-004 Android build wrapper must therefore run Gradle with dependency resolution enabled by default so missing transitive artifacts can be fetched from the generated project's configured repositories (`google()` and `mavenCentral()`).
