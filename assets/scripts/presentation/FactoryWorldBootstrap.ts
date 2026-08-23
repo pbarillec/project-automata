@@ -1,6 +1,7 @@
 import {
     _decorator,
     Camera,
+    Canvas,
     Component,
     DirectionalLight,
     Layers,
@@ -12,11 +13,13 @@ import {
     utils,
     Vec3,
     Color,
+    UITransform,
 } from 'cc';
 import { MobileCameraController } from '../camera/MobileCameraController';
 import { PresentationController } from './PresentationController';
 import { FabricatorVisualController } from './FabricatorVisualController';
 import { ProducerSelectionController } from './ProducerSelectionController';
+import { CoreHudController } from './CoreHudController';
 
 const { ccclass } = _decorator;
 
@@ -50,6 +53,7 @@ export class FactoryWorldBootstrap extends Component {
         if (!site.getChildByName('NeutralFactoryKeyLight')) this.createLighting(site);
         this.createPresentationRegistry(site);
         this.createProducerSelection(site);
+        this.createCoreHud();
     }
 
     private createShell(parent: Node): void {
@@ -146,6 +150,21 @@ export class FactoryWorldBootstrap extends Component {
         controller.selectableTargets = FACTORY_ZONE_IDS.map((id) => parent.getChildByName(`Zone_${id}`)?.getChildByName(`${id}_SelectableTarget`)).filter((node): node is Node => node !== null && node !== undefined);
         controller.uiBlockerNodes = controller.cameraController?.uiBlockerNodes ?? [];
         controller.dragThresholdPixels = controller.cameraController?.dragThresholdPixels ?? controller.dragThresholdPixels;
+    }
+
+    private createCoreHud(): void {
+        const canvas = this.node.getChildByName('CoreHudCanvas') ?? new Node('CoreHudCanvas');
+        canvas.parent = this.node;
+        canvas.layer = Layers.Enum.UI_2D;
+        canvas.getComponent(Canvas) ?? canvas.addComponent(Canvas);
+        const canvasTransform = canvas.getComponent(UITransform) ?? canvas.addComponent(UITransform);
+        canvasTransform.setContentSize(720, 1280);
+
+        const hud = canvas.getChildByName('CoreHUD') ?? new Node('CoreHUD');
+        hud.parent = canvas;
+        hud.layer = Layers.Enum.UI_2D;
+        hud.setPosition(28, 560, 0);
+        hud.getComponent(CoreHudController) ?? hud.addComponent(CoreHudController);
     }
 
     private createBox(parent: Node, name: string, size: Vec3, position: Vec3, color: Color): Node {
