@@ -83,6 +83,15 @@ export class MobileCameraController extends Component {
     public defaultDistance = DEFAULT_CAMERA_STATE.distance;
 
     @property
+    public defaultFocusX = DEFAULT_CAMERA_STATE.focus.x;
+
+    @property
+    public defaultFocusZ = DEFAULT_CAMERA_STATE.focus.z;
+
+    @property
+    public focusDistance = 0;
+
+    @property
     public focusHeight = 0;
 
     @property
@@ -102,7 +111,7 @@ export class MobileCameraController extends Component {
             yawDeg: this.defaultYawDeg,
             pitchDeg: this.defaultPitchDeg,
             distance: this.defaultDistance,
-            focus: { x: 0, z: 0 },
+            focus: { x: this.defaultFocusX, z: this.defaultFocusZ },
         }, this.tuning());
         this.applyCameraPose();
 
@@ -131,12 +140,30 @@ export class MobileCameraController extends Component {
     }
 
     public focusOnWorldTarget(target: Vec3): void {
+        if (this.focusDistance > 0) {
+            this.state = clampCameraState({
+                ...this.state,
+                distance: this.focusDistance,
+            }, this.tuning());
+        }
+
         this.focusTransition = startFocusTransition(
             this.state,
             { x: target.x, z: target.z },
             this.focusTransitionSeconds,
             this.tuning(),
         );
+    }
+
+    public applyConfiguredInitialView(): void {
+        this.focusTransition = null;
+        this.state = clampCameraState({
+            yawDeg: this.defaultYawDeg,
+            pitchDeg: this.defaultPitchDeg,
+            distance: this.defaultDistance,
+            focus: { x: this.defaultFocusX, z: this.defaultFocusZ },
+        }, this.tuning());
+        this.applyCameraPose();
     }
 
     public snapToWorldTarget(target: Vec3): void {
