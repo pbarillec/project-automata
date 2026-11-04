@@ -2,9 +2,11 @@ import { _decorator, Camera, Component, EventTouch, geometry, input, Input, Node
 import { MobileCameraController } from '../camera/MobileCameraController';
 import { TouchGestureTracker } from '../camera/TouchGestureModel';
 import { ProducerHighlight } from './ProducerHighlight';
-import { selectionTapSlopPixels } from './SelectionInput';
+import { formatSelectionDebugLine, SELECTION_DEBUG_LOG, selectionTapSlopPixels } from './SelectionInput';
 
 const { ccclass, property } = _decorator;
+
+type SelectionTouch = { getID(): number; getLocation(): Vec2; getStartLocation(): Vec2 };
 
 export const PRODUCER_SELECTION_IDS = ['Fabricator', 'AssemblyStation', 'RobotLine', 'AutomatedCell', 'AdvancedRoboticsComplex'] as const;
 export type ProducerSelectionId = typeof PRODUCER_SELECTION_IDS[number];
@@ -107,11 +109,28 @@ export class ProducerSelectionController extends Component {
     private onTouchEnd(event: EventTouch): void {
         const touch = this.primaryTouch(event); if (!touch) return;
         const location = touch.getLocation();
-        for (const output of this.tracker.end({ id: touch.getID(), x: location.x, y: location.y })) {
+        const outputs = this.tracker.end({ id: touch.getID(), x: location.x, y: location.y });
+        if (SELECTION_DEBUG_LOG) this.logSelectionDebug(touch, location, outputs.some((output) => output.type === 'tap'));
+        for (const output of outputs) {
             if (output.type !== 'tap') continue;
             const producerId = this.producerAtScreenPoint(output.x, output.y);
             if (producerId) this.selectProducer(producerId);
         }
+    }
+
+    /** TEMP AUT-038 human-gate diagnostic: remove with the AUT-038 harness. */
+    private logSelectionDebug(touch: SelectionTouch, location: Vec2, tap: boolean): void {
+        const start = touch.getStartLocation();
+        console.log(formatSelectionDebugLine({
+            moved: Math.hypot(location.x - start.x, location.y - start.y),
+            slop: this.tapSlopPixels,
+            tap,
+            hit: this.producerAtScreenPoint(location.x, location.y),
+            x: location.x,
+            y: location.y,
+            dpr: screen.devicePixelRatio,
+            shortSide: Math.min(screen.windowSize.width, screen.windowSize.height),
+        }));
     }
 
     private onTouchCancel(event: EventTouch): void {
@@ -144,8 +163,8 @@ export class ProducerSelectionController extends Component {
         return this.uiBlockerNodes.some((blocker) => blocker?.activeInHierarchy && blocker.getComponent(UITransform)?.getBoundingBoxToWorld().contains(screenPoint));
     }
 
-    private primaryTouch(event: EventTouch): { getID(): number; getLocation(): Vec2 } | null {
-        const maybeEvent = event as unknown as { touch?: { getID(): number; getLocation(): Vec2 } };
+    private primaryTouch(event: EventTouch): SelectionTouch | null {
+        const maybeEvent = event as unknown as { touch?: SelectionTouch };
         if (maybeEvent.touch) return maybeEvent.touch;
         const touches = event.getTouches();
         return touches.length > 0 ? touches[0] : null;

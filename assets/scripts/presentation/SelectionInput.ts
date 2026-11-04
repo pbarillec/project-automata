@@ -18,3 +18,10 @@ export function selectionTapSlopPixels(basePx: number, devicePixelRatio: number,
     const shortSide = Number.isFinite(shortSidePx) ? shortSidePx : 0;
     return Math.max(base * Math.max(1, dpr), SELECTION_TAP_SLOP_SHORT_SIDE_RATIO * Math.max(0, shortSide));
 }
+
+export const SELECTION_DEBUG_LOG = true; // TEMP AUT-038 human-gate diagnostic: remove with the AUT-038 harness
+
+/** TEMP AUT-038 human-gate diagnostic line (one per selection touch end); remove with the AUT-038 harness. */
+export function formatSelectionDebugLine(i: { moved: number; slop: number; tap: boolean; hit: string | null; x: number; y: number; dpr: number; shortSide: number }): string {
+    return `[AUT-038-HG] SELECT moved=${i.moved.toFixed(1)} slop=${i.slop.toFixed(1)} tap=${i.tap} hit=${i.hit ?? 'none'} x=${Math.round(i.x)} y=${Math.round(i.y)} dpr=${i.dpr} short=${Math.round(i.shortSide)}`;
+}
