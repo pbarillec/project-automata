@@ -28,12 +28,16 @@ export class ProducerSelectionController extends Component {
     private targetById = new Map<ProducerSelectionId, Node>();
 
     public onLoad(): void {
-        this.tracker = new TouchGestureTracker({ dragThresholdPixels: this.dragThresholdPixels, pinchMinDistancePixels: 4 });
-        this.rebuildTargetIndex();
         input.on(Input.EventType.TOUCH_START, this.onTouchStart, this);
         input.on(Input.EventType.TOUCH_MOVE, this.onTouchMove, this);
         input.on(Input.EventType.TOUCH_END, this.onTouchEnd, this);
         input.on(Input.EventType.TOUCH_CANCEL, this.onTouchCancel, this);
+    }
+
+    /** Runs after the bootstrap assigned selectableTargets/dragThresholdPixels (onLoad fires inside addComponent). */
+    public start(): void {
+        this.tracker = new TouchGestureTracker({ dragThresholdPixels: this.dragThresholdPixels, pinchMinDistancePixels: 4 });
+        this.rebuildTargetIndex();
     }
 
     public onDestroy(): void {
