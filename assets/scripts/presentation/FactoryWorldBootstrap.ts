@@ -114,7 +114,8 @@ export class FactoryWorldBootstrap extends Component {
         camera.fov = 45;
         camera.near = 0.1;
         camera.far = 200;
-        camera.visibility = Layers.Enum.ALL;
+        // UI_2D must not be visible to the world camera, so UI hit tests can't claim world touches.
+        camera.visibility = (Layers.Enum.ALL & ~Layers.Enum.UI_2D) >>> 0;
 
         const controller = rig.getComponent(MobileCameraController) ?? rig.addComponent(MobileCameraController);
         controller.cameraComponent = camera;

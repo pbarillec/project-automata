@@ -23,3 +23,9 @@ segment count were ignored. A text-level regression test in
 - `ProducerSelectionController` builds its gesture tracker and target index in `start()`: `onLoad` runs inside `addComponent`, before the bootstrap assigns `selectableTargets`, so the index was empty and taps never selected a producer.
 - `CoreHudController` and `ProducerPanelController` register `TOUCH_START/MOVE/END/CANCEL` on their own root node (640x310 HUD card, 600x330 panel card, not full-screen) and stop propagation, so HUD/panel touches no longer reach the camera or selection; child panel Buttons still receive their clicks first.
 - The selection marker is scaled `(0.5, 1, 0.5)` and placed at local y `-0.03`, so its footprint fits inside the zone and its bottom stays above module bases (world y 0.14).
+
+## AUT-R-035-03 correction
+
+- On device, taps did not select and camera orbit/pinch were dead: `FactoryWorldBootstrap` gave the only (perspective) `WorldCamera` `visibility = Layers.Enum.ALL`, so it included `UI_2D`. Cocos `UITransform.hitTest` tests a node through every camera whose visibility includes its layer; the WorldCamera's `screenToWorld` near-plane point (about the camera position, y 3.5-21.2) always fell inside the 600x330 ProducerPanel root rect at (28, 150), so the panel's AUT-R-035-02 touch blocker claimed every touch and the global camera/selection input listeners never ran.
+- The WorldCamera visibility is now `(Layers.Enum.ALL & ~Layers.Enum.UI_2D) >>> 0`. No UI camera was added. `tests/ui_input_routing.test.ts` models the near-plane hit test over the camera envelope: with `ALL` the panel root claims 864/864 samples; with the new mask the UI_2D roots and the DEFAULT-layer panel Buttons claim 0.
+- The HUD and producer panel are currently not visible on device (there is no camera rendering `UI_2D`). UI-bounds touch swallowing and panel-button behaviour are therefore unverified on device and deferred to a UI-visibility task.
