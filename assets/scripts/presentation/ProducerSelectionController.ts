@@ -1,7 +1,8 @@
-import { _decorator, Camera, Component, EventTouch, geometry, input, Input, Node, UITransform, Vec2 } from 'cc';
+import { _decorator, Camera, Component, EventTouch, geometry, input, Input, Node, screen, UITransform, Vec2 } from 'cc';
 import { MobileCameraController } from '../camera/MobileCameraController';
 import { TouchGestureTracker } from '../camera/TouchGestureModel';
 import { ProducerHighlight } from './ProducerHighlight';
+import { selectionTapSlopPixels } from './SelectionInput';
 
 const { ccclass, property } = _decorator;
 
@@ -23,6 +24,7 @@ export class ProducerSelectionController extends Component {
     @property public dragThresholdPixels = 12;
 
     public onSelectionChanged: ((producerId: ProducerSelectionState) => void) | null = null;
+    private tapSlopPixels = 12;
     private tracker = new TouchGestureTracker();
     private selectedProducerId: ProducerSelectionState = null;
     private targetById = new Map<ProducerSelectionId, Node>();
@@ -36,7 +38,8 @@ export class ProducerSelectionController extends Component {
 
     /** Runs after the bootstrap assigned selectableTargets/dragThresholdPixels (onLoad fires inside addComponent). */
     public start(): void {
-        this.tracker = new TouchGestureTracker({ dragThresholdPixels: this.dragThresholdPixels, pinchMinDistancePixels: 4 });
+        this.tapSlopPixels = selectionTapSlopPixels(this.dragThresholdPixels, screen.devicePixelRatio, Math.min(screen.windowSize.width, screen.windowSize.height));
+        this.tracker = new TouchGestureTracker({ dragThresholdPixels: this.tapSlopPixels, pinchMinDistancePixels: 4 });
         this.rebuildTargetIndex();
     }
 
