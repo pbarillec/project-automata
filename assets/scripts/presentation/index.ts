@@ -6,3 +6,5 @@ export * from './HudViewModel';
 export * from './CoreHudController';
 export * from './ProducerPanelViewModel';
 export * from './ProducerPanelController';
+export * from './AutomationPayoffViewModel';
+export * from './FirstAutomationPresentationController';

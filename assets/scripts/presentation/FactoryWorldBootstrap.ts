@@ -9,6 +9,7 @@ import {
     Mesh,
     MeshRenderer,
     Node,
+    Prefab,
     primitives,
     utils,
     Vec3,
@@ -21,8 +22,9 @@ import { FabricatorVisualController } from './FabricatorVisualController';
 import { ProducerSelectionController } from './ProducerSelectionController';
 import { CoreHudController } from './CoreHudController';
 import { ProducerPanelController } from './ProducerPanelController';
+import { FirstAutomationPresentationController } from './FirstAutomationPresentationController';
 
-const { ccclass } = _decorator;
+const { ccclass, property } = _decorator;
 
 export const FACTORY_ZONE_IDS = [
     'Fabricator',
@@ -45,12 +47,17 @@ const ZONE_LAYOUT: Record<FactoryZoneId, { x: number; z: number; width: number; 
 /** Builds the single persistent world shell; producer state belongs to later tasks. */
 @ccclass('FactoryWorldBootstrap')
 export class FactoryWorldBootstrap extends Component {
+    /** AUT-032 prefab references owned by the scene's stable bootstrap component. */
+    @property([Prefab])
+    public factoryPrefabs: Prefab[] = [];
+
     public start(): void {
         const site = this.node.getChildByName('FactorySite') ?? new Node('FactorySite');
         site.parent = this.node;
         if (!site.getChildByName('SiteBoundary')) this.createShell(site);
         this.createZones(site);
         this.createCameraRig(site);
+        this.connectFirstAutomationPresentation(site);
         if (!site.getChildByName('NeutralFactoryKeyLight')) this.createLighting(site);
         this.createPresentationRegistry(site);
         const selection = this.createProducerSelection(site);
@@ -78,10 +85,19 @@ export class FactoryWorldBootstrap extends Component {
                 : `${zoneId}_CompositionAnchor`;
             const composition = zone.getChildByName(compositionAnchorName) ?? new Node(compositionAnchorName);
             composition.parent = zone;
-            if (zoneId === 'Fabricator') composition.getComponent(FabricatorVisualController) ?? composition.addComponent(FabricatorVisualController);
+            if (zoneId === 'Fabricator') {
+                const fabricatorVisual = composition.getComponent(FabricatorVisualController)
+                    ?? composition.addComponent(FabricatorVisualController);
+                fabricatorVisual.factoryPrefabs = this.factoryPrefabs;
+                composition.getComponent(FirstAutomationPresentationController) ?? composition.addComponent(FirstAutomationPresentationController);
+            }
             const focus = zone.getChildByName(`${zoneId}_FocusAnchor`) ?? new Node(`${zoneId}_FocusAnchor`);
             focus.parent = zone;
-            focus.setPosition(0, 0.2, 0);
+            focus.setPosition(
+                zoneId === 'Fabricator' ? -0.35 : 0,
+                0.2,
+                zoneId === 'Fabricator' ? -0.1 : 0,
+            );
             const target = zone.getChildByName(`${zoneId}_SelectableTarget`) ?? new Node(`${zoneId}_SelectableTarget`);
             target.parent = zone;
             target.setPosition(0, 0.2, 0);
@@ -124,7 +140,11 @@ export class FactoryWorldBootstrap extends Component {
         controller.focusMaxZ = 8;
         controller.defaultYawDeg = 135;
         controller.defaultPitchDeg = 48;
-        controller.defaultDistance = 15;
+        controller.defaultDistance = 12.5;
+        controller.defaultFocusX = -3.8;
+        controller.defaultFocusZ = -1.8;
+        controller.focusDistance = 16.5;
+        controller.applyConfiguredInitialView();
     }
 
     private createLighting(parent: Node): void {
@@ -139,8 +159,21 @@ export class FactoryWorldBootstrap extends Component {
         const registry = parent.getChildByName('PresentationAnchors') ?? new Node('PresentationAnchors');
         registry.parent = parent;
         const controller = registry.getComponent(PresentationController) ?? registry.addComponent(PresentationController);
+        controller.firstAutomationPresentation = parent.getChildByName('Zone_Fabricator')
+            ?.getChildByName('Fabricator_CompositionAnchor')
+            ?.getComponent(FirstAutomationPresentationController) ?? null;
         controller.focusAnchors = FACTORY_ZONE_IDS.map((id) => parent.getChildByName(`Zone_${id}`)?.getChildByName(`${id}_FocusAnchor`)).filter((node): node is Node => node !== null && node !== undefined);
         controller.compositionAnchors = FACTORY_ZONE_IDS.map((id) => parent.getChildByName(`Zone_${id}`)?.getChildByName(`${id}_CompositionAnchor`)).filter((node): node is Node => node !== null && node !== undefined);
+    }
+
+    private connectFirstAutomationPresentation(parent: Node): void {
+        const zone = parent.getChildByName('Zone_Fabricator');
+        const composition = zone?.getChildByName('Fabricator_CompositionAnchor');
+        const presentation = composition?.getComponent(FirstAutomationPresentationController);
+        if (!composition || !presentation) return;
+        presentation.fabricatorVisual = composition.getComponent(FabricatorVisualController);
+        presentation.cameraController = parent.getChildByName('CameraRig')?.getComponent(MobileCameraController) ?? null;
+        presentation.focusAnchor = zone?.getChildByName('Fabricator_FocusAnchor') ?? null;
     }
 
     private createProducerSelection(parent: Node): ProducerSelectionController {

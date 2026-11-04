@@ -1,14 +1,56 @@
-import { _decorator, assetManager, Component, instantiate, Layers, Material, MeshRenderer, Node, primitives, utils, Vec3, Color } from 'cc';
+import {
+    _decorator,
+    Component,
+    instantiate,
+    Node,
+    Vec3,
+} from 'cc';
+import type { Prefab } from 'cc';
 import type { GameState } from '../state/GameState.ts';
-import { FabricatorDebugState, VisualStateDescriptor, VisualStateResolver } from './VisualStateResolver.ts';
+import {
+    FabricatorDebugState,
+    VisualStateDescriptor,
+    VisualStateResolver,
+} from './VisualStateResolver.ts';
 
 const { ccclass } = _decorator;
 
 const MODULE_NAMES = [
-    'base_compact_press', 'simple_output_tray', 'secondary_module', 'strong_status_indicator',
-    'auto_feeder_hopper', 'input_conveyor', 'autonomous_cycle_indicator', 'output_conveyor',
-    'storage_buffer', 'logistics_connection', 'dual_fabrication_module', 'shared_industrial_base',
-    'integrated_feeder', 'automated_input_output', 'small_robotic_arm', 'advanced_indicators',
+    'base_compact_press',
+    'simple_output_tray',
+    'secondary_module',
+    'strong_status_indicator',
+    'auto_feeder_hopper',
+    'input_conveyor',
+    'autonomous_cycle_indicator',
+    'output_conveyor',
+    'storage_buffer',
+    'logistics_connection',
+    'dual_fabrication_module',
+    'shared_industrial_base',
+    'integrated_feeder',
+    'automated_input_output',
+    'small_robotic_arm',
+    'advanced_indicators',
+] as const;
+
+const SERIALIZED_PREFAB_MODULES = [
+    'base_compact_press',
+    'simple_output_tray',
+    'secondary_module',
+    'strong_status_indicator',
+    'auto_feeder_hopper',
+    'input_conveyor',
+    'autonomous_cycle_indicator',
+    'output_conveyor',
+    'storage_buffer',
+    'logistics_connection',
+    'dual_fabrication_module',
+    'shared_industrial_base',
+    'integrated_feeder',
+    'automated_input_output',
+    'small_robotic_arm',
+    'advanced_indicators',
 ] as const;
 
 /** AUT-032 imported Kenney Factory Kit prefab sub-assets, selected by visual role. */
@@ -32,15 +74,26 @@ export const FABRICATOR_ASSET_REFERENCES: Readonly<Record<string, string>> = {
 /** Presentation-only Fabricator composition. It never writes to GameState. */
 @ccclass('FabricatorVisualController')
 export class FabricatorVisualController extends Component {
+    /** Prefab dependencies are supplied by FactoryWorldBootstrap at runtime. */
+    public factoryPrefabs: Prefab[] = [];
+
     private readonly resolver = new VisualStateResolver();
     private moduleNodes = new Map<string, Node>();
+    private moduleVisibility = new Map<string, boolean>();
 
     public start(): void {
         this.ensureModuleNodes();
+
         this.applyDescriptor({
-            producerId: 'fabricator', constructed: false, level: 0, milestoneTier: 0,
-            automationActive: false, eraId: null, technologyVariant: 'manual_workshop',
-            activityTier: 'unconstructed', modules: [],
+            producerId: 'fabricator',
+            constructed: false,
+            level: 0,
+            milestoneTier: 0,
+            automationActive: false,
+            eraId: null,
+            technologyVariant: 'manual_workshop',
+            activityTier: 'unconstructed',
+            modules: [],
         });
     }
 
@@ -62,61 +115,144 @@ export class FabricatorVisualController extends Component {
         return this.syncFromGameState(state);
     }
 
+    public getModuleNode(moduleName: string): Node | null {
+        this.ensureModuleNodes();
+        return this.moduleNodes.get(moduleName) ?? null;
+    }
+
+    public debugSetVisibleModules(moduleNames: readonly string[]): void {
+        this.ensureModuleNodes();
+
+        const visibleModules = new Set(moduleNames);
+
+        for (const moduleName of MODULE_NAMES) {
+            this.setModuleVisible(
+                moduleName,
+                visibleModules.has(moduleName),
+            );
+        }
+    }
+
     private ensureModuleNodes(): void {
         for (const moduleName of MODULE_NAMES) {
             if (this.moduleNodes.has(moduleName)) continue;
+
             const node = new Node(moduleName);
             node.parent = this.node;
             node.setPosition(this.positionFor(moduleName));
-            this.addPlaceholderMesh(node, moduleName);
-            this.loadApprovedAsset(node, moduleName);
+
+            /*
+             * Keep the complete 3D hierarchy alive. Visibility uses scale so
+             * Android Native does not have to deactivate/reactivate imported
+             * 3D scene nodes.
+             */
+            node.active = true;
+
             this.moduleNodes.set(moduleName, node);
+            this.moduleVisibility.set(moduleName, false);
+
+            this.setModuleVisible(moduleName, false);
+            this.instantiateSerializedAsset(node, moduleName);
         }
     }
 
     private applyDescriptor(descriptor: VisualStateDescriptor): void {
         this.ensureModuleNodes();
-        const visible = new Set(descriptor.modules);
-        for (const [name, node] of this.moduleNodes) node.active = visible.has(name);
+
+        const visibleModules = new Set(descriptor.modules);
+
+        for (const moduleName of MODULE_NAMES) {
+            this.setModuleVisible(
+                moduleName,
+                visibleModules.has(moduleName),
+            );
+        }
+    }
+
+    private setModuleVisible(moduleName: string, visible: boolean): void {
+        const node = this.moduleNodes.get(moduleName);
+        if (!node) return;
+
+        this.moduleVisibility.set(moduleName, visible);
+
+        node.active = true;
+        const rotation = this.rotationFor(moduleName);
+        node.setRotationFromEuler(rotation.x, rotation.y, rotation.z);
+        const scale = this.scaleFor(moduleName);
+        node.setScale(
+            visible ? scale.x : 0,
+            visible ? scale.y : 0,
+            visible ? scale.z : 0,
+        );
+    }
+
+    private scaleFor(moduleName: string): Vec3 {
+        const scales: Record<string, Vec3> = {
+            // Keep the manual state compact and centered around the press.
+            base_compact_press: new Vec3(1.05, 1.05, 1.05),
+            simple_output_tray: new Vec3(0.9, 0.9, 0.9),
+            secondary_module: new Vec3(0.58, 0.58, 0.58),
+            strong_status_indicator: new Vec3(0.28, 0.28, 0.28),
+
+            // Exaggerated separation makes the Auto Feeder silhouette read on
+            // a small screen instead of merging into the press.
+            auto_feeder_hopper: new Vec3(1.35, 1.3, 1.35),
+            input_conveyor: new Vec3(1.0, 1.05, 1.55),
+            autonomous_cycle_indicator: new Vec3(0.2, 0.2, 0.2),
+        };
+
+        return scales[moduleName] ?? new Vec3(1, 1, 1);
+    }
+
+    private rotationFor(moduleName: string): Vec3 {
+        const rotations: Record<string, Vec3> = {
+            // Aim the incoming belt from the left foreground into the press.
+            input_conveyor: new Vec3(0, 71, 0),
+            // Cant the hopper outward so its mouth remains visible beside the
+            // machine instead of disappearing behind the main asset.
+            auto_feeder_hopper: new Vec3(0, -14, 0),
+        };
+
+        return rotations[moduleName] ?? new Vec3(0, 0, 0);
     }
 
     private positionFor(moduleName: string): Vec3 {
         const positions: Record<string, Vec3> = {
-            base_compact_press: new Vec3(0, 0.65, 0), simple_output_tray: new Vec3(0, 0.18, 0.85),
-            secondary_module: new Vec3(0.9, 0.5, 0), strong_status_indicator: new Vec3(0, 1.3, 0),
-            auto_feeder_hopper: new Vec3(-0.8, 1.05, 0), input_conveyor: new Vec3(-1.35, 0.2, 0),
-            output_conveyor: new Vec3(1.35, 0.2, 0.85), storage_buffer: new Vec3(1.1, 0.55, -0.65),
-            dual_fabrication_module: new Vec3(-0.85, 0.65, 0), shared_industrial_base: new Vec3(0, 0.12, 0),
-            integrated_feeder: new Vec3(-0.85, 1.15, 0), automated_input_output: new Vec3(0, 0.2, 1.2),
-            small_robotic_arm: new Vec3(0.8, 1.1, 0.25), advanced_indicators: new Vec3(0, 1.45, 0),
+            base_compact_press: new Vec3(0, 0.65, 0),
+            simple_output_tray: new Vec3(0, 0.18, 0.85),
+            secondary_module: new Vec3(0.62, 0.66, 0.02),
+            strong_status_indicator: new Vec3(0, 1.25, -0.64),
+
+            auto_feeder_hopper: new Vec3(-2.05, 0.66, -0.75),
+            input_conveyor: new Vec3(-1.34, 0.24, -0.5),
+            autonomous_cycle_indicator: new Vec3(0.42, 1.58, -0.62),
+
+            output_conveyor: new Vec3(1.35, 0.2, 0.85),
+            storage_buffer: new Vec3(1.1, 0.55, -0.65),
+
+            dual_fabrication_module: new Vec3(-0.85, 0.65, 0),
+            shared_industrial_base: new Vec3(0, 0.12, 0),
+
+            integrated_feeder: new Vec3(-0.85, 1.15, 0),
+            automated_input_output: new Vec3(0, 0.2, 1.2),
+            small_robotic_arm: new Vec3(0.8, 1.1, 0.25),
+            advanced_indicators: new Vec3(0, 1.45, 0),
         };
+
         return positions[moduleName] ?? new Vec3();
     }
 
-    private addPlaceholderMesh(node: Node, moduleName: string): void {
-        const renderer = node.addComponent(MeshRenderer);
-        const geometry = primitives.box({ width: moduleName.includes('conveyor') ? 1.2 : 0.7, height: 0.35, length: 0.7 });
-        const meshFactory = utils as unknown as { MeshUtils?: { createMesh(geometry: unknown): unknown }; createMesh?: (geometry: unknown) => unknown };
-        renderer.mesh = (meshFactory.MeshUtils?.createMesh(geometry) ?? meshFactory.createMesh?.(geometry)) as any;
-        const material = new Material();
-        material.initialize({ effectName: 'builtin-unlit', defines: { USE_COLOR: true } });
-        material.setProperty('mainColor', moduleName.includes('indicator') ? new Color(61, 190, 205, 255) : new Color(101, 108, 110, 255));
-        renderer.setMaterial(material, 0);
-        node.layer = Layers.Enum.DEFAULT;
-    }
+    private instantiateSerializedAsset(moduleNode: Node, moduleName: string): void {
+        const prefabIndex = SERIALIZED_PREFAB_MODULES.indexOf(moduleName as typeof SERIALIZED_PREFAB_MODULES[number]);
+        const prefab = prefabIndex >= 0 ? this.factoryPrefabs[prefabIndex] : null;
+        if (!prefab) {
+            console.warn(`[AUT-038] Missing serialized prefab for ${moduleName}.`);
+            return;
+        }
 
-    private loadApprovedAsset(moduleNode: Node, moduleName: string): void {
-        const uuid = FABRICATOR_ASSET_REFERENCES[moduleName];
-        if (!uuid) return;
-        (assetManager as unknown as { loadAny: (request: unknown, callback: (error: Error | null, asset: unknown) => void) => void }).loadAny(
-            { uuid },
-            (error, asset) => {
-                if (error || !asset || !moduleNode.isValid) return;
-                const imported = instantiate(asset as any);
-                imported.name = `${moduleName}_KenneyAsset`;
-                imported.parent = moduleNode;
-                imported.setPosition(0, 0, 0);
-            },
-        );
+        const imported = instantiate(prefab);
+        imported.name = `${moduleName}_KenneyAsset`;
+        imported.parent = moduleNode;
+        imported.setPosition(0, 0, 0);
     }
 }
