@@ -24,6 +24,10 @@
 Thumbs.db
 Desktop.ini
 
+# Locally built/installed Android packages (device-test artifacts)
+*.apk
+*.aab
+
 # Mobile signing secrets
 .env
 .env.*
