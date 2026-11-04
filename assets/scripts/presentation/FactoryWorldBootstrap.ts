@@ -93,10 +93,12 @@ export class FactoryWorldBootstrap extends Component {
             }
             const focus = zone.getChildByName(`${zoneId}_FocusAnchor`) ?? new Node(`${zoneId}_FocusAnchor`);
             focus.parent = zone;
+            // AUT-038 reveal target: centre of the Fabricator production line
+            // (input belt end z 1.9 .. output tray end z -1.6).
             focus.setPosition(
-                zoneId === 'Fabricator' ? -0.35 : 0,
+                0,
                 0.2,
-                zoneId === 'Fabricator' ? -0.1 : 0,
+                zoneId === 'Fabricator' ? 0.15 : 0,
             );
             const target = zone.getChildByName(`${zoneId}_SelectableTarget`) ?? new Node(`${zoneId}_SelectableTarget`);
             target.parent = zone;
@@ -144,7 +146,8 @@ export class FactoryWorldBootstrap extends Component {
         controller.defaultDistance = 12.5;
         controller.defaultFocusX = -3.8;
         controller.defaultFocusZ = -1.8;
-        controller.focusDistance = 16.5;
+        // AUT-038 reveal pushes in from the 12.5 default so the feeder line reads.
+        controller.focusDistance = 9.5;
         controller.applyConfiguredInitialView();
     }
 

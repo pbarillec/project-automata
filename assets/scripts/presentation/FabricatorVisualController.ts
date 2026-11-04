@@ -186,18 +186,36 @@ export class FabricatorVisualController extends Component {
         );
     }
 
+    /*
+     * AUT-038 production-line composition (AUT-VIS correction).
+     *
+     * Measured AUT-032 asset facts (GLB POSITION bounds, unit scale):
+     * - every module pivot is bottom-centre (min y = 0), so a module rests on
+     *   a surface when its node y equals that surface height;
+     * - machine.glb is a 1.2 x 1.3 x 1.5 gantry whose tunnel (1.0 wide,
+     *   ~1.0 high, open floor) runs along local X; its local -X mouth is the
+     *   input and +X mouth the output;
+     * - conveyor.glb is 1.0 x 0.4 x 1.0 with its rollers at local +/-X, so
+     *   belt travel is local X (length scales X, width scales Z);
+     * - hopper-square.glb is 1.12 x 1.0 x 1.12 with a 0.5 outlet at y = 0.
+     *
+     * All production-line modules share rotation Y = 90 so the tunnel, input
+     * belt and output tray sit on one axis (world +Z = upstream). Belts are
+     * 0.9 wide inside the 1.05 tunnel and their 0.5 belt top is shared by the
+     * hopper outlet and the product block.
+     */
     private scaleFor(moduleName: string): Vec3 {
         const scales: Record<string, Vec3> = {
-            // Keep the manual state compact and centered around the press.
             base_compact_press: new Vec3(1.05, 1.05, 1.05),
             simple_output_tray: new Vec3(0.9, 0.9, 0.9),
-            secondary_module: new Vec3(0.58, 0.58, 0.58),
+            secondary_module: new Vec3(0.5, 0.5, 0.5),
             strong_status_indicator: new Vec3(0.28, 0.28, 0.28),
 
-            // Exaggerated separation makes the Auto Feeder silhouette read on
-            // a small screen instead of merging into the press.
-            auto_feeder_hopper: new Vec3(1.35, 1.3, 1.35),
-            input_conveyor: new Vec3(1.0, 1.05, 1.55),
+            // The feeder stays subordinate to the press (0.9 tall vs 1.37)
+            // while its open mouth still reads from the default pitch.
+            auto_feeder_hopper: new Vec3(0.9, 0.9, 0.9),
+            // Length 1.8 along travel (X); same 0.9 width/height as the tray.
+            input_conveyor: new Vec3(1.8, 0.9, 0.9),
             autonomous_cycle_indicator: new Vec3(0.2, 0.2, 0.2),
         };
 
@@ -206,11 +224,15 @@ export class FabricatorVisualController extends Component {
 
     private rotationFor(moduleName: string): Vec3 {
         const rotations: Record<string, Vec3> = {
-            // Aim the incoming belt from the left foreground into the press.
-            input_conveyor: new Vec3(0, 71, 0),
-            // Cant the hopper outward so its mouth remains visible beside the
-            // machine instead of disappearing behind the main asset.
-            auto_feeder_hopper: new Vec3(0, -14, 0),
+            // Tunnel axis, belt travel and tray travel all along world Z.
+            base_compact_press: new Vec3(0, 90, 0),
+            simple_output_tray: new Vec3(0, 90, 0),
+            secondary_module: new Vec3(0, 90, 0),
+            auto_feeder_hopper: new Vec3(0, 90, 0),
+            input_conveyor: new Vec3(0, 90, 0),
+            // Screen panels face world +X, toward the default camera side.
+            strong_status_indicator: new Vec3(0, -90, 0),
+            autonomous_cycle_indicator: new Vec3(0, -90, 0),
         };
 
         return rotations[moduleName] ?? new Vec3(0, 0, 0);
@@ -218,15 +240,25 @@ export class FabricatorVisualController extends Component {
 
     private positionFor(moduleName: string): Vec3 {
         const positions: Record<string, Vec3> = {
-            base_compact_press: new Vec3(0, 0.65, 0),
-            simple_output_tray: new Vec3(0, 0.18, 0.85),
-            secondary_module: new Vec3(0.62, 0.66, 0.02),
-            strong_status_indicator: new Vec3(0, 1.25, -0.64),
+            // Floor = foundation top (0.14). Machine tunnel spans z -0.93..0.33.
+            base_compact_press: new Vec3(0, 0.14, -0.3),
+            // Output tray z -1.6..-0.7: starts 0.23 inside the output mouth.
+            simple_output_tray: new Vec3(0, 0.14, -1.15),
+            // Product block resting on the tray top, just outside the mouth.
+            secondary_module: new Vec3(0, 0.5, -1.28),
+            // On the press roof (roof top 1.40), output half.
+            strong_status_indicator: new Vec3(0.25, 1.4, -0.57),
 
-            auto_feeder_hopper: new Vec3(-2.05, 0.66, -0.75),
-            input_conveyor: new Vec3(-1.34, 0.24, -0.5),
-            autonomous_cycle_indicator: new Vec3(0.42, 1.58, -0.62),
+            // Hopper outlet resting on the upstream end of the input belt.
+            auto_feeder_hopper: new Vec3(0, 0.5, 1.38),
+            // Input belt z 0.1..1.9: ends 0.23 inside the input mouth.
+            input_conveyor: new Vec3(0, 0.14, 1.0),
+            // On the press roof, input half (next to the feeder).
+            autonomous_cycle_indicator: new Vec3(0.25, 1.4, -0.03),
 
+            // Later-milestone modules below were authored for the previous
+            // layout and are not part of AUT-038; recompose them in their own
+            // AUT-VIS pass.
             output_conveyor: new Vec3(1.35, 0.2, 0.85),
             storage_buffer: new Vec3(1.1, 0.55, -0.65),
 
