@@ -258,17 +258,37 @@ export async function runC3Scenario(driver: DeviceDriver, partial: Partial<C3Opt
         let projection = projectionOf(ready.event);
         let selectedNow = (ready.event.selected as string | null | undefined) ?? null;
 
-        // Reveal (AUT-038) moves the camera: wait for it and for the focus to settle before projecting.
-        const reveal = await stream.waitFor((e) => e.evt === 'reveal_state' && e.state === 'automated', 0, options.timeouts.revealMs);
-        if (!reveal) warnings.push('reveal_state=automated not observed; continuing with the current camera');
-        else pass('reveal_complete', 'launch');
-        const revealCursor = reveal ? reveal.record.index : readyCursor;
-        const focusStarted = await stream.waitFor((e) => e.evt === 'camera_focus' && e.phase === 'started', revealCursor, 1_000);
-        if (focusStarted) {
-            const settled = await stream.waitFor((e) => e.evt === 'camera_focus' && (e.phase === 'settled' || e.phase === 'cancelled'), focusStarted.record.index, options.timeouts.settleMs);
-            if (!settled) warnings.push('reveal focus did not settle in time');
-            const projected = await stream.waitFor((e) => e.evt === 'zones_projected', focusStarted.record.index, options.timeouts.projectionMs);
-            if (projected) projection = projectionOf(projected.event) ?? projection;
+        // AUT-INFRA-001a deterministic reveal gate. The reveal controller announces at start()
+        // whether a reveal is scheduled (pending) or the presentation is at rest (idle); a reveal
+        // reports started → complete once its camera focus has finished. Never wait on a timer.
+        const firstReveal = await stream.waitFor((e) => e.evt === 'reveal_state', 0, 2_000);
+        const revealPhase = firstReveal ? stream.allEvents().filter((e) => e.evt === 'reveal_state').pop()?.phase : undefined;
+        if (!firstReveal || typeof revealPhase !== 'string') {
+            warnings.push('APK emits no phased reveal_state (pre-AUT-INFRA-001a build); proceeding without a reveal gate');
+        } else if (revealPhase === 'pending' || revealPhase === 'started' || revealPhase === 'complete') {
+            // A reveal was scheduled; it may already have completed by the time we look.
+            const done = await stream.waitFor((e) => e.evt === 'reveal_state' && e.phase === 'complete', firstReveal.record.index, options.timeouts.revealMs);
+            if (!done) {
+                const errors = errorLinesSince(readyCursor);
+                assertions.push({ id: 'reveal_complete', step: 'launch', ok: false });
+                failure = {
+                    failureClass: errors.length > 0 ? 'RUNTIME_ERROR' : 'CAMERA_FOCUS', assertion: 'reveal_complete', step: 'launch',
+                    expected: { evt: 'reveal_state', phase: 'complete' },
+                    actual: { lastPhase: stream.allEvents().filter((e) => e.evt === 'reveal_state').pop()?.phase ?? null, runtimeErrors: errors.length },
+                    evidenceLines: [...stream.recordsSince(firstReveal.record.index).filter((r) => r.event?.evt === 'reveal_state' || r.event?.evt === 'camera_focus').map((r) => r.line).slice(0, 10), ...errors.slice(0, 10)],
+                };
+                throw new Error('stop');
+            }
+            pass('reveal_complete', 'launch');
+            if (done.event.focusRequested === true) {
+                const started = stream.allEvents().filter((e) => e.evt === 'reveal_state' && e.phase === 'started').pop();
+                const startedRecord = stream.records.find((r) => r.event === started);
+                const projected = await stream.waitFor((e) => e.evt === 'zones_projected', startedRecord?.index ?? done.record.index, options.timeouts.projectionMs);
+                if (projected) projection = projectionOf(projected.event) ?? projection;
+                else warnings.push('no zones_projected after the reveal focus; using the last projection');
+            }
+        } else {
+            pass('reveal_at_rest', 'launch');
         }
         await sleep(300);
         if (!projection) {

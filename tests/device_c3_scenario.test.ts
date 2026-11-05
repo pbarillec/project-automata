@@ -42,15 +42,21 @@ async function simulatedDevice(mode, devices = [{ serial: 'SIM', state: 'device'
         async forceStop() {},
         async launch() {
             emit('scene_ready', { reason: 'bootstrap_loaded' });
+            // AUT-INFRA-001a phased reveal signal (HG-era build: pending → started → complete).
+            if (mode === 'reveal_idle') emit('reveal_state', { phase: 'idle', source: 'none', automated: false });
+            else if (mode !== 'no_reveal_state') emit('reveal_state', { phase: 'pending', source: 'human_gate', automated: false });
             if (mode === 'empty_index') {
                 stream.pushLine("11-05 16:44:57.947 1 2 E Cocos   : 16:44:57 [ERROR]: JS: TypeError: Cannot read properties of null (reading 'lightProbeInfo')");
                 stream.pushLine('11-05 16:44:57.947 1 2 E Cocos   :     at ProducerHighlight.ensureMarker (assets/main/index.js:1:1)');
             } else {
                 emit('scene_ready', projection('scene_ready'));
             }
-            emit('reveal_state', { state: 'automated' });
+            if (mode === 'reveal_idle') return;
+            if (mode !== 'no_reveal_state') emit('reveal_state', { phase: 'started', source: 'human_gate', automated: true, focusRequested: true });
             emit('camera_focus', { phase: 'started' });
+            if (mode === 'reveal_stuck') return;
             emit('camera_focus', { phase: 'settled' });
+            if (mode !== 'no_reveal_state') emit('reveal_state', { phase: 'complete', source: 'human_gate', automated: true, focusRequested: true, reason: 'focus_finished' });
             emit('zones_projected', projection('camera_settled'));
         },
         async pidOf() { return 1234; },
@@ -123,6 +129,39 @@ test('AUT-INFRA-001 C3 (simulated): correct build → PASS with ordered chain, s
     assert.ok(result.evidence.screenshots.length >= 7);
     assert.equal(JSON.parse(fs.readFileSync(paths.result, 'utf8')).run_id, 'sim-pass');
     assert.ok(paths.runDir.endsWith('sim-pass'));
+});
+
+test('AUT-INFRA-001a C3 (simulated): deterministic reveal gate — pending→complete, idle, old APK, stuck reveal', async () => {
+    const pending = await run('pass');
+    assert.ok(pending.result.assertions.some((a) => a.id === 'reveal_complete' && a.ok));
+    assert.equal(pending.result.warnings.length, 0);
+
+    const idle = await run('reveal_idle');
+    assert.equal(idle.result.status, 'PASS', JSON.stringify(idle.result.first_failed_assertion));
+    assert.ok(idle.result.assertions.some((a) => a.id === 'reveal_at_rest' && a.ok));
+    assert.ok(!idle.result.assertions.some((a) => a.id === 'reveal_complete'));
+
+    const legacy = await run('no_reveal_state');
+    assert.equal(legacy.result.status, 'PASS', JSON.stringify(legacy.result.first_failed_assertion));
+    assert.ok(legacy.result.warnings.some((w) => /no phased reveal_state/.test(w)));
+
+    const stuck = await run('reveal_stuck');
+    assert.deepEqual(stuck.schemaErrors, []);
+    assert.equal(stuck.result.status, 'FAIL');
+    assert.equal(stuck.result.failure_class, 'CAMERA_FOCUS');
+    assert.equal(stuck.result.first_failed_assertion.id, 'reveal_complete');
+    assert.equal(stuck.result.actual.lastPhase, 'started');
+});
+
+test('AUT-INFRA-001a: reveal phases are emit-only, DEBUG-gated and independent of the human-gate timer', async () => {
+    const source = fs.readFileSync(path.join(repoRoot, 'assets/scripts/presentation/FirstAutomationPresentationController.ts'), 'utf8');
+    for (const phase of ['pending', 'idle', 'started', 'complete']) assert.match(source, new RegExp(`'${phase}'`), phase);
+    // `started` is emitted from both reveal paths: the human-gate timer and the runtime focus beat.
+    assert.match(source, /emitRevealStarted\('runtime', true\)/);
+    assert.match(source, /emitRevealStarted\('human_gate', true\)/);
+    // Completion is polled through the camera's existing read-only getter, not a timer.
+    assert.match(source, /isFocusTransitionActive\(\)/);
+    assert.doesNotMatch(source, /emitDeviceEvent\('reveal_state', \{ state:/, 'legacy visibility-based reveal_state removed');
 });
 
 test('AUT-INFRA-001 C3 (simulated): each broken build yields its class and stops at the first failure', async () => {

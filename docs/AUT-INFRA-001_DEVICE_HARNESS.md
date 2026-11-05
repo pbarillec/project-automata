@@ -140,3 +140,24 @@ The fix belongs to AUT-038 / AUT-R-033 (scene globals, or marker creation that d
 - The `[AUT-038-HG]` cleanup stays with the AUT-038 closure.
 - Subjective gates (visual, camera feel, game feel) remain human.
 - The `device-validator` agent registers after a session restart.
+
+## AUT-INFRA-001a: deterministic reveal-complete signal
+
+Before this change, C3 waited up to 20 s for `reveal_state=automated`. That event came only from the temporary AUT-038 human-gate timer. When it never arrived, the harness logged a warning and moved on. A late reveal could then move the camera in the middle of the scenario.
+
+`reveal_state` now carries `phase` (`idle | pending | started | complete`), `source` (`human_gate | runtime | none`), `automated` and `focusRequested`. The events stay emit-only and DEBUG-gated.
+
+- `FirstAutomationPresentationController.start()` emits one of two phases:
+  - `pending`, when a reveal is scheduled (today: the human-gate timer);
+  - `idle`, when nothing is scheduled.
+- Both reveal paths emit `started`: the human-gate automation and the runtime focus beat (`requestBoundedFocus`).
+- `complete` follows when the camera focus transition ends, whether it settled or was cancelled. The controller polls the existing read-only `MobileCameraController.isFocusTransitionActive()`; `camera/**` is unchanged. If no focus could be requested, `complete` is emitted immediately.
+- The older reveal event, which fired on each change of the indicator's visibility, is removed.
+
+The harness gate in C3, after `scene_ready`:
+- **`idle`:** the assertion `reveal_at_rest` passes and the scenario proceeds.
+- **`pending`, `started` or `complete`:** the scenario waits for `complete`. It then re-projects zones from the first `zones_projected` after the reveal started, and asserts `reveal_complete`.
+  - If `complete` never arrives, the run fails `reveal_complete` as `CAMERA_FOCUS`, or as `RUNTIME_ERROR` if errors were seen after `scene_ready`.
+- **No phased `reveal_state` (an APK built before this change):** the run logs a warning and proceeds.
+
+Scenario tests cover the pending→complete, idle, legacy and stuck paths. A source test checks that both reveal paths emit `started`, and that completion is polled rather than timed.
