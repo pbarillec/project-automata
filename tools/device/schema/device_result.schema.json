@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-automata/device-result/1",
+  "title": "AUT-INFRA-001 device validation result",
+  "type": "object",
+  "required": [
+    "schema_version", "task_id", "scenario_id", "run_id", "started_at", "finished_at",
+    "apk", "device", "status", "review_decision", "failure_class", "first_failed_assertion",
+    "expected", "actual", "next_owner", "retry_without_code_change", "required_human_action",
+    "assertions", "warnings", "evidence"
+  ],
+  "properties": {
+    "schema_version": { "const": "aut-device-result/1" },
+    "task_id": { "type": "string", "minLength": 1 },
+    "scenario_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+    "started_at": { "type": "string", "minLength": 1 },
+    "finished_at": { "type": "string", "minLength": 1 },
+    "apk": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": ["string", "null"] },
+        "sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "device": {
+      "type": ["object", "null"],
+      "required": ["serial"],
+      "properties": {
+        "serial": { "type": "string", "minLength": 1 },
+        "model": { "type": ["string", "null"] },
+        "android_release": { "type": ["string", "null"] },
+        "sdk": { "type": ["string", "null"] }
+      }
+    },
+    "status": { "enum": ["PASS", "FAIL", "BLOCKED"] },
+    "review_decision": { "enum": ["PASS", "CHANGES_REQUESTED", "HUMAN_REVIEW_REQUIRED", "BLOCKED"] },
+    "failure_class": {
+      "enum": [null, "INPUT_NOT_RECEIVED", "TAP_CLASSIFICATION", "RAYCAST_MISS", "SELECTION_STATE",
+        "MARKER_PRESENTATION", "CAMERA_FOCUS", "RUNTIME_ERROR", "ENVIRONMENT"]
+    },
+    "first_failed_assertion": {
+      "type": ["object", "null"],
+      "required": ["id", "step", "evidence_lines"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "step": { "type": "string", "minLength": 1 },
+        "evidence_lines": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "next_owner": { "type": ["string", "null"] },
+    "retry_without_code_change": { "type": "boolean" },
+    "required_human_action": { "type": ["string", "null"] },
+    "assertions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "step", "ok"],
+        "properties": {
+          "id": { "type": "string" },
+          "step": { "type": "string" },
+          "ok": { "type": "boolean" }
+        }
+      }
+    },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "steps": { "type": "array", "items": { "type": "object" } },
+    "evidence": {
+      "type": "object",
+      "required": ["run_dir", "result", "logcat", "events", "screenshots"],
+      "properties": {
+        "run_dir": { "type": "string" },
+        "result": { "type": "string" },
+        "logcat": { "type": ["string", "null"] },
+        "events": { "type": ["string", "null"] },
+        "screenshots": { "type": "array", "items": { "type": "string" } },
+        "meminfo": { "type": ["string", "null"] },
+        "gfxinfo": { "type": ["string", "null"] },
+        "summary": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

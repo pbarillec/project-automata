@@ -5,6 +5,7 @@ import { MobileCameraController } from '../camera/MobileCameraController';
 import { AutomationPayoffViewModel } from './AutomationPayoffViewModel.ts';
 import type { AutomationPayoffSnapshot } from './AutomationPayoffViewModel.ts';
 import { FabricatorVisualController } from './FabricatorVisualController';
+import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
 
 const { ccclass, property } = _decorator;
 
@@ -31,6 +32,8 @@ export class FirstAutomationPresentationController extends Component {
     private snapshotValue: AutomationPayoffSnapshot | null = null;
 
     private activityIndicatorVisible = false;
+    // AUT-INFRA-001: last reveal state reported to device diagnostics (null = none yet).
+    private diagnosticsRevealVisible: boolean | null = null;
 
     // TEMP AUT-038 human-gate harness state.
     private humanGateState: GameState | null = null;
@@ -151,6 +154,10 @@ export class FirstAutomationPresentationController extends Component {
     }
 
     private setActivityIndicatorVisible(visible: boolean): void {
+        if (this.diagnosticsRevealVisible !== visible && isDeviceDiagnosticsEnabled()) {
+            this.diagnosticsRevealVisible = visible;
+            emitDeviceEvent('reveal_state', { state: visible ? 'automated' : 'manual', hasIndicator: this.activityIndicator !== null });
+        }
         if (!this.activityIndicator) return;
 
         this.activityIndicatorVisible = visible;

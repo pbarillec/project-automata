@@ -16,7 +16,9 @@ import {
     Color,
     UITransform,
 } from 'cc';
+import { DEBUG } from 'cc/env';
 import { MobileCameraController } from '../camera/MobileCameraController';
+import { configureDeviceDiagnostics, emitDeviceEvent, installDeviceErrorHook } from './DeviceDiagnostics';
 import { PresentationController } from './PresentationController';
 import { FabricatorVisualController } from './FabricatorVisualController';
 import { ProducerSelectionController } from './ProducerSelectionController';
@@ -50,6 +52,13 @@ export class FactoryWorldBootstrap extends Component {
     /** AUT-032 prefab references owned by the scene's stable bootstrap component. */
     @property([Prefab])
     public factoryPrefabs: Prefab[] = [];
+
+    /** AUT-INFRA-001: structured [AUT-DEVICE] diagnostics exist only in DEBUG builds; release builds never emit. */
+    public onLoad(): void {
+        configureDeviceDiagnostics({ enabled: DEBUG === true });
+        installDeviceErrorHook();
+        emitDeviceEvent('scene_ready', { reason: 'bootstrap_loaded', scene: 'FactoryWorld' });
+    }
 
     public start(): void {
         const site = this.node.getChildByName('FactorySite') ?? new Node('FactorySite');
