@@ -27,6 +27,8 @@ export const DEVICE_EVENT_TYPES = [
     'session_state',
     // AUT-R-036: HUD / panel / Button screen rectangles (bottom-left window frame) after session ready and on resize.
     'ui_layout',
+    // AUT-UI-001: the session's result for each submitted command: { command, ok, reason, eventTypes, industrialOutput }.
+    'command_result',
     'error',
 ] as const;
 

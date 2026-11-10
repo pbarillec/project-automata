@@ -26,12 +26,30 @@ export interface UiRowSpec {
     readonly fontSize: number;
 }
 
+/** One Button inside an action row (its own rect; buttons sit left to right). */
+export interface UiActionSpec {
+    readonly key: string;
+    readonly width: number;
+}
+
+/**
+ * AUT-UI-001: a row of side-by-side Buttons below the label rows. The buttons plus the gaps between
+ * them fill the row width exactly (tested).
+ */
+export interface UiActionRowSpec {
+    readonly height: number;
+    readonly fontSize: number;
+    readonly gap: number;
+    readonly actions: readonly UiActionSpec[];
+}
+
 export interface UiCardSpec {
     readonly name: string;
     readonly width: number;
     readonly padding: number;
     readonly corner: UiCorner;
     readonly rows: readonly UiRowSpec[];
+    readonly actionRow?: UiActionRowSpec;
 }
 
 /** Screen rectangle, bottom-left origin (the Cocos screen/touch frame). */
@@ -55,7 +73,25 @@ export const CORE_HUD_LAYOUT: UiCardSpec = {
         { key: 'FreeOverclockValue', height: 28, fontSize: 20 },
         { key: 'FreeOverclockTimer', height: 28, fontSize: 20 },
     ],
+    // AUT-UI-001: Manual Produce (permanent) and the Next Goal unlock, side by side in one row so the HUD
+    // stays clear of the projected producer zones on the NE2215. 52 units (78 px at 1080p) is taller
+    // than the panel's 44-unit Buttons for touch comfort; the Next Goal button is wider for its cost text.
+    // Font 21: on the NE2215 "Manual Produce" measured ~0.52 × fontSize per character (wider than the
+    // 0.48 estimate), so 160 units hold it without SHRINK while the Next Goal caption keeps 272 (Android
+    // floors label pixels: 21 renders as 20.67 design units at 1080p).
+    actionRow: {
+        height: 52,
+        fontSize: 21,
+        gap: 8,
+        actions: [
+            { key: 'ManualProduceAction', width: 160 },
+            { key: 'NextGoalAction', width: 272 },
+        ],
+    },
 };
+
+export const HUD_ACTION_KEYS = ['ManualProduceAction', 'NextGoalAction'] as const;
+export type HudActionKey = typeof HUD_ACTION_KEYS[number];
 
 export const PRODUCER_PANEL_LAYOUT: UiCardSpec = {
     name: 'ProducerPanel',
@@ -78,7 +114,21 @@ export const PANEL_ACTION_KEYS = ['Action_x1', 'Action_x10', 'Action_xMax'] as c
 export type PanelActionKey = typeof PANEL_ACTION_KEYS[number];
 
 export function cardHeight(card: UiCardSpec): number {
-    return card.padding * 2 + card.rows.reduce((sum, row) => sum + row.height, 0);
+    return card.padding * 2 + card.rows.reduce((sum, row) => sum + row.height, 0) + (card.actionRow?.height ?? 0);
+}
+
+/**
+ * AUT-UI-001: local centre and size of action `key` (relative to the card centre). The action row sits
+ * directly below the last label row.
+ */
+export function cardActionRect(card: UiCardSpec, key: string): { x: number; y: number; w: number; h: number } {
+    const row = card.actionRow;
+    const index = row ? row.actions.findIndex((action) => action.key === key) : -1;
+    if (!row || index < 0) throw new RangeError(`${card.name} has no action ${key}`);
+    let left = -card.width / 2 + card.padding;
+    for (let i = 0; i < index; i += 1) left += row.actions[i].width + row.gap;
+    const width = row.actions[index].width;
+    return { x: left + width / 2, y: -cardHeight(card) / 2 + card.padding + row.height / 2, w: width, h: row.height };
 }
 
 /** Row width inside the card's horizontal padding. */
@@ -112,6 +162,8 @@ export interface UiLayoutResult {
     hud: UiRect;
     panel: UiRect;
     buttons: Record<PanelActionKey, UiRect>;
+    /** AUT-UI-001 HUD action Buttons (Manual Produce, Next Goal unlock). */
+    hudButtons: Record<HudActionKey, UiRect>;
     /** Every row rect (label node at its layout size; labels shrink rather than resize the node). */
     rows: { hud: Record<string, UiRect>; panel: Record<string, UiRect> };
 }
@@ -155,7 +207,17 @@ export function computeUiLayout(
         if (!rows.panel[key]) throw new Error(`${panelCard.name} has no ${key} row`);
         buttons[key] = rows.panel[key];
     }
-    return { scale, screen: { x: 0, y: 0, w: screenPx.w, h: screenPx.h }, safeArea: { ...safeAreaPx }, hud, panel, buttons, rows };
+    const hudButtons = {} as Record<HudActionKey, UiRect>;
+    for (const key of HUD_ACTION_KEYS) {
+        const local = cardActionRect(hudCard, key);
+        hudButtons[key] = {
+            x: hud.x + hud.w / 2 + (local.x - local.w / 2) * scale,
+            y: hud.y + hud.h / 2 + (local.y - local.h / 2) * scale,
+            w: local.w * scale,
+            h: local.h * scale,
+        };
+    }
+    return { scale, screen: { x: 0, y: 0, w: screenPx.w, h: screenPx.h }, safeArea: { ...safeAreaPx }, hud, panel, buttons, hudButtons, rows };
 }
 
 export function rectArea(rect: UiRect): number {

@@ -25,6 +25,8 @@
     "hud.free_overclock.cooldown": "Free Overclock: Cooldown",
     "hud.free_overclock.suspended": "Free Overclock: Paused",
     "hud.free_overclock.timer": "{seconds}s",
+    "hud.action.manual_produce": "Manual Produce",
+    "hud.action.next_goal_unlock": "Unlock",
     "next_goal.producer_build": "Build {name}",
     "next_goal.producer_build.generic": "Build next producer",
     "next_goal.producer_milestone": "Reach {name} Lv {level}",

@@ -176,3 +176,65 @@ test('UiLayout rows fit the longest representative catalogue strings at their no
         }
     }
 });
+
+// AUT-UI-001: the HUD action row (Manual Produce, Next Goal unlock).
+test('UiLayout AUT-UI-001: HUD action Buttons have their own rects inside the HUD, never overlap, and fit every screen', async () => {
+    const L = await layoutModule();
+    const row = L.CORE_HUD_LAYOUT.actionRow;
+    assert.ok(row, 'CORE_HUD_LAYOUT has an action row');
+    assert.deepEqual(row.actions.map((action) => action.key), [...L.HUD_ACTION_KEYS]);
+    assert.equal(row.actions.reduce((sum, action) => sum + action.width, 0) + row.gap * (row.actions.length - 1), L.cardRowWidth(L.CORE_HUD_LAYOUT), 'buttons + gaps fill the row width');
+    assert.ok(row.gap > 0);
+    assert.ok(row.fontSize >= L.UI_MIN_BODY_FONT_SIZE && row.height >= row.fontSize);
+    // Touch comfort: at least as tall as the panel's Buttons.
+    const panelButtonHeight = Math.max(...L.PRODUCER_PANEL_LAYOUT.rows.filter((r) => r.key.startsWith('Action_')).map((r) => r.height));
+    assert.ok(row.height >= panelButtonHeight, `action row ${row.height} < panel buttons ${panelButtonHeight}`);
+    // The action row sits below the last label row, inside the card's padding.
+    const card = L.CORE_HUD_LAYOUT;
+    const lastIndex = card.rows.length - 1;
+    const lastRowBottom = L.cardRowCenterY(card, lastIndex) - card.rows[lastIndex].height / 2;
+    for (const key of L.HUD_ACTION_KEYS) {
+        const local = L.cardActionRect(card, key);
+        assert.ok(local.y + local.h / 2 <= lastRowBottom + 1e-9, `${key} below the label rows`);
+        assert.ok(local.y - local.h / 2 >= -L.cardHeight(card) / 2 + card.padding - 1e-9, `${key} inside the bottom padding`);
+        assert.ok(Math.abs(local.x) + local.w / 2 <= card.width / 2 - card.padding + 1e-9, `${key} inside the side padding`);
+    }
+    assert.throws(() => L.cardActionRect(card, 'Missing'), RangeError);
+    assert.throws(() => L.cardActionRect(L.PRODUCER_PANEL_LAYOUT, 'ManualProduceAction'), RangeError);
+    for (const screen of SCREENS) {
+        const layout = L.computeUiLayout({ w: screen.w, h: screen.h }, screen.safe ?? undefined);
+        const [manual, nextGoal] = L.HUD_ACTION_KEYS.map((key) => layout.hudButtons[key]);
+        // Shared edges are not overlaps (float rounding at non-integer scales).
+        const shrink = (r) => ({ x: r.x + 1e-6, y: r.y + 1e-6, w: r.w - 2e-6, h: r.h - 2e-6 });
+        for (const [key, rect] of Object.entries(layout.hudButtons)) {
+            assert.ok(L.rectContains(layout.hud, rect, 1), `${screen.name} ${key} inside the HUD`);
+            assert.ok(L.rectContains(layout.safeArea, rect, 1), `${screen.name} ${key} inside the safe area`);
+            assert.equal(L.rectsOverlap(rect, layout.panel), false, `${screen.name} ${key} overlaps the panel`);
+            for (const row of Object.values(layout.rows.hud)) assert.equal(L.rectsOverlap(shrink(rect), row), false, `${screen.name} ${key} overlaps a HUD label row`);
+        }
+        assert.equal(L.rectsOverlap(manual, nextGoal), false, `${screen.name} HUD action Buttons overlap`);
+        assert.ok(Math.abs(manual.h - row.height * layout.scale) < 1e-9);
+    }
+});
+
+test('UiLayout AUT-UI-001: HUD action captions fit their Button at the nominal font size', async () => {
+    const L = await layoutModule();
+    const { getDefaultTextCatalogue } = await imp('assets/scripts/localization/index.ts');
+    const c = getDefaultTextCatalogue();
+    const label = c.resolveText('hud.action.next_goal_unlock');
+    const samples = {
+        ManualProduceAction: [c.resolveText('hud.action.manual_produce')],
+        NextGoalAction: [
+            c.resolveText('producer_panel.action', { label, cost: WIDE_NUMBER }),
+            c.resolveText('producer_panel.action.unavailable', { label, cost: WIDE_NUMBER }),
+        ],
+    };
+    const row = L.CORE_HUD_LAYOUT.actionRow;
+    for (const action of row.actions) {
+        for (const text of samples[action.key]) {
+            assert.doesNotMatch(text, /\{|\b[a-z_]+\.[a-z0-9_.]+\b/, `${action.key}: unresolved text ${text}`);
+            const estimate = [...text].length * CHAR_WIDTH_PER_FONT_UNIT * row.fontSize;
+            assert.ok(estimate <= action.width, `${action.key} "${text}" ≈ ${estimate.toFixed(0)} > ${action.width}`);
+        }
+    }
+});

@@ -18,6 +18,7 @@ import {
     utils,
     Vec3,
     Color,
+    Label,
     UITransform,
     view,
     Widget,
@@ -36,8 +37,10 @@ import { bootstrapGameSession } from '../lifecycle/GameSessionBootstrap.ts';
 import { FileSaveStorage } from '../persistence/FileSaveStorage.ts';
 import { DefaultTimeService } from '../time/DefaultTimeService.ts';
 import { FactoryWorldStateBinding, type FactoryWorldAutomationSink } from './FactoryWorldStateBinding.ts';
+import type { GameCommand } from '../domain/Commands.ts';
+import type { LifecycleCommandResult } from '../lifecycle/LifecycleSessionCoordinator.ts';
 import type { DisplayNameSource } from './PresentationText.ts';
-import { CORE_HUD_LAYOUT, PANEL_ACTION_KEYS, PRODUCER_PANEL_LAYOUT, UI_EDGE_MARGIN, widgetAlignment, type UiCardSpec, type UiRect } from './UiLayout.ts';
+import { CORE_HUD_LAYOUT, HUD_ACTION_KEYS, PANEL_ACTION_KEYS, PRODUCER_PANEL_LAYOUT, UI_EDGE_MARGIN, widgetAlignment, type UiCardSpec, type UiRect } from './UiLayout.ts';
 
 const { ccclass, property } = _decorator;
 
@@ -158,6 +161,7 @@ export class FactoryWorldBootstrap extends Component {
                 hud: this.sessionWiring?.hud ?? null,
                 panel: this.sessionWiring?.panel ?? null,
                 reportError: (context, error) => this.reportSessionError(context, error),
+                reportCommandResult: (command, commandResult) => this.emitCommandResult(command, commandResult),
             });
             this.pendingBinding = { binding, status: result.startup.status, displayNames: result.configRepository };
         }).catch((error: unknown) => {
@@ -205,6 +209,24 @@ export class FactoryWorldBootstrap extends Component {
     /** DEBUG-only `session_state` diagnostic (no-op unless diagnostics were enabled from DEBUG). */
     private emitSessionState(phase: 'ready' | 'suspended' | 'resumed' | 'load_failed', status: string, saveOk: boolean | null, autoFeederOwned: boolean): void {
         emitDeviceEvent('session_state', { phase, status, saveOk, autoFeederOwned, writablePath: this.saveRootPath });
+    }
+
+    /**
+     * AUT-UI-001 DEBUG-only `command_result` diagnostic (no-op unless enabled from DEBUG): the session's verdict
+     * on each submitted command; `industrialOutput` is the last balance the command's events report (else null).
+     */
+    private emitCommandResult(command: GameCommand, result: LifecycleCommandResult): void {
+        if (!isDeviceDiagnosticsEnabled()) return;
+        const execution = result.execution;
+        let industrialOutput: number | null = null;
+        for (const event of execution.events) if (event.type === 'industrialOutputChanged') industrialOutput = event.newAmount;
+        emitDeviceEvent('command_result', {
+            command,
+            ok: execution.ok,
+            reason: execution.ok ? null : execution.reason,
+            eventTypes: execution.events.map((event) => event.type),
+            industrialOutput,
+        });
     }
 
     /** DEBUG-only `error` diagnostic; session failures never throw into the frame loop. */
@@ -476,8 +498,23 @@ export class FactoryWorldBootstrap extends Component {
         const panel = container.getChildByName('ProducerPanel');
         const rects: Record<string, UiRect | null> = { CoreHUD: rectOf(hud), ProducerPanel: rectOf(panel) };
         for (const key of PANEL_ACTION_KEYS) rects[key] = rectOf(panel?.getChildByName(key));
+        for (const key of HUD_ACTION_KEYS) rects[key] = rectOf(hud?.getChildByName(key));
         const rowsOf = (card: Node | null, spec: UiCardSpec) => Object.fromEntries(spec.rows.map((row) => [row.key, rectOf(card?.getChildByName(row.key))]));
         const rows = { CoreHUD: rowsOf(hud, CORE_HUD_LAYOUT), ProducerPanel: rowsOf(panel, PRODUCER_PANEL_LAYOUT) };
+        // AUT-UI-001: effective (post-SHRINK) font size of every non-empty label in design units; null while empty.
+        // Label.actualFontSize is in render pixels: the TTF assembler multiplies by max(1, view scale), capped at 100 px.
+        const fontOf = (card: Node | null, key: string) => {
+            const label = card?.getChildByName(key)?.getComponent(Label);
+            if (!label || label.string.length === 0) return null;
+            let renderScale = view.getScaleX();
+            if (renderScale * label.fontSize > 100 && label.fontSize < 100) renderScale = 100 / label.fontSize;
+            return label.actualFontSize / Math.max(1, renderScale);
+        };
+        const fontSizes = {
+            CoreHUD: Object.fromEntries([...CORE_HUD_LAYOUT.rows.map((row) => row.key), ...HUD_ACTION_KEYS].map((key) => [key, fontOf(hud, key)])),
+            ProducerPanel: Object.fromEntries(PRODUCER_PANEL_LAYOUT.rows.map((row) => [row.key, fontOf(panel, row.key)])),
+        };
+        const hudActions = this.sessionWiring?.hud.getActionStates() ?? null;
         const windowSize = screen.windowSize;
         emitDeviceEvent('ui_layout', {
             reason,
@@ -486,6 +523,8 @@ export class FactoryWorldBootstrap extends Component {
             corners: { CoreHUD: CORE_HUD_LAYOUT.corner, ProducerPanel: PRODUCER_PANEL_LAYOUT.corner },
             rects,
             rows,
+            fontSizes,
+            hudActions,
         });
     }
 

@@ -89,6 +89,10 @@ test('AUT-R-036 invariants: root-only touch swallowing, Buttons on children, no 
     }
     assert.equal((panel.match(/addComponent\(Button\)/g) ?? []).length, 1);
     assert.match(panel, /const button = node\.addComponent\(Button\);/);
+    // AUT-UI-001: the HUD's Manual Produce / Next Goal Buttons also live on child nodes, never on the root.
+    assert.equal((hud.match(/addComponent\(Button\)/g) ?? []).length, 1);
+    assert.match(hud, /const button = node\.addComponent\(Button\);/);
+    assert.doesNotMatch(hud, /this\.node\.addComponent\(Button\)/);
     // uiBlockerNodes stay empty: the only mention is the pre-existing pass-through of the camera controller's list.
     assert.deepEqual(bootstrap.match(/.*uiBlockerNodes.*/g).map((line) => line.trim()), ['controller.uiBlockerNodes = controller.cameraController?.uiBlockerNodes ?? [];']);
     assert.doesNotMatch(bootstrap, /uiBlockerNodes\.(push|splice|unshift)|uiBlockerNodes = \[[^\]]/);
@@ -109,6 +113,10 @@ test('AUT-R-036: the DEBUG ui_layout diagnostic is scheduled after session activ
     assert.match(emit, /uiCamera\.worldToScreen\(new Vec3\(box\.xMin, box\.yMin, 0\), new Vec3\(\)\)/);
     assert.match(emit, /uiCamera\.worldToScreen\(new Vec3\(box\.xMax, box\.yMax, 0\), new Vec3\(\)\)/);
     assert.match(emit, /for \(const key of PANEL_ACTION_KEYS\) rects\[key\] = rectOf\(panel\?\.getChildByName\(key\)\);/);
+    // AUT-UI-001: the HUD action Buttons, effective (post-SHRINK) font sizes and HUD action states are reported too.
+    assert.match(emit, /for \(const key of HUD_ACTION_KEYS\) rects\[key\] = rectOf\(hud\?\.getChildByName\(key\)\);/);
+    assert.match(emit, /label\.actualFontSize/);
+    assert.match(emit, /hudActions,/);
     assert.match(emit, /emitDeviceEvent\('ui_layout', \{/);
     assert.doesNotMatch(emit, /setPosition|setContentSize|\.layer =|alignMode|commandEmitter|selectProducer/);
     const { DEVICE_EVENT_TYPES } = await import(require('node:url').pathToFileURL(path.join(repoRoot, 'assets/scripts/presentation/DeviceDiagnostics.ts')).href);

@@ -65,8 +65,12 @@ test('layout constants are unchanged (node names, positions, content sizes, font
     assert.match(hud, /transform\.setContentSize\(cardRowWidth\(layout\), row\.height\);/);
     assert.match(hud, /label\.fontSize = row\.fontSize;/);
     assert.match(hud, /transform\.setContentSize\(layout\.width, cardHeight\(layout\)\);/);
-    assert.equal((hud.match(/setContentSize\(/g) ?? []).length, 2);
-    assert.equal((hud.match(/\.fontSize = /g) ?? []).length, 1);
+    // AUT-UI-001: one more content size and font size for the two HUD action Buttons, both from UiLayout's action row.
+    assert.equal((hud.match(/setContentSize\(/g) ?? []).length, 3);
+    assert.equal((hud.match(/\.fontSize = /g) ?? []).length, 2);
+    assert.match(hud, /node\.addComponent\(UITransform\)\.setContentSize\(rect\.w, rect\.h\);/);
+    assert.match(hud, /label\.fontSize = actionRow\.fontSize;/);
+    assert.equal((hud.match(/addComponent\(Button\)/g) ?? []).length, 1);
 
     const panel = await read(PANEL);
     const panelEntries = panel.match(/const entries = \[(.*?)\] as const/);

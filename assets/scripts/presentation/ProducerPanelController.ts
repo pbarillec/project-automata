@@ -67,7 +67,7 @@ export class ProducerPanelController extends Component {
         if (!this.node.getComponent(Sprite)) { const background = this.node.addComponent(Sprite); background.color = new Color(24, 29, 32, 225); }
     }
 
-    public onActionPressed(actionId: string): void {
+    public onActionPressed(_event: unknown, actionId: string): void {
         if (actionId === 'x1' || actionId === 'x10' || actionId === 'xMax') this.purchase(actionId);
     }
 

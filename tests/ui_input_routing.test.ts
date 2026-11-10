@@ -118,10 +118,12 @@ test('T3: HUD/panel touch listeners live only on their bounded root nodes', asyn
     }
 });
 
-test('T4: panel Buttons are added on child nodes, never on the panel root', async () => {
-    const panel = await readSource(panelPath);
-    assert.match(panel, /(?<!this\.)\bnode\.addComponent\(Button\)/);
-    assert.doesNotMatch(panel, /this\.node\.addComponent\(Button\)/);
+test('T4: panel and HUD Buttons are added on child nodes, never on the card root', async () => {
+    // AUT-UI-001: the HUD now has Buttons too (Manual Produce, Next Goal unlock); same rule as the panel.
+    for (const source of [await readSource(panelPath), await readSource(hudPath)]) {
+        assert.match(source, /(?<!this\.)\bnode\.addComponent\(Button\)/);
+        assert.doesNotMatch(source, /this\.node\.addComponent\(Button\)/);
+    }
 });
 
 test('T5: near-plane hit test through the world camera cannot let UI roots claim world touches', async () => {
@@ -198,6 +200,7 @@ test('T5: near-plane hit test through the world camera cannot let UI roots claim
         const toWorld = (rect, name) => ({ name, layer: LAYER_UI_2D, cx: (rect.x + rect.w / 2) / layout.scale, cy: (rect.y + rect.h / 2) / layout.scale, w: rect.w / layout.scale, h: rect.h / layout.scale });
         rects.push(toWorld(layout.hud, 'CoreHUD'), toWorld(layout.panel, 'ProducerPanel'));
         for (const [key, rect] of Object.entries(layout.buttons)) rects.push(toWorld(rect, key));
+        for (const [key, rect] of Object.entries(layout.hudButtons)) rects.push(toWorld(rect, key));
     }
 
     // (b) With the bootstrap's actual mask, no UI_2D root or row is hit-testable through the world camera.

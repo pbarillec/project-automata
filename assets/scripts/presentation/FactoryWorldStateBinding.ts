@@ -35,6 +35,8 @@ export interface FactoryWorldPanelSink {
 }
 
 export type FactoryWorldErrorReporter = (context: string, error: unknown) => void;
+/** AUT-UI-001: observes every result the session returned for a submitted command (accepted or rejected). */
+export type FactoryWorldCommandResultReporter = (command: GameCommand, result: LifecycleCommandResult) => void;
 
 export interface FactoryWorldStateBindingOptions {
     readonly session: FactoryWorldSessionPort;
@@ -43,6 +45,8 @@ export interface FactoryWorldStateBindingOptions {
     readonly hud: FactoryWorldHudSink | null;
     readonly panel: FactoryWorldPanelSink | null;
     readonly reportError?: FactoryWorldErrorReporter;
+    /** AUT-UI-001: optional observer called after each submit (FactoryWorld passes a DEBUG diagnostic). */
+    readonly reportCommandResult?: FactoryWorldCommandResultReporter;
     /** Minimum active time between ordinary save requests from `tick` (the dirty policy still decides). */
     readonly saveRequestIntervalSeconds?: number;
 }
@@ -80,6 +84,7 @@ export class FactoryWorldStateBinding {
     private readonly hud: FactoryWorldHudSink | null;
     private readonly panel: FactoryWorldPanelSink | null;
     private readonly reportError: FactoryWorldErrorReporter;
+    private readonly reportCommandResult: FactoryWorldCommandResultReporter | null;
     private readonly saveRequestIntervalSeconds: number;
     private selectedProducerId: string | null = null;
     private secondsSinceSaveRequest = 0;
@@ -93,6 +98,7 @@ export class FactoryWorldStateBinding {
         this.hud = options.hud;
         this.panel = options.panel;
         this.reportError = options.reportError ?? (() => undefined);
+        this.reportCommandResult = options.reportCommandResult ?? null;
         this.saveRequestIntervalSeconds = options.saveRequestIntervalSeconds ?? FACTORY_WORLD_SAVE_REQUEST_INTERVAL_SECONDS;
     }
 
@@ -132,6 +138,8 @@ export class FactoryWorldStateBinding {
             if (result.execution.ok) {
                 this.fanOut(result.execution.events);
             }
+            const reportCommandResult = this.reportCommandResult;
+            if (reportCommandResult) this.guard('command_result', () => reportCommandResult(command, result));
             return result;
         }
         catch (error) {

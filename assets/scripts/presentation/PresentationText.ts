@@ -1,5 +1,6 @@
 import type { GameConfigRepository } from '../config/ConfigLoader.ts';
 import { getDefaultTextCatalogue, type TextCatalogue } from '../localization/index.ts';
+import { resolveNextGoalAction, type NextGoalAction } from './CoreLoopActions.ts';
 import type { FreeOverclockViewState, HudNextGoalViewModel, HudViewModel } from './HudViewModel.ts';
 import type { ProducerPanelActionId, ProducerPanelPurchaseAction, ProducerPanelViewModel } from './ProducerPanelViewModel.ts';
 
@@ -19,6 +20,10 @@ export interface HudTexts {
     readonly nextGoalContext: string;
     readonly freeOverclock: string;
     readonly freeOverclockTimer: string;
+    /** AUT-UI-001 HUD action Button captions. */
+    readonly manualProduceAction: string;
+    /** Empty while the Next Goal action is hidden. */
+    readonly nextGoalAction: string;
 }
 
 export interface PanelTexts {
@@ -42,6 +47,20 @@ export function formatHudTexts(viewModel: HudViewModel, names: DisplayNameSource
         nextGoalContext: formatNextGoalContext(viewModel.nextGoal, catalogue),
         freeOverclock: formatFreeOverclockState(viewModel.freeOverclock.state, viewModel.freeOverclock.multiplier, catalogue),
         freeOverclockTimer: formatFreeOverclockTimer(viewModel.freeOverclock.remainingSeconds, catalogue),
+        manualProduceAction: catalogue.resolveText('hud.action.manual_produce'),
+        nextGoalAction: formatNextGoalAction(resolveNextGoalAction(viewModel.nextGoal), viewModel.nextGoal, catalogue),
+    });
+}
+
+/**
+ * AUT-UI-001 Next Goal unlock caption: the panel's action captions with the goal cost ("Unlock 1.5K",
+ * "Unlock 1.5K • Unavailable" while visible but not eligible-and-affordable); empty while hidden.
+ */
+export function formatNextGoalAction(action: NextGoalAction, goal: HudNextGoalViewModel, catalogue: TextCatalogue = getDefaultTextCatalogue()): string {
+    if (!action.visible) return '';
+    return catalogue.resolveText(action.enabled ? 'producer_panel.action' : 'producer_panel.action.unavailable', {
+        label: catalogue.resolveText('hud.action.next_goal_unlock'),
+        cost: goal.affordability.costFormatted ?? EMPTY_VALUE_TEXT,
     });
 }
 
@@ -54,6 +73,8 @@ export function defaultHudTexts(catalogue: TextCatalogue = getDefaultTextCatalog
         nextGoalContext: '',
         freeOverclock: formatFreeOverclockState('locked', 2, catalogue),
         freeOverclockTimer: formatFreeOverclockTimer(0, catalogue),
+        manualProduceAction: catalogue.resolveText('hud.action.manual_produce'),
+        nextGoalAction: '',
     });
 }
 
