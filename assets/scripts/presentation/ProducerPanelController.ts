@@ -1,4 +1,4 @@
-import { _decorator, Button, Color, Component, EventHandler, Label, Node, Sprite, UITransform, Vec3 } from 'cc';
+import { _decorator, Button, Color, Component, EventHandler, EventTouch, Label, Node, Sprite, UITransform, Vec3 } from 'cc';
 import type { GameCommand } from '../domain/Commands.ts';
 import type { ProducerPanelActionId, ProducerPanelPurchaseAction, ProducerPanelViewModel } from './ProducerPanelViewModel.ts';
 
@@ -12,6 +12,7 @@ export class ProducerPanelController extends Component {
     private labels = new Map<string, Label>();
     private latest: ProducerPanelViewModel | null = null;
     private selectedProducerId: string | null = null;
+    private touchBlockRegistered = false;
 
     public start(): void { this.ensureLayout(); }
 
@@ -56,6 +57,13 @@ export class ProducerPanelController extends Component {
             }
         });
         const transform = this.node.getComponent(UITransform) ?? this.node.addComponent(UITransform); transform.setContentSize(600, 330);
+        if (!this.touchBlockRegistered) {
+            this.touchBlockRegistered = true;
+            this.node.on(Node.EventType.TOUCH_START, this.swallowTouch, this);
+            this.node.on(Node.EventType.TOUCH_MOVE, this.swallowTouch, this);
+            this.node.on(Node.EventType.TOUCH_END, this.swallowTouch, this);
+            this.node.on(Node.EventType.TOUCH_CANCEL, this.swallowTouch, this);
+        }
         if (!this.node.getComponent(Sprite)) { const background = this.node.addComponent(Sprite); background.color = new Color(24, 29, 32, 225); }
     }
 
@@ -67,6 +75,9 @@ export class ProducerPanelController extends Component {
         if (!action) return '—';
         return `${action.labelKey} ${action.costFormatted}${action.isEnabled ? '' : ' • unavailable'}`;
     }
+
+    /** The panel claims touches on its own 600x330 area (after child Buttons) so camera and selection never receive them. */
+    private swallowTouch(event: EventTouch): void { event.propagationStopped = true; }
 
     private setText(key: string, value: string): void { this.labels.get(key)!.string = value; }
 }

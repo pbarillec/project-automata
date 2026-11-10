@@ -23,11 +23,12 @@ export class ProducerHighlight extends Component {
         if (this.marker?.isValid) return;
         this.marker = this.node.getChildByName('ProducerSelectionMarker') ?? new Node('ProducerSelectionMarker');
         this.marker.parent = this.node;
-        this.marker.setPosition(0, 0.04, 0);
+        this.marker.setPosition(0, -0.03, 0);
+        this.marker.setScale(0.5, 1, 0.5);
         this.marker.layer = Layers.Enum.DEFAULT;
         const renderer = this.marker.getComponent(MeshRenderer) ?? this.marker.addComponent(MeshRenderer);
         const meshFactory = utils as unknown as { MeshUtils?: { createMesh(geometry: unknown): unknown }; createMesh?: (geometry: unknown) => unknown };
-        const geometry = primitives.cylinder({ radius: 0.92, height: 0.035, segments: 32 });
+        const geometry = primitives.cylinder(0.92, 0.92, 0.035, { radialSegments: 32 });
         renderer.mesh = (meshFactory.MeshUtils?.createMesh(geometry) ?? meshFactory.createMesh?.(geometry)) as any;
         const material = new Material();
         material.initialize({ effectName: 'builtin-unlit', defines: { USE_COLOR: true } });

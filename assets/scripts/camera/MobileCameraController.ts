@@ -26,6 +26,7 @@ import {
     stepFocusTransition,
 } from './CameraMath';
 import { GestureOutput, TouchGestureTracker } from './TouchGestureModel';
+import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from '../presentation/DeviceDiagnostics';
 
 const { ccclass, property } = _decorator;
 
@@ -83,6 +84,15 @@ export class MobileCameraController extends Component {
     public defaultDistance = DEFAULT_CAMERA_STATE.distance;
 
     @property
+    public defaultFocusX = DEFAULT_CAMERA_STATE.focus.x;
+
+    @property
+    public defaultFocusZ = DEFAULT_CAMERA_STATE.focus.z;
+
+    @property
+    public focusDistance = 0;
+
+    @property
     public focusHeight = 0;
 
     @property
@@ -102,7 +112,7 @@ export class MobileCameraController extends Component {
             yawDeg: this.defaultYawDeg,
             pitchDeg: this.defaultPitchDeg,
             distance: this.defaultDistance,
-            focus: { x: 0, z: 0 },
+            focus: { x: this.defaultFocusX, z: this.defaultFocusZ },
         }, this.tuning());
         this.applyCameraPose();
 
@@ -128,15 +138,44 @@ export class MobileCameraController extends Component {
         this.state = result.state;
         this.focusTransition = result.transition;
         this.applyCameraPose();
+        if (!this.focusTransition && isDeviceDiagnosticsEnabled()) {
+            emitDeviceEvent('camera_focus', { phase: 'settled', focus: { ...this.state.focus }, distance: this.state.distance });
+        }
+    }
+
+    /** Read-only: true while a focus transition is animating (AUT-INFRA-001 diagnostics). */
+    public isFocusTransitionActive(): boolean {
+        return this.focusTransition !== null;
     }
 
     public focusOnWorldTarget(target: Vec3): void {
+        if (this.focusDistance > 0) {
+            this.state = clampCameraState({
+                ...this.state,
+                distance: this.focusDistance,
+            }, this.tuning());
+        }
+
         this.focusTransition = startFocusTransition(
             this.state,
             { x: target.x, z: target.z },
             this.focusTransitionSeconds,
             this.tuning(),
         );
+        if (isDeviceDiagnosticsEnabled()) {
+            emitDeviceEvent('camera_focus', { phase: 'started', target: { x: target.x, y: target.y, z: target.z }, distance: this.state.distance, seconds: this.focusTransitionSeconds });
+        }
+    }
+
+    public applyConfiguredInitialView(): void {
+        this.focusTransition = null;
+        this.state = clampCameraState({
+            yawDeg: this.defaultYawDeg,
+            pitchDeg: this.defaultPitchDeg,
+            distance: this.defaultDistance,
+            focus: { x: this.defaultFocusX, z: this.defaultFocusZ },
+        }, this.tuning());
+        this.applyCameraPose();
     }
 
     public snapToWorldTarget(target: Vec3): void {
@@ -233,6 +272,7 @@ export class MobileCameraController extends Component {
             }
 
             if (output.type === 'orbit') {
+                if (this.focusTransition && isDeviceDiagnosticsEnabled()) emitDeviceEvent('camera_focus', { phase: 'cancelled', reason: 'orbit' });
                 this.focusTransition = resolveFocusTransitionAfterUserInput(this.focusTransition, true);
                 this.state = applyOrbitDelta(this.state, {
                     x: output.deltaX,
@@ -240,6 +280,7 @@ export class MobileCameraController extends Component {
                 }, this.tuning());
                 cameraChanged = true;
             } else if (output.type === 'panZoom') {
+                if (this.focusTransition && isDeviceDiagnosticsEnabled()) emitDeviceEvent('camera_focus', { phase: 'cancelled', reason: 'panZoom' });
                 this.focusTransition = resolveFocusTransitionAfterUserInput(this.focusTransition, true);
                 if (output.zoomScale !== null) {
                     this.state = applyPinchZoom(this.state, output.zoomScale, this.tuning());

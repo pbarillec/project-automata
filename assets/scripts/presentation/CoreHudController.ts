@@ -1,4 +1,4 @@
-import { _decorator, Color, Component, Label, Node, Sprite, UITransform, Vec3 } from 'cc';
+import { _decorator, Color, Component, EventTouch, Label, Node, Sprite, UITransform, Vec3 } from 'cc';
 import type { GameCommand } from '../domain/Commands.ts';
 import type { HudViewModel } from './HudViewModel.ts';
 
@@ -12,6 +12,7 @@ export class CoreHudController extends Component {
     public commandEmitter: HudCommandEmitter | null = null;
     private labels = new Map<string, Label>();
     private latest: HudViewModel | null = null;
+    private touchBlockRegistered = false;
 
     public start(): void { this.ensureLayout(); }
 
@@ -47,11 +48,21 @@ export class CoreHudController extends Component {
         });
         const transform = this.node.getComponent(UITransform) ?? this.node.addComponent(UITransform);
         transform.setContentSize(640, 310);
+        if (!this.touchBlockRegistered) {
+            this.touchBlockRegistered = true;
+            this.node.on(Node.EventType.TOUCH_START, this.swallowTouch, this);
+            this.node.on(Node.EventType.TOUCH_MOVE, this.swallowTouch, this);
+            this.node.on(Node.EventType.TOUCH_END, this.swallowTouch, this);
+            this.node.on(Node.EventType.TOUCH_CANCEL, this.swallowTouch, this);
+        }
         if (!this.node.getComponent(Sprite)) {
             const background = this.node.addComponent(Sprite);
             background.color = new Color(24, 29, 32, 205);
         }
     }
+
+    /** The HUD claims touches on its own 640x310 area so camera and selection never receive them. */
+    private swallowTouch(event: EventTouch): void { event.propagationStopped = true; }
 
     private setText(key: string, value: string): void { this.labels.get(key)!.string = value; }
 

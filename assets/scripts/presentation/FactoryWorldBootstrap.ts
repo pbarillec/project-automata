@@ -9,20 +9,24 @@ import {
     Mesh,
     MeshRenderer,
     Node,
+    Prefab,
     primitives,
     utils,
     Vec3,
     Color,
     UITransform,
 } from 'cc';
+import { DEBUG } from 'cc/env';
 import { MobileCameraController } from '../camera/MobileCameraController';
+import { configureDeviceDiagnostics, emitDeviceEvent, installDeviceErrorHook } from './DeviceDiagnostics';
 import { PresentationController } from './PresentationController';
 import { FabricatorVisualController } from './FabricatorVisualController';
 import { ProducerSelectionController } from './ProducerSelectionController';
 import { CoreHudController } from './CoreHudController';
 import { ProducerPanelController } from './ProducerPanelController';
+import { FirstAutomationPresentationController } from './FirstAutomationPresentationController';
 
-const { ccclass } = _decorator;
+const { ccclass, property } = _decorator;
 
 export const FACTORY_ZONE_IDS = [
     'Fabricator',
@@ -45,12 +49,24 @@ const ZONE_LAYOUT: Record<FactoryZoneId, { x: number; z: number; width: number; 
 /** Builds the single persistent world shell; producer state belongs to later tasks. */
 @ccclass('FactoryWorldBootstrap')
 export class FactoryWorldBootstrap extends Component {
+    /** AUT-032 prefab references owned by the scene's stable bootstrap component. */
+    @property([Prefab])
+    public factoryPrefabs: Prefab[] = [];
+
+    /** AUT-INFRA-001: structured [AUT-DEVICE] diagnostics exist only in DEBUG builds; release builds never emit. */
+    public onLoad(): void {
+        configureDeviceDiagnostics({ enabled: DEBUG === true });
+        installDeviceErrorHook();
+        emitDeviceEvent('scene_ready', { reason: 'bootstrap_loaded', scene: 'FactoryWorld' });
+    }
+
     public start(): void {
         const site = this.node.getChildByName('FactorySite') ?? new Node('FactorySite');
         site.parent = this.node;
         if (!site.getChildByName('SiteBoundary')) this.createShell(site);
         this.createZones(site);
         this.createCameraRig(site);
+        this.connectFirstAutomationPresentation(site);
         if (!site.getChildByName('NeutralFactoryKeyLight')) this.createLighting(site);
         this.createPresentationRegistry(site);
         const selection = this.createProducerSelection(site);
@@ -78,10 +94,21 @@ export class FactoryWorldBootstrap extends Component {
                 : `${zoneId}_CompositionAnchor`;
             const composition = zone.getChildByName(compositionAnchorName) ?? new Node(compositionAnchorName);
             composition.parent = zone;
-            if (zoneId === 'Fabricator') composition.getComponent(FabricatorVisualController) ?? composition.addComponent(FabricatorVisualController);
+            if (zoneId === 'Fabricator') {
+                const fabricatorVisual = composition.getComponent(FabricatorVisualController)
+                    ?? composition.addComponent(FabricatorVisualController);
+                fabricatorVisual.factoryPrefabs = this.factoryPrefabs;
+                composition.getComponent(FirstAutomationPresentationController) ?? composition.addComponent(FirstAutomationPresentationController);
+            }
             const focus = zone.getChildByName(`${zoneId}_FocusAnchor`) ?? new Node(`${zoneId}_FocusAnchor`);
             focus.parent = zone;
-            focus.setPosition(0, 0.2, 0);
+            // AUT-038 reveal target: centre of the Fabricator production line
+            // (input belt end z 1.9 .. output tray end z -1.6).
+            focus.setPosition(
+                0,
+                0.2,
+                zoneId === 'Fabricator' ? 0.15 : 0,
+            );
             const target = zone.getChildByName(`${zoneId}_SelectableTarget`) ?? new Node(`${zoneId}_SelectableTarget`);
             target.parent = zone;
             target.setPosition(0, 0.2, 0);
@@ -114,7 +141,8 @@ export class FactoryWorldBootstrap extends Component {
         camera.fov = 45;
         camera.near = 0.1;
         camera.far = 200;
-        camera.visibility = Layers.Enum.ALL;
+        // UI_2D must not be visible to the world camera, so UI hit tests can't claim world touches.
+        camera.visibility = (Layers.Enum.ALL & ~Layers.Enum.UI_2D) >>> 0;
 
         const controller = rig.getComponent(MobileCameraController) ?? rig.addComponent(MobileCameraController);
         controller.cameraComponent = camera;
@@ -124,7 +152,12 @@ export class FactoryWorldBootstrap extends Component {
         controller.focusMaxZ = 8;
         controller.defaultYawDeg = 135;
         controller.defaultPitchDeg = 48;
-        controller.defaultDistance = 15;
+        controller.defaultDistance = 12.5;
+        controller.defaultFocusX = -3.8;
+        controller.defaultFocusZ = -1.8;
+        // AUT-038 reveal pushes in from the 12.5 default so the feeder line reads.
+        controller.focusDistance = 9.5;
+        controller.applyConfiguredInitialView();
     }
 
     private createLighting(parent: Node): void {
@@ -139,8 +172,21 @@ export class FactoryWorldBootstrap extends Component {
         const registry = parent.getChildByName('PresentationAnchors') ?? new Node('PresentationAnchors');
         registry.parent = parent;
         const controller = registry.getComponent(PresentationController) ?? registry.addComponent(PresentationController);
+        controller.firstAutomationPresentation = parent.getChildByName('Zone_Fabricator')
+            ?.getChildByName('Fabricator_CompositionAnchor')
+            ?.getComponent(FirstAutomationPresentationController) ?? null;
         controller.focusAnchors = FACTORY_ZONE_IDS.map((id) => parent.getChildByName(`Zone_${id}`)?.getChildByName(`${id}_FocusAnchor`)).filter((node): node is Node => node !== null && node !== undefined);
         controller.compositionAnchors = FACTORY_ZONE_IDS.map((id) => parent.getChildByName(`Zone_${id}`)?.getChildByName(`${id}_CompositionAnchor`)).filter((node): node is Node => node !== null && node !== undefined);
+    }
+
+    private connectFirstAutomationPresentation(parent: Node): void {
+        const zone = parent.getChildByName('Zone_Fabricator');
+        const composition = zone?.getChildByName('Fabricator_CompositionAnchor');
+        const presentation = composition?.getComponent(FirstAutomationPresentationController);
+        if (!composition || !presentation) return;
+        presentation.fabricatorVisual = composition.getComponent(FabricatorVisualController);
+        presentation.cameraController = parent.getChildByName('CameraRig')?.getComponent(MobileCameraController) ?? null;
+        presentation.focusAnchor = zone?.getChildByName('Fabricator_FocusAnchor') ?? null;
     }
 
     private createProducerSelection(parent: Node): ProducerSelectionController {
