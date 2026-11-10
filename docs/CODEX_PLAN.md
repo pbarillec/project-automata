@@ -662,7 +662,7 @@ Goal: validate the tactile/visual hypothesis using the smallest meaningful playe
 **Dependencies:** AUT-019, AUT-036, AUT-037, AUT-INT-001. Required before AUT-039: raw keys are not acceptable for its gate (owner decision 2026-11-10).
 
 **Scope:**
-- `data/localization/en.json` (key → string, simple `{param}` placeholders), embedded into the build with a drift guard.
+- `localization/en.json` at the repository root (key → string, simple `{param}` placeholders), embedded into the build with a drift guard. It lives outside `data/` because every `data/` scanner (config validation, pacing regression and the config-loading tests) treats each `*.json` there as economy config.
 - An engine-free lookup.
 - Pure helpers that compose HUD and panel strings from the existing view models. This covers the Next Goal text (built from `semanticKey`, `objective` and the producer, breakthrough or era name) and captions merged into the existing labels.
 
