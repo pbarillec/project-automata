@@ -51,3 +51,43 @@ guards floor contact, axis alignment, mouth entry, hopper-on-belt and roof
 placement against the real GLB bounds. Later-milestone module transforms
 (Lv25+) still use the previous layout and need their own AUT-VIS pass. Device
 readability remains a human gate.
+
+## Closure
+
+- The temporary human-gate (HG) showcase is removed: no `HUMAN_GATE_*` flags,
+  timer-driven reveal, `debugSetVisibleModules`, `[AUT-038-HG]` logs or selection
+  debug line remain. `FirstAutomationPresentationController.start()` schedules
+  nothing and, in DEBUG builds only, reports `reveal_state` `idle`; the reveal is
+  driven solely by the runtime focus beat (`started`/`complete` with source
+  `runtime`). The AUT-034 debug-state API (`forceDebugState`/`clearDebugState`/
+  `applyCurrentDebugState`) is kept.
+- Limitation: FactoryWorld now shows the coherent empty starting state, because no
+  runtime→FactoryWorld state connection exists yet. That wiring is pending in a
+  bridge task to be queued before AUT-039.
+- The automation payoff is proven by unit/scene tests
+  (`automation_payoff_view_model`, `first_automation_presentation`,
+  `first_automation_scene`, `fabricator_composition_geometry`) plus the HG-era
+  device gate. The closure tests also guard the prefab index alignment (G1) and
+  the FactoryWorld camera defaults (G2).
+- Prerequisites: AUT-INFRA-001 / AUT-INFRA-001a (device harness, reveal signal)
+  and AUT-R-033 (FactoryWorld scene globals). Commit `6f4cde6` is an approved
+  camera prerequisite (`camera/**` is not ordinary AUT-038 scope); `63bd892` is
+  repo hygiene, not AUT-038 scope.
+- The yellow selection disc refinement is a separate AUT-VIS follow-up.
+- Device result (post-closure build): gate APK
+  `temp/gate/ProjectAutomata-aut038b-618607a-dirty-factoryworld.apk` (sha256
+  `d525e6e3…`), NE2215 Android 15, 2412×1080. C3 PASS on 2 consecutive Device
+  Validator runs (`c3-producer-selection-20261105T100019Z-d525e6e3`,
+  `…100049Z…`), 44/44 assertions each. Only `reveal_state` `idle`/`none` is
+  emitted (no `started`/`complete`/`pending`); the harness took the at-rest
+  branch. No runtime error after `scene_ready` (targets 5), calibration passes,
+  zero `[AUT-038-HG]` logcat lines. Harness `task_id` still records the CLI
+  default `AUT-INFRA-001`.
+- Empty-state screenshot: `…100019Z…/screenshots/01-ready.png` (initial view)
+  and `02-tap_1_Fabricator.png` (Fabricator selected and focused). Coherence of
+  the empty state is an owner visual check; pending.
+- Factory scope note: step B also edits `ProducerSelectionController.ts`,
+  `SelectionInput.ts`, `tests/selection_input.test.ts` (removing AUT-038's own
+  temporary `eed2a80` diagnostics) and `tests/device_c3_scenario.test.ts`. These
+  are outside the Factory task's current `allowedPaths` and need owner approval
+  together with the prerequisite-baseline change before the final attempt.

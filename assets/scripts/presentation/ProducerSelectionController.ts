@@ -2,7 +2,7 @@ import { _decorator, Camera, Component, EventTouch, geometry, input, Input, Mesh
 import { MobileCameraController } from '../camera/MobileCameraController';
 import { TouchGestureTracker } from '../camera/TouchGestureModel';
 import { ProducerHighlight } from './ProducerHighlight';
-import { formatSelectionDebugLine, SELECTION_DEBUG_LOG, selectionTapSlopPixels } from './SelectionInput';
+import { selectionTapSlopPixels } from './SelectionInput';
 import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
 import { pickSelectionTarget, SelectionRaycastResult } from './SelectionRaycast';
 
@@ -147,28 +147,12 @@ export class ProducerSelectionController extends Component {
         const touch = this.primaryTouch(event); if (!touch) return;
         const location = touch.getLocation();
         const outputs = this.tracker.end({ id: touch.getID(), x: location.x, y: location.y });
-        if (SELECTION_DEBUG_LOG) this.logSelectionDebug(touch, location, outputs.some((output) => output.type === 'tap'));
         if (isDeviceDiagnosticsEnabled()) this.emitTouchEnd(touch, location, outputs.some((output) => output.type === 'tap'));
         for (const output of outputs) {
             if (output.type !== 'tap') continue;
             const producerId = this.producerAtScreenPoint(output.x, output.y, true);
             if (producerId) this.selectProducer(producerId);
         }
-    }
-
-    /** TEMP AUT-038 human-gate diagnostic: remove with the AUT-038 harness. */
-    private logSelectionDebug(touch: SelectionTouch, location: Vec2, tap: boolean): void {
-        const start = touch.getStartLocation();
-        console.log(formatSelectionDebugLine({
-            moved: Math.hypot(location.x - start.x, location.y - start.y),
-            slop: this.tapSlopPixels,
-            tap,
-            hit: this.producerAtScreenPoint(location.x, location.y),
-            x: location.x,
-            y: location.y,
-            dpr: screen.devicePixelRatio,
-            shortSide: Math.min(screen.windowSize.width, screen.windowSize.height),
-        }));
     }
 
     private onTouchCancel(event: EventTouch): void {

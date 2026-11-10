@@ -120,19 +120,6 @@ export class FabricatorVisualController extends Component {
         return this.moduleNodes.get(moduleName) ?? null;
     }
 
-    public debugSetVisibleModules(moduleNames: readonly string[]): void {
-        this.ensureModuleNodes();
-
-        const visibleModules = new Set(moduleNames);
-
-        for (const moduleName of MODULE_NAMES) {
-            this.setModuleVisible(
-                moduleName,
-                visibleModules.has(moduleName),
-            );
-        }
-    }
-
     private ensureModuleNodes(): void {
         for (const moduleName of MODULE_NAMES) {
             if (this.moduleNodes.has(moduleName)) continue;

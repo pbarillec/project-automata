@@ -59,19 +59,3 @@ test('ProducerSelectionController derives its tracker threshold from the screen-
     assert.match(start[1], /screen\.windowSize/);
     assert.match(start[1], /dragThresholdPixels: this\.tapSlopPixels/);
 });
-
-test('TEMP AUT-038 selection diagnostic line is greppable and prints hit=none for misses', async () => {
-    const { formatSelectionDebugLine } = await modules();
-    const line = formatSelectionDebugLine({ moved: 12.345, slop: 38.16, tap: true, hit: 'Fabricator', x: 100.4, y: 200.6, dpr: 1, shortSide: 1272 });
-    assert.ok(line.startsWith('[AUT-038-HG] SELECT '), line);
-    for (const key of ['moved=', 'slop=', 'tap=', 'hit=', 'dpr=', 'short=']) assert.ok(line.includes(key), `${key} missing in ${line}`);
-    assert.equal(line, '[AUT-038-HG] SELECT moved=12.3 slop=38.2 tap=true hit=Fabricator x=100 y=201 dpr=1 short=1272');
-    const miss = formatSelectionDebugLine({ moved: 100, slop: 38.16, tap: false, hit: null, x: 0, y: 0, dpr: 1, shortSide: 1272 });
-    assert.ok(miss.includes('hit=none') && miss.includes('tap=false'), miss);
-});
-
-test('TEMP AUT-038 diagnostic is wired in ProducerSelectionController (remove with the harness)', async () => {
-    const source = await readFile(path.join(repoRoot, 'assets/scripts/presentation/ProducerSelectionController.ts'), 'utf8');
-    assert.match(source, /SELECTION_DEBUG_LOG/);
-    assert.match(source, /formatSelectionDebugLine/);
-});

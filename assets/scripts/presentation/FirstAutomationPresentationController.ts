@@ -9,8 +9,6 @@ import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics
 
 const { ccclass, property } = _decorator;
 
-const HUMAN_GATE_ENABLED = true;
-const HUMAN_GATE_AUTOMATION_DELAY_SECONDS = 6;
 const AUTOMATION_INDICATOR_SCALE = 0.2;
 const AUTOMATION_INDICATOR_PULSE_AMOUNT = 0.03;
 
@@ -35,11 +33,6 @@ export class FirstAutomationPresentationController extends Component {
     // AUT-INFRA-001a: a started reveal waits for its camera focus to finish before reporting `complete`.
     private diagnosticsRevealAwaitingFocus: { source: string } | null = null;
 
-    // TEMP AUT-038 human-gate harness state.
-    private humanGateState: GameState | null = null;
-    private humanGateAutomated = false;
-    private humanGateStarted = false;
-
     public onLoad(): void {
         this.fabricatorVisual ??=
             this.node.getComponent(FabricatorVisualController);
@@ -51,30 +44,10 @@ export class FirstAutomationPresentationController extends Component {
     }
 
     public start(): void {
-        // AUT-INFRA-001a: announce whether a reveal is scheduled (pending) or the presentation is at rest (idle).
+        // AUT-INFRA-001a: nothing is scheduled at start; the presentation stays at rest until a runtime focus beat.
         if (isDeviceDiagnosticsEnabled()) {
-            const scheduled = HUMAN_GATE_ENABLED && this.fabricatorVisual !== null;
-            emitDeviceEvent('reveal_state', { phase: scheduled ? 'pending' : 'idle', source: scheduled ? 'human_gate' : 'none', automated: this.activityIndicatorVisible });
+            emitDeviceEvent('reveal_state', { phase: 'idle', source: 'none', automated: this.activityIndicatorVisible });
         }
-        if (!HUMAN_GATE_ENABLED || !this.fabricatorVisual) return;
-
-        this.humanGateStarted = true;
-        this.humanGateAutomated = false;
-
-        this.fabricatorVisual.debugSetVisibleModules([
-            'base_compact_press',
-            'simple_output_tray',
-            'secondary_module',
-            'strong_status_indicator',
-        ]);
-
-        this.setActivityIndicatorVisible(false);
-
-        console.log('[AUT-038-HG] MANUAL');
-
-        this.scheduleOnce(() => {
-            this.applyHumanGateAutomation();
-        }, HUMAN_GATE_AUTOMATION_DELAY_SECONDS);
     }
 
     public sync(state: GameState): AutomationPayoffSnapshot {
@@ -82,12 +55,6 @@ export class FirstAutomationPresentationController extends Component {
     }
 
     public syncFromGameState(state: GameState): AutomationPayoffSnapshot {
-        this.humanGateState = state;
-
-        if (HUMAN_GATE_ENABLED) {
-            this.ensureHumanGateStarted();
-        }
-
         this.snapshotValue = this.viewModel.syncFromState(state);
         this.applySnapshot(state);
 
@@ -98,21 +65,12 @@ export class FirstAutomationPresentationController extends Component {
         state: GameState,
         events: readonly DomainEvent[],
     ): AutomationPayoffSnapshot {
-        this.humanGateState = state;
-
-        if (HUMAN_GATE_ENABLED) {
-            this.ensureHumanGateStarted();
-        }
-
         this.snapshotValue =
             this.viewModel.consumeEvents(state, events);
 
         this.applySnapshot(state);
 
-        if (
-            !HUMAN_GATE_ENABLED &&
-            this.snapshotValue.focusBeatRequested
-        ) {
+        if (this.snapshotValue.focusBeatRequested) {
             this.requestBoundedFocus();
         }
 
@@ -154,9 +112,8 @@ export class FirstAutomationPresentationController extends Component {
                 'autonomous_cycle_indicator',
             ) ?? null;
 
-        const visible = HUMAN_GATE_ENABLED
-            ? this.humanGateAutomated
-            : this.snapshotValue?.activityIndicatorVisible === true;
+        const visible =
+            this.snapshotValue?.activityIndicatorVisible === true;
 
         this.setActivityIndicatorVisible(visible);
     }
@@ -188,81 +145,6 @@ export class FirstAutomationPresentationController extends Component {
                 AUTOMATION_INDICATOR_SCALE,
             );
         }
-    }
-
-    private ensureHumanGateStarted(): void {
-        // Human-gate harness is started directly from the Cocos lifecycle.
-
-        // if (this.humanGateStarted) return;
-
-        // this.humanGateStarted = true;
-        // this.humanGateAutomated = false;
-
-        // this.fabricatorVisual?.forceDebugState('lv10');
-
-        // if (this.humanGateState) {
-        //     this.fabricatorVisual?.applyCurrentDebugState(
-        //         this.humanGateState,
-        //     );
-        // }
-
-        // this.setActivityIndicatorVisible(false);
-
-        // console.log('[AUT-038-HG] MANUAL');
-
-        // this.scheduleOnce(() => {
-        //     this.applyHumanGateAutomation();
-        // }, HUMAN_GATE_AUTOMATION_DELAY_SECONDS);
-    }
-
-    private applyHumanGateAutomation(): void {
-        if (!this.fabricatorVisual) {
-            console.warn(
-                '[AUT-038-HG] AUTOMATED skipped: presentation unavailable',
-            );
-            this.emitRevealStarted('human_gate', false);
-            return;
-        }
-
-        this.humanGateAutomated = true;
-
-        this.fabricatorVisual.debugSetVisibleModules([
-            'base_compact_press',
-            'simple_output_tray',
-            'secondary_module',
-            'strong_status_indicator',
-            'auto_feeder_hopper',
-            'input_conveyor',
-            'autonomous_cycle_indicator',
-        ]);
-
-        this.activityIndicator ??=
-            this.fabricatorVisual.getModuleNode(
-                'autonomous_cycle_indicator',
-            );
-
-        this.setActivityIndicatorVisible(true);
-
-        console.log('[AUT-038-HG] AUTOMATED');
-
-        this.requestHumanGateFocus();
-    }
-
-    private requestHumanGateFocus(): void {
-        const target = this.focusAnchor?.worldPosition;
-
-        if (!target || !this.cameraController) {
-            console.warn(
-                '[AUT-038-HG] FOCUS_REQUESTED skipped: camera or anchor unavailable',
-            );
-            this.emitRevealStarted('human_gate', false);
-            return;
-        }
-
-        console.log('[AUT-038-HG] FOCUS_REQUESTED');
-
-        this.cameraController.focusOnWorldTarget(target);
-        this.emitRevealStarted('human_gate', true);
     }
 
     private requestBoundedFocus(): void {

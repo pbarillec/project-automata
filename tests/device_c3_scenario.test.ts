@@ -153,12 +153,15 @@ test('AUT-INFRA-001a C3 (simulated): deterministic reveal gate — pending→com
     assert.equal(stuck.result.actual.lastPhase, 'started');
 });
 
-test('AUT-INFRA-001a: reveal phases are emit-only, DEBUG-gated and independent of the human-gate timer', async () => {
+test('AUT-INFRA-001a: reveal phases are emit-only, DEBUG-gated and driven by the runtime focus beat', async () => {
     const source = fs.readFileSync(path.join(repoRoot, 'assets/scripts/presentation/FirstAutomationPresentationController.ts'), 'utf8');
-    for (const phase of ['pending', 'idle', 'started', 'complete']) assert.match(source, new RegExp(`'${phase}'`), phase);
-    // `started` is emitted from both reveal paths: the human-gate timer and the runtime focus beat.
+    for (const phase of ['idle', 'started', 'complete']) assert.match(source, new RegExp(`'${phase}'`), phase);
+    // AUT-038 closure: nothing is scheduled at start, so start() reports the presentation at rest.
+    const start = source.match(/public start\(\): void \{([\s\S]*?)\r?\n    \}/);
+    assert.ok(start, 'start() body not found');
+    assert.match(start[1], /emitDeviceEvent\('reveal_state', \{ phase: 'idle', source: 'none'/);
+    // `started` is emitted from the runtime focus beat only.
     assert.match(source, /emitRevealStarted\('runtime', true\)/);
-    assert.match(source, /emitRevealStarted\('human_gate', true\)/);
     // Completion is polled through the camera's existing read-only getter, not a timer.
     assert.match(source, /isFocusTransitionActive\(\)/);
     assert.doesNotMatch(source, /emitDeviceEvent\('reveal_state', \{ state:/, 'legacy visibility-based reveal_state removed');
