@@ -1,6 +1,7 @@
 import { _decorator, Color, Component, EventTouch, Label, Node, Sprite, UITransform, Vec3 } from 'cc';
 import type { GameCommand } from '../domain/Commands.ts';
 import type { HudViewModel } from './HudViewModel.ts';
+import { defaultHudTexts, formatHudTexts, type DisplayNameSource } from './PresentationText.ts';
 
 const { ccclass } = _decorator;
 
@@ -12,19 +13,31 @@ export class CoreHudController extends Component {
     public commandEmitter: HudCommandEmitter | null = null;
     private labels = new Map<string, Label>();
     private latest: HudViewModel | null = null;
+    private nameSource: DisplayNameSource | null = null;
     private touchBlockRegistered = false;
+
+    /**
+     * AUT-LOC-001: names Next Goal objectives; null shows the generic catalogue text. The session binding
+     * renders its first snapshot before this is assigned, so assigning re-renders the latest snapshot.
+     */
+    public get displayNames(): DisplayNameSource | null { return this.nameSource; }
+    public set displayNames(source: DisplayNameSource | null) {
+        this.nameSource = source;
+        if (this.latest) this.refresh(this.latest);
+    }
 
     public start(): void { this.ensureLayout(); }
 
     public refresh(viewModel: HudViewModel): void {
         this.ensureLayout();
         this.latest = viewModel;
-        this.setText('IndustrialOutputValue', viewModel.industrialOutput.formatted);
-        this.setText('ProductionPerSecondValue', `${viewModel.productionPerSecond.formatted}/s`);
-        this.setText('NextGoalValue', viewModel.nextGoal.semanticKey);
-        this.setText('NextGoalContext', this.goalContext(viewModel));
-        this.setText('FreeOverclockValue', viewModel.freeOverclock.state);
-        this.setText('FreeOverclockTimer', viewModel.freeOverclock.remainingFormatted);
+        const texts = formatHudTexts(viewModel, this.displayNames);
+        this.setText('IndustrialOutputValue', texts.industrialOutput);
+        this.setText('ProductionPerSecondValue', texts.productionPerSecond);
+        this.setText('NextGoalValue', texts.nextGoal);
+        this.setText('NextGoalContext', texts.nextGoalContext);
+        this.setText('FreeOverclockValue', texts.freeOverclock);
+        this.setText('FreeOverclockTimer', texts.freeOverclockTimer);
     }
 
     public activateFreeOverclock(): void {
@@ -33,7 +46,8 @@ export class CoreHudController extends Component {
 
     private ensureLayout(): void {
         if (this.labels.size > 0) return;
-        const entries = [['IndustrialOutputValue', '—'], ['ProductionPerSecondValue', '—/s'], ['NextGoalValue', 'next_goal.none'], ['NextGoalContext', ''], ['FreeOverclockValue', 'locked'], ['FreeOverclockTimer', '0s']] as const;
+        const defaults = defaultHudTexts();
+        const entries = [['IndustrialOutputValue', defaults.industrialOutput], ['ProductionPerSecondValue', defaults.productionPerSecond], ['NextGoalValue', defaults.nextGoal], ['NextGoalContext', defaults.nextGoalContext], ['FreeOverclockValue', defaults.freeOverclock], ['FreeOverclockTimer', defaults.freeOverclockTimer]] as const;
         entries.forEach(([key, text], index) => {
             const panel = new Node(key);
             panel.parent = this.node;
@@ -65,11 +79,4 @@ export class CoreHudController extends Component {
     private swallowTouch(event: EventTouch): void { event.propagationStopped = true; }
 
     private setText(key: string, value: string): void { this.labels.get(key)!.string = value; }
-
-    private goalContext(viewModel: HudViewModel): string {
-        const goal = viewModel.nextGoal;
-        if (goal.progress) return `${goal.progress.currentFormatted}/${goal.progress.requiredFormatted}`;
-        if (goal.affordability.costFormatted) return `${goal.affordability.costFormatted} • ${goal.affordability.state}`;
-        return goal.blocking.state;
-    }
 }

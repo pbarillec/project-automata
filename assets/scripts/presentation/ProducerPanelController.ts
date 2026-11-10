@@ -1,6 +1,7 @@
 import { _decorator, Button, Color, Component, EventHandler, EventTouch, Label, Node, Sprite, UITransform, Vec3 } from 'cc';
 import type { GameCommand } from '../domain/Commands.ts';
-import type { ProducerPanelActionId, ProducerPanelPurchaseAction, ProducerPanelViewModel } from './ProducerPanelViewModel.ts';
+import type { ProducerPanelActionId, ProducerPanelViewModel } from './ProducerPanelViewModel.ts';
+import { defaultPanelTexts, formatPanelTexts, pendingSelectionPanelTexts, type DisplayNameSource, type PanelTexts } from './PresentationText.ts';
 
 const { ccclass } = _decorator;
 export type ProducerPanelCommandEmitter = (command: GameCommand) => void;
@@ -9,6 +10,8 @@ export type ProducerPanelCommandEmitter = (command: GameCommand) => void;
 @ccclass('ProducerPanelController')
 export class ProducerPanelController extends Component {
     public commandEmitter: ProducerPanelCommandEmitter | null = null;
+    /** AUT-LOC-001: same narrow name source as the HUD; panel names come from the view model's displayNameKey. */
+    public displayNames: DisplayNameSource | null = null;
     private labels = new Map<string, Label>();
     private latest: ProducerPanelViewModel | null = null;
     private selectedProducerId: string | null = null;
@@ -20,11 +23,7 @@ export class ProducerPanelController extends Component {
         this.ensureLayout();
         this.latest = viewModel;
         this.selectedProducerId = viewModel.selectedProducerId;
-        this.setText('ProducerName', viewModel.displayNameKey ?? 'producer_panel.none_selected');
-        this.setText('ProducerLevel', viewModel.selectedProducerId ? `Lv ${viewModel.level}` : '');
-        this.setText('ProducerProduction', viewModel.selectedProducerId ? `${viewModel.productionPerSecondFormatted}/s` : '');
-        this.setText('ProducerMilestone', viewModel.milestone?.state === 'complete' ? 'producer_panel.milestone.complete' : viewModel.milestone ? `${viewModel.milestone.nextThreshold} • ${viewModel.milestone.levelsRemaining}` : '');
-        for (const id of ['x1', 'x10', 'xMax'] as const) this.setText(`Action_${id}`, this.actionText(viewModel.actions?.[id]));
+        this.applyTexts(formatPanelTexts(viewModel));
     }
 
     public purchase(id: ProducerPanelActionId): void {
@@ -36,16 +35,13 @@ export class ProducerPanelController extends Component {
         this.ensureLayout();
         this.selectedProducerId = selectedProducerId;
         this.latest = null;
-        this.setText('ProducerName', selectedProducerId ?? 'producer_panel.none_selected');
-        this.setText('ProducerLevel', '');
-        this.setText('ProducerProduction', '');
-        this.setText('ProducerMilestone', '');
-        for (const id of ['x1', 'x10', 'xMax'] as const) this.setText(`Action_${id}`, '—');
+        this.applyTexts(pendingSelectionPanelTexts(selectedProducerId));
     }
 
     private ensureLayout(): void {
         if (this.labels.size > 0) return;
-        const entries = [['ProducerName', 'producer_panel.none_selected'], ['ProducerLevel', ''], ['ProducerProduction', ''], ['ProducerMilestone', ''], ['Action_x1', 'producer_panel.buy_1'], ['Action_x10', 'producer_panel.buy_10'], ['Action_xMax', 'producer_panel.buy_max']] as const;
+        const defaults = defaultPanelTexts();
+        const entries = [['ProducerName', defaults.name], ['ProducerLevel', defaults.level], ['ProducerProduction', defaults.production], ['ProducerMilestone', defaults.milestone], ['Action_x1', defaults.actions.x1], ['Action_x10', defaults.actions.x10], ['Action_xMax', defaults.actions.xMax]] as const;
         entries.forEach(([key, text], index) => {
             const node = new Node(key); node.parent = this.node; node.setPosition(new Vec3(0, 138 - index * 38, 0));
             const transform = node.addComponent(UITransform); transform.setContentSize(560, 36);
@@ -71,9 +67,12 @@ export class ProducerPanelController extends Component {
         if (actionId === 'x1' || actionId === 'x10' || actionId === 'xMax') this.purchase(actionId);
     }
 
-    private actionText(action: ProducerPanelPurchaseAction | undefined): string {
-        if (!action) return '—';
-        return `${action.labelKey} ${action.costFormatted}${action.isEnabled ? '' : ' • unavailable'}`;
+    private applyTexts(texts: PanelTexts): void {
+        this.setText('ProducerName', texts.name);
+        this.setText('ProducerLevel', texts.level);
+        this.setText('ProducerProduction', texts.production);
+        this.setText('ProducerMilestone', texts.milestone);
+        for (const id of ['x1', 'x10', 'xMax'] as const) this.setText(`Action_${id}`, texts.actions[id]);
     }
 
     /** The panel claims touches on its own 600x330 area (after child Buttons) so camera and selection never receive them. */

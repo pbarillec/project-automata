@@ -32,6 +32,7 @@ import { bootstrapGameSession } from '../lifecycle/GameSessionBootstrap.ts';
 import { FileSaveStorage } from '../persistence/FileSaveStorage.ts';
 import { DefaultTimeService } from '../time/DefaultTimeService.ts';
 import { FactoryWorldStateBinding, type FactoryWorldAutomationSink } from './FactoryWorldStateBinding.ts';
+import type { DisplayNameSource } from './PresentationText.ts';
 
 const { ccclass, property } = _decorator;
 
@@ -62,7 +63,7 @@ export class FactoryWorldBootstrap extends Component {
 
     /** AUT-INT-001: the persistent session binding; null until the save has loaded (inputs stay inert). */
     private binding: FactoryWorldStateBinding | null = null;
-    private pendingBinding: { binding: FactoryWorldStateBinding; status: string } | null = null;
+    private pendingBinding: { binding: FactoryWorldStateBinding; status: string; displayNames: DisplayNameSource } | null = null;
     private sessionWiring: { hud: CoreHudController; panel: ProducerPanelController; selection: ProducerSelectionController; presentation: PresentationController | null } | null = null;
     private saveRootPath = '';
     private lifecycleHooksRegistered = false;
@@ -98,7 +99,7 @@ export class FactoryWorldBootstrap extends Component {
     /** AUT-INT-001: the binding activates here, after every component built in start() has started. */
     public update(deltaTime: number): void {
         if (this.pendingBinding) {
-            this.activateSessionBinding(this.pendingBinding.binding, this.pendingBinding.status);
+            this.activateSessionBinding(this.pendingBinding.binding, this.pendingBinding.status, this.pendingBinding.displayNames);
             this.pendingBinding = null;
             return;
         }
@@ -141,19 +142,21 @@ export class FactoryWorldBootstrap extends Component {
                 panel: this.sessionWiring?.panel ?? null,
                 reportError: (context, error) => this.reportSessionError(context, error),
             });
-            this.pendingBinding = { binding, status: result.startup.status };
+            this.pendingBinding = { binding, status: result.startup.status, displayNames: result.configRepository };
         }).catch((error: unknown) => {
             this.reportSessionError('bootstrap', error);
             this.emitSessionState('load_failed', 'bootstrap_error', null, false);
         });
     }
 
-    private activateSessionBinding(binding: FactoryWorldStateBinding, status: string): void {
+    private activateSessionBinding(binding: FactoryWorldStateBinding, status: string, displayNames: DisplayNameSource): void {
         const wiring = this.sessionWiring;
         if (!wiring) return;
         this.binding = binding;
         binding.init();
         binding.onSelectionChanged(wiring.selection.getSelectedProducerId());
+        wiring.hud.displayNames = displayNames;
+        wiring.panel.displayNames = displayNames;
         wiring.hud.commandEmitter = (command) => { void binding.submit(command); };
         wiring.panel.commandEmitter = (command) => { void binding.submit(command); };
         if (!this.lifecycleHooksRegistered) {
