@@ -617,11 +617,85 @@ Goal: validate the tactile/visual hypothesis using the smallest meaningful playe
 
 **Acceptance:** presentation never performs the automation transaction itself.
 
+## AUT-INT-001 — Runtime → FactoryWorld State Bridge
+
+**Objective:** Drive FactoryWorld from the single authoritative persistent session (`LifecycleSessionCoordinator` → `GameRuntime` + `persistence/`). On launch, the world, HUD and panel are rebuilt from the loaded save; after that, runtime events and commands keep them up to date.
+
+**Dependencies:** AUT-024, AUT-028, AUT-034, AUT-036, AUT-037, AUT-038.
+
+**Scope:**
+- A device-backed `SaveStorage` adapter.
+- Bundle the economy config into the app from `data/economy`, guarded against drift.
+- Session startup, load and recovery in FactoryWorld.
+- Sync the initial state without replaying the first-automation payoff.
+- Advance the active session every frame and save when dirty or on a timer.
+- Route HUD and panel commands to the session and refresh them afterwards.
+- Selection → panel view model.
+- Suspend/resume hooks, with a critical save on suspend.
+
+**Constraints (owner decision 2026-11-10):**
+- The existing persistent runtime/save state is the only source of truth; no separate in-memory one.
+- No economy, progression or formula change.
+- No HUD/panel layout or visibility change; that work is AUT-R-036.
+- No offline-collection UI (AUT-051).
+- Presentation never mutates state.
+
+**Tests:**
+- Engine-free session bootstrap: fresh, loaded, recovered and load-failed paths.
+- Storage adapter parity with `InMemorySaveStorage`.
+- Config drift guard.
+- Binding: fan-out, command routing, no payoff replay.
+- Background time is not credited as active time after resume.
+- Bootstrap wiring text tests.
+
+**Device check (automated, no human gate):**
+- Fresh launch → suspend → relaunch reports `loaded_main`.
+- A seeded save that owns Auto Feeder rebuilds the automated Fabricator without a focus beat.
+- No regression in C3.
+
+**Acceptance:** after a relaunch, FactoryWorld reflects the persisted save, and only the runtime changes state.
+
+## AUT-R-036 — HUD & Producer Panel Device Visibility (Landscape)
+
+**Objective:** Make the existing Core HUD and Producer Panel visible, readable and correctly anchored on the landscape Android build.
+
+**Dependencies:**
+- AUT-036, AUT-037, AUT-INT-001.
+- Owner confirmation of the product orientation.
+- Kept separate from AUT-INT-001 by owner decision of 2026-11-10.
+- Scheduled before AUT-039, the first task that depends on a visible HUD: its gate includes Next Goal clarity, and its loop needs the panel's buy input.
+
+**Scope:**
+- Design resolution and fit policy that match the landscape build.
+- A dedicated UI camera: orthographic, UI_2D only, rendered above the WorldCamera with a depth-only clear.
+- Widget and safe-area anchoring for the HUD and the panel.
+- Keep the AUT-R-035-02/03 touch-ownership rules.
+
+**Constraints:**
+- No view-model, economy or command changes.
+- No styling pass.
+- The factory keeps about 65–75% of the screen (ART_DIRECTION §19.2).
+
+**Tests:**
+- Scene/wiring text tests: UI camera, visibility masks, anchors, design resolution.
+- Extend `ui_input_routing` to the UI camera.
+- A DEBUG `ui_layout` diagnostic reporting the on-screen rectangles of the HUD and panel.
+
+**Device check (automated):**
+- Both rectangles sit inside the viewport and don't overlap.
+- Together they cover no more than 35% of the screen.
+- No regression in C3.
+- Tapping a panel button does not change the world selection.
+
+**Manual gate:** on a phone at arm's length, Industrial Output, production/s, Next Goal and the panel's buy buttons are readable, and the factory is still the main content.
+
+**Acceptance:** the HUD and panel show live session values on the device, and the human readability gate passes.
+
 ## AUT-039 — Assembly + First Worker Bot Vertical Slice
 
 **Objective:** Complete the first playable validation path through Assembly Station and First Robot.
 
-**Dependencies:** AUT-014, AUT-015, AUT-032, AUT-038.
+**Dependencies:** AUT-014, AUT-015, AUT-032, AUT-038, AUT-INT-001, AUT-R-036.
 
 **Scope:** Assembly visual states needed for slice, Worker Bot reveal, one predefined robot route/work loop.
 
@@ -1113,7 +1187,7 @@ Goal: finish identity, performance, error handling, release build and automated 
 
 ## M3 — Vertical Slice
 
-**Tasks:** AUT-031 → AUT-039.  
+**Tasks:** AUT-031 → AUT-039 (incl. AUT-INT-001, AUT-R-036).  
 **Exit:** real Android slice demonstrates manual production → first automation → Assembly → First Robot.  
 **Human product gate:** comprehension, camera, automation payoff, visual progression, Next Goal and First Robot must feel convincing.
 
