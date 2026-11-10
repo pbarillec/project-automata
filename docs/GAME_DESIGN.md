@@ -834,8 +834,13 @@ No free camera-dependent construction gameplay.
 
 Use predetermined layouts.
 
-Camera may: - pan; - recenter; - zoom/dezoom; - reveal new controlled
-areas.
+Camera (owner 2026-11-10): - orientation is portrait, strictly locked on
+all devices (tablets included, no auto-rotate); - player one-finger drag
+= bounded pan along the factory, clamped to the unlocked zones, with no
+rotation and no zoom; a drag never counts as a tap; - primary
+interaction stays tap/select; - automatic recenter/reframe/reveal beats
+(selection focus, unlock reframes, reveal push-in) remain allowed; - no
+player pinch-to-zoom, no two-finger pan, no free orbit.
 
 The player should not need to search a map for important producers.
 
@@ -861,6 +866,10 @@ Avoid requiring unique art for every economic level.
 ## 20. Core HUD Requirements
 
 Keep the primary screen readable.
+
+Layout (owner 2026-11-10): portrait; primary actions (Manual Produce,
+selected producer controls, level/buy controls) sit in the bottom thumb
+zone; the factory scene stays readable above them.
 
 Always visible or immediately accessible: - Industrial Output; -
 Production / second; - AI Cores after prestige unlock; - factory

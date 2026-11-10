@@ -531,6 +531,8 @@ Goal: validate the tactile/visual hypothesis using the smallest meaningful playe
 
 **Acceptance:** developer approves camera model or documents simplified fallback.
 
+**Superseded (owner decision 2026-11-10):** AUT-R-031-02 replaces this gesture set for FactoryWorld. The game is tap-first: one-finger bounded pan only, with no orbit, no pinch zoom and no two-finger pan. The CameraSpike scene keeps the original spike behaviour.
+
 ## AUT-032 — 3D Asset Import & Robot Spike
 
 **Objective:** Validate Kenney Factory + Quaternius Robot runtime pipeline.
@@ -685,6 +687,8 @@ Goal: validate the tactile/visual hypothesis using the smallest meaningful playe
 
 ## AUT-R-036 — HUD & Producer Panel Device Visibility (Landscape)
 
+**Orientation superseded:** the owner corrected the product orientation to **portrait** on 2026-11-10; see AUT-R-036-02. The UI camera, safe area, `ui_layout` diagnostic and touch ownership built here are reused unchanged.
+
 **Objective:** Make the existing Core HUD and Producer Panel visible, readable and correctly anchored on the landscape Android build.
 
 **Dependencies:**
@@ -760,11 +764,106 @@ Goal: validate the tactile/visual hypothesis using the smallest meaningful playe
 
 **Acceptance:** the automated checks pass and the combined human gate passes.
 
+**Status note:** the human gate passed on 2026-11-10 in landscape, and the task stack was merged to `main` (afe93b6). The portrait correction (AUT-R-036-02) re-judges readability and tap comfort.
+
+## AUT-R-031-02 — Tap-First Camera Input
+
+**Objective:** Restrict FactoryWorld camera input to the owner's tap-first model: tap to select, one-finger drag to pan within bounds, and no player rotation, zoom or multi-touch.
+
+**Dependencies:**
+- AUT-031, AUT-035, AUT-038, AUT-INT-001.
+- Owner decisions of 2026-11-10: portrait, tap-first, a one-finger drag is a bounded pan clamped to the unlocked zones and never a tap, no pinch, no two-finger pan, no free orbit. Automatic focus and reveal beats stay allowed.
+
+**Scope:**
+- `MobileCameraController` capability flags: a one-finger mode (`orbit` | `pan` | `none`) and a multi-touch switch. The defaults keep the CameraSpike behaviour.
+- FactoryWorld enables one-finger pan only, with multi-touch off.
+- Gestures that are switched off neither move the camera nor cancel a focus beat.
+- Pan bounds come from the unlocked producer zones, resolved engine-free from the session state and refreshed when the state changes.
+- Focus distance policy: a selection focus keeps (and restores) the default distance; only the reveal beat pushes in to `focusDistance`.
+
+**Constraints:**
+- No change to the tap-vs-drag threshold or to selection.
+- No new framing values; portrait framing belongs to AUT-R-036-02.
+- No economy or progression change.
+
+**Tests:**
+- Flag behaviour and defaults.
+- One-finger pan clamped to the bounds.
+- Multi-touch ignored.
+- A switched-off gesture does not interrupt a focus beat.
+- Pan-bounds resolver over representative states.
+- Selection focus versus reveal focus distance.
+- Wiring text tests.
+
+**Device check (automated, no human gate):** a new scenario where:
+- a one-finger swipe pans the camera without changing yaw, pitch or distance, and stays within the bounds;
+- a long swipe is clamped at the bounds;
+- a tap still selects, and the selection focus uses the default distance.
+
+Also no regression in C3, INT-001, R-036 or UI-001. Multi-touch cannot be driven through ADB, so it is covered by the unit tests and by the AUT-R-036-02 human gate.
+
+**Acceptance:** the automated checks pass. Camera feel is judged at the AUT-R-036-02 combined gate.
+
+## AUT-R-036-02 — Portrait Orientation, Layout & Framing
+
+**Objective:** Make the game portrait-only and re-lay out the HUD, panel and default framing for portrait, reusing the AUT-R-036 UI infrastructure.
+
+**Dependencies:**
+- AUT-R-036, AUT-UI-001, AUT-R-031-02.
+- Owner decision of 2026-11-10: strict portrait lock on every device.
+
+**Scope:**
+- `android:screenOrientation="portrait"` in the tracked `native/engine/android` manifests, including the instant-app manifest.
+- Portrait-only orientation keys in `tools/ci/cocos_android_debug_build.json`.
+- `designResolution` 720×1280 with a fixed width.
+- `UiLayout` reflow: the HUD as a full-width top band and the panel as a full-width bottom band, with ×1/×10/×MAX in one row.
+- Portrait default framing and focus values from Scene Presentation: horizontal field-of-view axis, default and focus distances, pan bounds and pan speed.
+- C3 calibration moved to a point outside the UI rectangles.
+
+**Constraints:**
+- No view-model, command or economy change.
+- No styling pass.
+- The UI covers 35% of the screen or less, and the factory band takes 65% or more (ART_DIRECTION §19.2).
+
+**Tests:**
+- Layout tests on portrait screens, including a top safe-area inset.
+- Orientation and manifest text tests.
+- Framing values.
+- Updated device-scenario tests.
+
+**Device check (automated):**
+- At the default view, all five projected zone centres are inside the factory band, and none sits under the UI.
+- The reveal target is on screen.
+- R-036, C3, INT-001, UI-001 and R-031-02 each pass twice in a row.
+- CameraSpike launch smoke.
+
+**Manual gate (combined, single stop):** on the phone, in portrait:
+- the HUD and panel are readable at arm's length;
+- the default framing shows the factory and the Fabricator line clearly;
+- Manual Produce, ×1/×10/×MAX and Next Goal are comfortable to tap;
+- the camera never fights the player, and the focus and reveal beats read well.
+
+**Acceptance:** the automated checks pass and the combined human gate passes.
+
+## AUT-VIS-002 — Fabricator High-Level Module Placement
+
+**Objective:** Place the Fabricator modules for the higher milestone levels (Lv25 and above, 8 modules) on the composed production line, the way AUT-038 did for Lv1–Lv10.
+
+**Dependencies:** AUT-R-036-02, so the portrait framing is locked first.
+
+**Scope:** `FabricatorVisualController` module positions and rotations, with composition geometry tests against the real GLB bounds.
+
+**Constraints:** presentation only; no state or economy change.
+
+**Manual gate:** a visual check on the phone. Scene Presentation owns the role.
+
+**Acceptance:** the higher-level modules read as one coherent machine.
+
 ## AUT-039 — Assembly + First Worker Bot Vertical Slice
 
 **Objective:** Complete the first playable validation path through Assembly Station and First Robot.
 
-**Dependencies:** AUT-014, AUT-015, AUT-032, AUT-038, AUT-INT-001, AUT-LOC-001, AUT-R-036, AUT-UI-001.
+**Dependencies:** AUT-014, AUT-015, AUT-032, AUT-038, AUT-INT-001, AUT-LOC-001, AUT-R-036, AUT-UI-001, AUT-R-031-02, AUT-R-036-02. The Orchestrator decides whether AUT-039 also waits for AUT-VIS-002.
 
 **Scope:** Assembly visual states needed for slice, Worker Bot reveal, one predefined robot route/work loop.
 
@@ -1256,9 +1355,9 @@ Goal: finish identity, performance, error handling, release build and automated 
 
 ## M3 — Vertical Slice
 
-**Tasks:** AUT-031 → AUT-039 (incl. AUT-INT-001, AUT-LOC-001, AUT-R-036, AUT-UI-001).  
-**Exit:** real Android slice demonstrates manual production → first automation → Assembly → First Robot.  
-**Human product gate:** comprehension, camera, automation payoff, visual progression, Next Goal and First Robot must feel convincing.
+**Tasks:** AUT-031 → AUT-039 (incl. AUT-INT-001, AUT-LOC-001, AUT-R-036, AUT-UI-001, AUT-R-031-02, AUT-R-036-02, AUT-VIS-002).  
+**Exit:** real Android slice, in portrait, demonstrates manual production → first automation → Assembly → First Robot.  
+**Human product gate:** comprehension, camera framing, bounded pan and automatic focus/reveal beats, automation payoff, visual progression, Next Goal and First Robot must feel convincing.
 
 Do not blindly continue if M3 fails. Rework the existing economy/presentation first.
 

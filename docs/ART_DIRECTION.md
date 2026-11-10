@@ -25,7 +25,7 @@ The MVP covers:
 
 **APPROVED: 3D low-poly stylized industrial factory.**
 
-The game uses real 3D geometry and a player-manipulable camera. It is not presented as a flat 2D or fixed-isometric game.
+The game uses real 3D geometry, a portrait-locked screen and a fixed three-quarter perspective camera that the player can pan within bounds (owner 2026-11-10). It is not presented as a flat 2D or orthographic-isometric game.
 
 The 3D direction is chosen because it provides:
 
@@ -39,9 +39,9 @@ The 3D direction is chosen because it provides:
 
 ### 1.2 Camera
 
-**APPROVED: player-manipulable 3D camera with controlled limits.**
+**APPROVED (owner 2026-11-10, supersedes the earlier rotate/pan/zoom camera): portrait-locked, fixed-angle three-quarter 3D camera with one-finger bounded pan.**
 
-The player may rotate, pan and zoom enough to enjoy inspecting the factory.
+Product orientation is PORTRAIT, strictly locked on all devices (owner 2026-11-10). The primary interaction is tap/select. A one-finger drag pans the camera along the factory, clamped to unlocked zones. The player cannot rotate the camera, cannot orbit it freely, has no pinch-to-zoom and has no two-finger pan (owner 2026-11-10).
 
 The camera must nevertheless remain constrained so that:
 
@@ -54,12 +54,11 @@ The camera must nevertheless remain constrained so that:
 
 Recommended implementation direction:
 
-- three-quarter default view;
+- fixed three-quarter view; the human-reviewed AUT-038 angle is the reference (owner 2026-11-10);
 - moderate perspective rather than extreme FOV;
-- limited vertical rotation;
-- bounded pan area that grows with the factory;
-- min/max zoom;
-- optional short automated focus/recenter moments for major unlocks;
+- no player rotation and no player zoom (owner 2026-11-10);
+- one-finger bounded pan along the factory, clamped to unlocked zones and growing as zones unlock (owner 2026-11-10);
+- automatic focus/reveal beats remain allowed: selection focus, unlock reframes, reveal push-in (owner 2026-11-10);
 - player control returned immediately after those moments.
 
 The Technical Lead owns exact camera values.

@@ -755,21 +755,28 @@ Logical camera state:
 - pitch;
 - distance.
 
-### 13.2 Gesture model baseline
+### 13.2 Orientation and gesture model (owner decision 2026-11-10)
 
-- one-finger drag → orbit/rotate;
-- two-finger pinch → zoom;
-- two-finger translation → pan;
-- tap → select producer;
-- double-tap → optional, not required for MVP.
+The app is **portrait only**, strictly locked on every device (Android manifest and build configuration). The interaction is **tap-first**:
+
+- tap → select producer (the primary interaction);
+- one-finger drag → **bounded pan** along the factory only, clamped to the unlocked zones. A drag is never a tap;
+- no rotation/orbit, no pinch zoom and no two-finger pan for the player;
+- double-tap → not used in the MVP.
+
+Yaw, pitch and distance are set by presentation only: the default framing and the automatic focus/reveal beats. The camera controller keeps its gesture capabilities behind explicit flags. The AUT-031 spike keeps the full set; FactoryWorld enables only tap and one-finger pan (AUT-R-031-02).
 
 UI consumes input first. World/camera input receives only unconsumed touches.
 
-### 13.3 Bounds
+### 13.3 Bounds and focus
 
-Yaw, pitch, zoom and pan are bounded. Exact values are intentionally not frozen until the real-device camera spike. Bounds expand as the factory expands through Eras.
+Pan is clamped to the bounds of the unlocked zones. The bounds expand as the factory expands through Eras. Yaw, pitch and the default distance are fixed per framing (AUT-R-036-02 sets the portrait values).
 
-Auto-focus transitions are interruptible immediately by player input.
+Automatic focus moves the camera towards a target:
+
+- A selection focus keeps the default distance.
+- Only reveal/payoff beats may push in temporarily.
+- A beat is interruptible immediately by player input (a tap or a pan).
 
 ### 13.4 Interaction
 
@@ -1632,7 +1639,7 @@ Kenney Factory + Quaternius Robot imported and rendered on Android. Validate mat
 
 ### Gate C — camera — PRODUCT/UX BLOCKING
 
-Real-device rotate/pan/zoom/tap/focus test. If free manipulation harms readability/UX, progressively constrain the camera rather than immediately reverting to fixed view.
+Real-device test in portrait of tap selection, bounded one-finger pan, default framing and the automatic focus/reveal beats. Free rotation, pinch zoom and two-finger pan are out of scope for the player (owner decision 2026-11-10, superseding the AUT-031 free-manipulation spike).
 
 ### Gate D — robot readability/performance
 
