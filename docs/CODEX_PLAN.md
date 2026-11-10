@@ -655,21 +655,52 @@ Goal: validate the tactile/visual hypothesis using the smallest meaningful playe
 
 **Acceptance:** after a relaunch, FactoryWorld reflects the persisted save, and only the runtime changes state.
 
+## AUT-LOC-001 — Minimal English Text Catalogue
+
+**Objective:** Replace every localization key and hard-coded English fragment that the Core HUD and Producer Panel currently show with readable English from one keyed catalogue.
+
+**Dependencies:** AUT-019, AUT-036, AUT-037, AUT-INT-001. Required before AUT-039: raw keys are not acceptable for its gate (owner decision 2026-11-10).
+
+**Scope:**
+- `data/localization/en.json` (key → string, simple `{param}` placeholders), embedded into the build with a drift guard.
+- An engine-free lookup.
+- Pure helpers that compose HUD and panel strings from the existing view models. This covers the Next Goal text (built from `semanticKey`, `objective` and the producer, breakthrough or era name) and captions merged into the existing labels.
+
+**Constraints:**
+- View models stay key-based.
+- No layout, node or font change; that work is AUT-R-036.
+- No language selection, settings or pseudo-locale; AUT-052 extends this catalogue later.
+- The Game Designer approves the wording.
+
+**Tests:**
+- Catalogue structure and placeholders.
+- Every key reachable from config, Next Goal, Overclock and panel states resolves.
+- Composed strings contain no key pattern in representative states.
+- Drift guard.
+- Controller text tests.
+
+**Device check (automated, regression only):** the C3 and INT-001 scenarios pass.
+
+**Acceptance:** no raw key or hard-coded English remains in HUD or panel text. No human gate.
+
 ## AUT-R-036 — HUD & Producer Panel Device Visibility (Landscape)
 
 **Objective:** Make the existing Core HUD and Producer Panel visible, readable and correctly anchored on the landscape Android build.
 
 **Dependencies:**
 - AUT-036, AUT-037, AUT-INT-001.
-- Owner confirmation of the product orientation.
-- Kept separate from AUT-INT-001 by owner decision of 2026-11-10.
-- Scheduled before AUT-039, the first task that depends on a visible HUD: its gate includes Next Goal clarity, and its loop needs the panel's buy input.
+- AUT-LOC-001, so the layout is sized to the real strings.
+- Orientation is **landscape** (owner decision 2026-11-10).
+- Kept separate from AUT-INT-001 (owner decision 2026-11-10).
+- Scheduled before AUT-039, the first task that depends on a visible HUD.
 
 **Scope:**
-- Design resolution and fit policy that match the landscape build.
+- Landscape design resolution: 720×1280 → 1280×720 in `settings/v2/packages/project.json`. The spike scenes share this setting, so check that CameraSpike and AssetRobotSpike still load.
+- Fit policy.
 - A dedicated UI camera: orthographic, UI_2D only, rendered above the WorldCamera with a depth-only clear.
 - Widget and safe-area anchoring for the HUD and the panel.
 - Keep the AUT-R-035-02/03 touch-ownership rules.
+- A DEBUG `ui_layout` diagnostic that reports the screen rectangles of the HUD, the panel and their Button nodes.
 
 **Constraints:**
 - No view-model, economy or command changes.
@@ -678,24 +709,62 @@ Goal: validate the tactile/visual hypothesis using the smallest meaningful playe
 
 **Tests:**
 - Scene/wiring text tests: UI camera, visibility masks, anchors, design resolution.
-- Extend `ui_input_routing` to the UI camera.
-- A DEBUG `ui_layout` diagnostic reporting the on-screen rectangles of the HUD and panel.
+- Extend `ui_input_routing` to cover the UI camera.
 
 **Device check (automated):**
-- Both rectangles sit inside the viewport and don't overlap.
+- The HUD and panel rectangles sit inside the viewport and don't overlap.
 - Together they cover no more than 35% of the screen.
-- No regression in C3.
+- The button rectangles are inside the viewport.
+- No regression in C3 or INT-001.
 - Tapping a panel button does not change the world selection.
 
-**Manual gate:** on a phone at arm's length, Industrial Output, production/s, Next Goal and the panel's buy buttons are readable, and the factory is still the main content.
+**Manual gate:** readability on a phone at arm's length is **deferred to the combined human gate of AUT-UI-001** (Orchestrator sequencing, 2026-11-10). If it fails there, a presentation-only AUT-R-036-02 pass follows.
 
-**Acceptance:** the HUD and panel show live session values on the device, and the human readability gate passes.
+**Acceptance:** the automated device checks pass, and the readability gate is passed at AUT-UI-001.
+
+## AUT-UI-001 — Core Loop Player Input (Manual Production + Next Goal Breakthrough)
+
+**Objective:** Let the player run the first loop on the device: an explicit Manual Produce action, and buying breakthroughs from the HUD Next Goal.
+
+**Dependencies:**
+- AUT-013, AUT-019, AUT-INT-001, AUT-LOC-001, AUT-R-036.
+- Owner decisions (2026-11-10): the Fabricator world tap stays selection only; manual production is an explicit HUD/producer-panel action; breakthrough purchases go through the HUD Next Goal flow.
+- Game Designer decisions still needed: where Manual Produce is placed, and the exact scope of the Next Goal action.
+
+**Scope:**
+- A Manual Produce control that emits `manualProduce`.
+- A Next Goal action for eligible, affordable breakthrough goals that emits `purchaseBreakthrough{breakthroughId}`.
+- Enabled/disabled states from view-model data.
+- New catalogue keys.
+
+**Constraints:**
+- No economy, Next Goal or command changes.
+- Every command goes through `FactoryWorldStateBinding.submit`.
+- Keep the existing touch ownership.
+
+**Tests:**
+- View-model → action mapping.
+- Command emission.
+- Wiring text tests.
+- A UI tap does not change the world selection.
+
+**Device check (automated):**
+- Manual Produce tapped N times raises Industrial Output.
+- On a seeded save that is eligible for `auto_feeder`, the Next Goal action buys it once, the automated Fabricator payoff plays, and the purchase survives a relaunch.
+- No regression in C3 or INT-001.
+
+**Manual gate (combined, single stop):** on the phone:
+- the HUD and panel are readable (the gate deferred from AUT-R-036);
+- Manual Produce and the Next Goal purchase are comfortable to use;
+- a fresh player reaches "Automate Fabricator" without help.
+
+**Acceptance:** the automated checks pass and the combined human gate passes.
 
 ## AUT-039 — Assembly + First Worker Bot Vertical Slice
 
 **Objective:** Complete the first playable validation path through Assembly Station and First Robot.
 
-**Dependencies:** AUT-014, AUT-015, AUT-032, AUT-038, AUT-INT-001, AUT-R-036.
+**Dependencies:** AUT-014, AUT-015, AUT-032, AUT-038, AUT-INT-001, AUT-LOC-001, AUT-R-036, AUT-UI-001.
 
 **Scope:** Assembly visual states needed for slice, Worker Bot reveal, one predefined robot route/work loop.
 
@@ -841,7 +910,7 @@ Goal: complete the full free MVP through Reboot/Civilization #2 before adding co
 
 ## AUT-052 — Localization, Audio & Settings Skeleton
 
-**Objective:** Add localization keys/catalogue, AudioService and MVP settings persistence/UI.
+**Objective:** Add localization keys/catalogue, AudioService and MVP settings persistence/UI. Localization extends the AUT-LOC-001 catalogue (no parallel system).
 
 **Dependencies:** core UI exists.
 
@@ -1187,7 +1256,7 @@ Goal: finish identity, performance, error handling, release build and automated 
 
 ## M3 — Vertical Slice
 
-**Tasks:** AUT-031 → AUT-039 (incl. AUT-INT-001, AUT-R-036).  
+**Tasks:** AUT-031 → AUT-039 (incl. AUT-INT-001, AUT-LOC-001, AUT-R-036, AUT-UI-001).  
 **Exit:** real Android slice demonstrates manual production → first automation → Assembly → First Robot.  
 **Human product gate:** comprehension, camera, automation payoff, visual progression, Next Goal and First Robot must feel convincing.
 
