@@ -24,7 +24,17 @@ export interface DeviceDriver {
     commandLog(): AdbCommandLogEntry[];
 }
 
-export class AdbDeviceDriver implements DeviceDriver {
+/** AUT-INT-001: app lifecycle and private-storage operations used by the session persistence scenario. */
+export interface SessionDeviceDriver extends DeviceDriver {
+    pressHome(): Promise<void>;
+    clearAppData(pkg: string): Promise<void>;
+    appDataDirectory(pkg: string): Promise<string>;
+    listAppFiles(pkg: string, directory: string): Promise<string[]>;
+    writeAppFile(pkg: string, devicePath: string, text: string): Promise<void>;
+    removeAppFiles(pkg: string, devicePaths: string[]): Promise<void>;
+}
+
+export class AdbDeviceDriver implements SessionDeviceDriver {
     private readonly adbPath: string;
     private readonly client: AdbClient;
     private logcat: LogcatProcess | null = null;
@@ -48,6 +58,12 @@ export class AdbDeviceDriver implements DeviceDriver {
     public meminfo(pkg: string) { return this.client.meminfo(pkg); }
     public gfxinfo(pkg: string) { return this.client.gfxinfo(pkg); }
     public commandLog() { return this.client.commandLog; }
+    public pressHome() { return this.client.pressHome(); }
+    public clearAppData(pkg: string) { return this.client.clearAppData(pkg); }
+    public appDataDirectory(pkg: string) { return this.client.appDataDirectory(pkg); }
+    public listAppFiles(pkg: string, directory: string) { return this.client.listAppFiles(pkg, directory); }
+    public writeAppFile(pkg: string, devicePath: string, text: string) { return this.client.writeAppFile(pkg, devicePath, text); }
+    public removeAppFiles(pkg: string, devicePaths: string[]) { return this.client.removeAppFiles(pkg, devicePaths); }
 
     public startLogcat(rawPath: string): EventStream {
         this.logcat = new LogcatProcess();

@@ -353,6 +353,31 @@ test('resume creates one offline preview from the suspend boundary without advan
     assert.equal(started.session.getStateSnapshot().boosts.activeBoosts.free_overclock.remainingSeconds, 60);
 });
 
+test('AUT-INT-001 resume re-baselines the active clock so background time is not credited as active time', async () => {
+    const {
+        SAVE_MAIN_NAME,
+    } = await persistenceModule();
+    const main = await saveTextForState(await offlineEligibleState(), '2026-08-22T00:00:00.000Z');
+    const harness = await createHarness({
+        files: { [SAVE_MAIN_NAME]: main },
+        utcIso: '2026-08-22T00:00:00.000Z',
+        monotonicSeconds: 10,
+    });
+    const started = await startup(harness);
+    assert.equal(started.ok, true);
+    const outputBefore = started.session.getStateSnapshot().run.industrialOutput;
+
+    const suspend = await started.session.suspend();
+    assert.equal(suspend.status, 'suspended_saved');
+    harness.clock.advanceMonotonicSeconds(600);
+    harness.clock.advanceUtcSeconds(600);
+    started.session.resume();
+    const active = await started.session.advanceActiveSessionFromClock();
+
+    assert.equal(active.runtime.elapsedSeconds, 0);
+    assert.equal(started.session.getStateSnapshot().run.industrialOutput, outputBefore);
+});
+
 test('offline collect applies pending preview once, saves critically, and rejects duplicate collection', async () => {
     const {
         SAVE_MAIN_NAME,

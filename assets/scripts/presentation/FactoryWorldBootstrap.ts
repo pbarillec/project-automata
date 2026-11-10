@@ -4,6 +4,8 @@ import {
     Canvas,
     Component,
     DirectionalLight,
+    game,
+    Game,
     Layers,
     Material,
     Mesh,
@@ -25,6 +27,11 @@ import { ProducerSelectionController } from './ProducerSelectionController';
 import { CoreHudController } from './CoreHudController';
 import { ProducerPanelController } from './ProducerPanelController';
 import { FirstAutomationPresentationController } from './FirstAutomationPresentationController';
+import { CocosFileSystemPort } from '../app/CocosFileSystemPort';
+import { bootstrapGameSession } from '../lifecycle/GameSessionBootstrap.ts';
+import { FileSaveStorage } from '../persistence/FileSaveStorage.ts';
+import { DefaultTimeService } from '../time/DefaultTimeService.ts';
+import { FactoryWorldStateBinding, type FactoryWorldAutomationSink } from './FactoryWorldStateBinding.ts';
 
 const { ccclass, property } = _decorator;
 
@@ -53,6 +60,13 @@ export class FactoryWorldBootstrap extends Component {
     @property([Prefab])
     public factoryPrefabs: Prefab[] = [];
 
+    /** AUT-INT-001: the persistent session binding; null until the save has loaded (inputs stay inert). */
+    private binding: FactoryWorldStateBinding | null = null;
+    private pendingBinding: { binding: FactoryWorldStateBinding; status: string } | null = null;
+    private sessionWiring: { hud: CoreHudController; panel: ProducerPanelController; selection: ProducerSelectionController; presentation: PresentationController | null } | null = null;
+    private saveRootPath = '';
+    private lifecycleHooksRegistered = false;
+
     /** AUT-INFRA-001: structured [AUT-DEVICE] diagnostics exist only in DEBUG builds; release builds never emit. */
     public onLoad(): void {
         configureDeviceDiagnostics({ enabled: DEBUG === true });
@@ -70,9 +84,113 @@ export class FactoryWorldBootstrap extends Component {
         if (!site.getChildByName('NeutralFactoryKeyLight')) this.createLighting(site);
         this.createPresentationRegistry(site);
         const selection = this.createProducerSelection(site);
-        this.createCoreHud();
+        const hud = this.createCoreHud();
         const panel = this.createProducerPanel();
-        selection.onSelectionChanged = (producerId) => panel.replaceSelection(producerId);
+        selection.onSelectionChanged = (producerId) => {
+            panel.replaceSelection(producerId);
+            this.binding?.onSelectionChanged(producerId);
+        };
+        const presentation = site.getChildByName('PresentationAnchors')?.getComponent(PresentationController) ?? null;
+        this.sessionWiring = { hud, panel, selection, presentation };
+        this.startPersistentSession(presentation);
+    }
+
+    /** AUT-INT-001: the binding activates here, after every component built in start() has started. */
+    public update(deltaTime: number): void {
+        if (this.pendingBinding) {
+            this.activateSessionBinding(this.pendingBinding.binding, this.pendingBinding.status);
+            this.pendingBinding = null;
+            return;
+        }
+        void this.binding?.tick(deltaTime);
+    }
+
+    public onDestroy(): void {
+        if (!this.lifecycleHooksRegistered) return;
+        game.off(Game.EVENT_HIDE, this.onGameHide, this);
+        game.off(Game.EVENT_SHOW, this.onGameShow, this);
+        this.lifecycleHooksRegistered = false;
+    }
+
+    /** Loads the save through the single authoritative session; a failed load stays inert and never starts fresh. */
+    private startPersistentSession(presentation: PresentationController | null): void {
+        let storage: FileSaveStorage;
+        try {
+            const port = new CocosFileSystemPort();
+            this.saveRootPath = port.rootPath;
+            storage = new FileSaveStorage(port);
+        } catch (error) {
+            this.reportSessionError('storage', error);
+            this.emitSessionState('load_failed', 'storage_unavailable', null, false);
+            return;
+        }
+        const automation: FactoryWorldAutomationSink | null = presentation ? {
+            syncAutomationState: (snapshot) => presentation.syncAutomationState(snapshot),
+            consumeDomainEvents: (snapshot, events) => presentation.consumeDomainEvents(snapshot, events),
+        } : null;
+        bootstrapGameSession({ storage, timeService: new DefaultTimeService() }).then((result) => {
+            if (!result.startup.ok) {
+                this.emitSessionState('load_failed', result.startup.status, null, false);
+                return;
+            }
+            const binding = new FactoryWorldStateBinding({
+                session: result.startup.session,
+                configRepository: result.configRepository,
+                automation,
+                hud: this.sessionWiring?.hud ?? null,
+                panel: this.sessionWiring?.panel ?? null,
+                reportError: (context, error) => this.reportSessionError(context, error),
+            });
+            this.pendingBinding = { binding, status: result.startup.status };
+        }).catch((error: unknown) => {
+            this.reportSessionError('bootstrap', error);
+            this.emitSessionState('load_failed', 'bootstrap_error', null, false);
+        });
+    }
+
+    private activateSessionBinding(binding: FactoryWorldStateBinding, status: string): void {
+        const wiring = this.sessionWiring;
+        if (!wiring) return;
+        this.binding = binding;
+        binding.init();
+        binding.onSelectionChanged(wiring.selection.getSelectedProducerId());
+        wiring.hud.commandEmitter = (command) => { void binding.submit(command); };
+        wiring.panel.commandEmitter = (command) => { void binding.submit(command); };
+        if (!this.lifecycleHooksRegistered) {
+            game.on(Game.EVENT_HIDE, this.onGameHide, this);
+            game.on(Game.EVENT_SHOW, this.onGameShow, this);
+            this.lifecycleHooksRegistered = true;
+        }
+        this.emitSessionState('ready', status, null, binding.describe().autoFeederOwned);
+        // DEBUG-only (emitDeviceEvent is a no-op unless enabled from DEBUG): the restored automation state.
+        const payoff = wiring.presentation?.firstAutomationPresentation?.getSnapshot() ?? null;
+        emitDeviceEvent('reveal_state', { phase: 'synced', source: 'session', automated: payoff?.activityIndicatorVisible === true, focusRequested: false });
+    }
+
+    private onGameHide(): void {
+        const binding = this.binding;
+        if (!binding) return;
+        void binding.suspend().then((result) => {
+            this.emitSessionState('suspended', result?.status ?? 'suspend_error', result?.save.ok ?? false, binding.describe().autoFeederOwned);
+        });
+    }
+
+    private onGameShow(): void {
+        const binding = this.binding;
+        if (!binding) return;
+        const result = binding.resume();
+        this.emitSessionState('resumed', result?.status ?? 'resume_error', null, binding.describe().autoFeederOwned);
+    }
+
+    /** DEBUG-only `session_state` diagnostic (no-op unless diagnostics were enabled from DEBUG). */
+    private emitSessionState(phase: 'ready' | 'suspended' | 'resumed' | 'load_failed', status: string, saveOk: boolean | null, autoFeederOwned: boolean): void {
+        emitDeviceEvent('session_state', { phase, status, saveOk, autoFeederOwned, writablePath: this.saveRootPath });
+    }
+
+    /** DEBUG-only `error` diagnostic; session failures never throw into the frame loop. */
+    private reportSessionError(context: string, error: unknown): void {
+        const stack = error instanceof Error ? String(error.stack ?? '') : '';
+        emitDeviceEvent('error', { source: 'session', context, message: error instanceof Error ? error.message : String(error), stack: stack.slice(0, 400) });
     }
 
     private createShell(parent: Node): void {
@@ -202,7 +320,7 @@ export class FactoryWorldBootstrap extends Component {
         return controller;
     }
 
-    private createCoreHud(): void {
+    private createCoreHud(): CoreHudController {
         const canvas = this.node.getChildByName('CoreHudCanvas') ?? new Node('CoreHudCanvas');
         canvas.parent = this.node;
         canvas.layer = Layers.Enum.UI_2D;
@@ -214,7 +332,7 @@ export class FactoryWorldBootstrap extends Component {
         hud.parent = canvas;
         hud.layer = Layers.Enum.UI_2D;
         hud.setPosition(28, 560, 0);
-        hud.getComponent(CoreHudController) ?? hud.addComponent(CoreHudController);
+        return hud.getComponent(CoreHudController) ?? hud.addComponent(CoreHudController);
     }
 
     private createProducerPanel(): ProducerPanelController {

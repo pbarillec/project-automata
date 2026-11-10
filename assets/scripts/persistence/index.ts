@@ -42,6 +42,10 @@ export {
 } from './InMemorySaveStorage.ts';
 
 export {
+    FileSaveStorage,
+} from './FileSaveStorage.ts';
+
+export {
     SAVE_BACKUP_NAME,
     SAVE_MAIN_NAME,
     SAVE_TEMP_NAME,
@@ -95,6 +99,10 @@ export type {
     InMemorySaveStorageOperationRecord,
     SaveStorageOperation,
 } from './InMemorySaveStorage.ts';
+
+export type {
+    FileSystemPort,
+} from './FileSaveStorage.ts';
 
 export type {
     LogicalSaveName,

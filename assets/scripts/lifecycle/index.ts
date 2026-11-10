@@ -2,6 +2,16 @@ export {
     LifecycleSessionCoordinator,
 } from './LifecycleSessionCoordinator.ts';
 
+export {
+    GAME_SESSION_DEV_GAME_VERSION,
+    bootstrapGameSession,
+} from './GameSessionBootstrap.ts';
+
+export type {
+    GameSessionBootstrapOptions,
+    GameSessionBootstrapResult,
+} from './GameSessionBootstrap.ts';
+
 export type {
     LifecycleActiveClockAdvanceResult,
     LifecycleCollectDurabilityFailureResult,

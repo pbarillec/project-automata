@@ -364,6 +364,8 @@ export class LifecycleSessionCoordinator {
     }
 
     resume(): LifecycleResumeResult {
+        // AUT-INT-001: background time belongs to the offline preview, never to the active clock.
+        this.replaceRuntimeState(this.runtime.getStateSnapshot());
         if (this.pendingOfflinePreview !== null) {
             return Object.freeze({
                 status: 'existing_pending_preview' as const,

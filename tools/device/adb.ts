@@ -114,6 +114,12 @@ export function pngSize(png: Buffer): { width: number; height: number } | null {
     return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
 }
 
+/** Absolute device paths only, from a conservative character set (they are interpolated into a remote shell). */
+export function assertSafeDevicePath(devicePath: string): string {
+    if (!/^\/[A-Za-z0-9._/-]+$/.test(devicePath) || devicePath.includes('..')) throw new Error(`unsafe device path: ${devicePath}`);
+    return devicePath;
+}
+
 export interface AdbCommandLogEntry { args: string[]; code: number | null; timedOut: boolean; durationMs: number }
 
 export class AdbClient {
@@ -189,6 +195,37 @@ export class AdbClient {
     }
 
     public async logcatClear(): Promise<void> { await this.run(['logcat', '-c']); }
+
+    /** AUT-INT-001: sends the app to the background (Android HOME key). */
+    public async pressHome(): Promise<void> { await this.shell(['input', 'keyevent', 'KEYCODE_HOME']); }
+
+    /** AUT-INT-001: wipes the app's private data (saves included). */
+    public async clearAppData(pkg: string): Promise<void> {
+        const out = await this.shell(['pm', 'clear', pkg], 30_000);
+        if (!/Success/.test(out)) throw new AdbError('command', ['shell', 'pm', 'clear', pkg], out.trim().slice(0, 500));
+    }
+
+    /** AUT-INT-001: the app's private data directory (`run-as <pkg> pwd`, debuggable APK). */
+    public async appDataDirectory(pkg: string): Promise<string> {
+        return assertSafeDevicePath((await this.shell(['run-as', pkg, 'pwd'])).trim());
+    }
+
+    /** AUT-INT-001: lists file names in an app-private directory (debuggable APK, `run-as`). */
+    public async listAppFiles(pkg: string, directory: string): Promise<string[]> {
+        const out = await this.shell(['run-as', pkg, 'ls', '-1', assertSafeDevicePath(directory)]);
+        return out.split(/\r?\n/).map((name) => name.trim()).filter((name) => name.length > 0);
+    }
+
+    /** AUT-INT-001: writes a text file into app-private storage (debuggable APK, `run-as`, base64 transport). */
+    public async writeAppFile(pkg: string, devicePath: string, text: string): Promise<void> {
+        const b64 = Buffer.from(text, 'utf8').toString('base64');
+        await this.shell(['run-as', pkg, 'sh', '-c', `'echo ${b64} | base64 -d > ${assertSafeDevicePath(devicePath)}'`], 30_000);
+    }
+
+    /** AUT-INT-001: removes app-private files (missing files are ignored). */
+    public async removeAppFiles(pkg: string, devicePaths: string[]): Promise<void> {
+        await this.shell(['run-as', pkg, 'rm', '-f', ...devicePaths.map(assertSafeDevicePath)]);
+    }
 
     public async meminfo(pkg: string): Promise<string> { return this.shell(['dumpsys', 'meminfo', pkg], 30_000); }
 

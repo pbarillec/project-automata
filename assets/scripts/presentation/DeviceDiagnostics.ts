@@ -23,6 +23,8 @@ export const DEVICE_EVENT_TYPES = [
     'marker_state',
     'camera_focus',
     'zones_projected',
+    // AUT-INT-001: persistent session lifecycle (ready | suspended | resumed | load_failed).
+    'session_state',
     'error',
 ] as const;
 
