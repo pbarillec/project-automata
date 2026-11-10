@@ -32,12 +32,6 @@ function evaluateVisibility(source) {
     return Function(`"use strict"; return (${expression});`)() >>> 0;
 }
 
-function numbersFrom(source, pattern, label) {
-    const match = source.match(pattern);
-    assert.ok(match, `could not parse ${label}`);
-    return match.slice(1).map(Number);
-}
-
 async function presentationSources() {
     const dirs = ['assets/scripts/presentation', 'assets/scripts/camera', 'assets/scripts/app'];
     const sources = [];
@@ -58,9 +52,14 @@ async function presentationSources() {
     return sources;
 }
 
-const PANEL_ROOT_SIZE = /this\.node\.addComponent\(UITransform\); transform\.setContentSize\((\d+),\s*(\d+)\)/;
-// CoreHudController root card size (CoreHudController.ts, `transform.setContentSize(640, 310)`).
-const HUD_ROOT_SIZE = /transform\.setContentSize\((640),\s*(310)\)/;
+const uiLayoutUrl = pathToFileURL(path.join(repoRoot, 'assets/scripts/presentation/UiLayout.ts')).href;
+// AUT-R-036: both controllers size their root card from UiLayout.
+const ROOT_SIZE_FROM_LAYOUT = /this\.node\.addComponent\(UITransform\);\s*transform\.setContentSize\(layout\.width, cardHeight\(layout\)\);/;
+
+/** `new Node(...)` declarations in a source, with the variable each is assigned to. */
+function createdNodes(source) {
+    return [...source.matchAll(/const (\w+) = (?:[^;]*\?\? )?new Node\(/g)].map((m) => m[1]);
+}
 
 test('T1: the world camera visibility excludes UI_2D', async () => {
     const source = await readSource(bootstrapPath);
@@ -68,9 +67,22 @@ test('T1: the world camera visibility excludes UI_2D', async () => {
     assert.ok(!source.includes('visibility = Layers.Enum.ALL;'), 'bootstrap no longer gives the world camera Layers.Enum.ALL');
 });
 
-test('T2: exactly one camera exists and no presentation camera sees UI_2D', async () => {
+test('T2: two cameras exist; the UI camera sees exactly UI_2D and the WorldCamera is the only one seeing DEFAULT', async () => {
     const source = await readSource(bootstrapPath);
-    assert.equal((source.match(/addComponent\(Camera\)/g) ?? []).length, 1);
+    // AUT-R-036: the WorldCamera (createCameraRig) plus the dedicated UI camera (createUiRoot), in that order.
+    const cameraAdds = [...source.matchAll(/(\w+)\.getComponent\(Camera\) \?\? \1\.addComponent\(Camera\)/g)].map((m) => m[1]);
+    assert.deepEqual(cameraAdds, ['cameraNode', 'cameraNode']);
+    assert.equal((source.match(/addComponent\(Camera\)/g) ?? []).length, 2);
+    const visibilities = [...source.matchAll(/(\w+)\.visibility\s*=\s*([^;]+);/g)].map((m) => ({ target: m[1], expression: m[2].trim() }));
+    assert.deepEqual(visibilities, [
+        { target: 'camera', expression: '(Layers.Enum.ALL & ~Layers.Enum.UI_2D) >>> 0' },
+        { target: 'uiCamera', expression: 'Layers.Enum.UI_2D' },
+    ]);
+    const uiVisibility = LAYER_UI_2D;
+    const worldVisibility = evaluateVisibility(source);
+    assert.equal((uiVisibility & LAYER_DEFAULT) >>> 0, 0, 'the UI camera must not see DEFAULT');
+    assert.notEqual((worldVisibility & LAYER_DEFAULT) >>> 0, 0, 'the WorldCamera sees DEFAULT');
+    assert.equal((worldVisibility & LAYER_UI_2D) >>> 0, 0, 'the WorldCamera must not see UI_2D');
     for (const { file, text } of await presentationSources()) {
         assert.doesNotMatch(text, /visibility\s*=\s*Layers\.Enum\.ALL\s*;/, `${file} assigns visibility = ALL`);
         for (const assignment of text.match(/visibility\s*=[^;]*;/g) ?? []) {
@@ -90,13 +102,20 @@ test('T3: HUD/panel touch listeners live only on their bounded root nodes', asyn
     assert.match(bootstrap, /panel\.getComponent\(ProducerPanelController\) \?\? panel\.addComponent\(ProducerPanelController\)/);
     assert.doesNotMatch(bootstrap, /canvas\.(addComponent|getComponent)\((CoreHudController|ProducerPanelController)\)/);
     assert.doesNotMatch(bootstrap, /canvas\.on\(/);
-    const [canvasW, canvasH] = numbersFrom(bootstrap, /canvasTransform\.setContentSize\((\d+),\s*(\d+)\)/, 'canvas size');
-    const [hudW, hudH] = numbersFrom(hud, HUD_ROOT_SIZE, 'HUD root size');
-    const [panelW, panelH] = numbersFrom(panel, PANEL_ROOT_SIZE, 'panel root size');
-    assert.deepEqual([canvasW, canvasH], [720, 1280]);
-    assert.deepEqual([hudW, hudH], [640, 310]);
-    assert.deepEqual([panelW, panelH], [600, 330]);
-    assert.ok(hudW < canvasW && hudH < canvasH && panelW < canvasW && panelH < canvasH);
+    assert.doesNotMatch(bootstrap, /(canvas|container)\w*\.on\(Node\.EventType/);
+    // AUT-R-036: no fixed canvas size (the Canvas aligns with the screen); card sizes come from UiLayout.
+    assert.doesNotMatch(bootstrap, /canvasTransform\.setContentSize\(/);
+    assert.match(hud, /const layout = CORE_HUD_LAYOUT;/);
+    assert.match(panel, /const layout = PRODUCER_PANEL_LAYOUT;/);
+    assert.match(hud, ROOT_SIZE_FROM_LAYOUT);
+    assert.match(panel, ROOT_SIZE_FROM_LAYOUT);
+    const L = await import(uiLayoutUrl);
+    const design = L.UI_DESIGN_RESOLUTION;
+    for (const card of [L.CORE_HUD_LAYOUT, L.PRODUCER_PANEL_LAYOUT]) {
+        assert.ok(card.width < design.width && L.cardHeight(card) < design.height, `${card.name} fits the design resolution`);
+        assert.notDeepEqual([card.width, L.cardHeight(card)], [640, 310]);
+        assert.notDeepEqual([card.width, L.cardHeight(card)], [600, 330]);
+    }
 });
 
 test('T4: panel Buttons are added on child nodes, never on the panel root', async () => {
@@ -150,44 +169,40 @@ test('T5: near-plane hit test through the world camera cannot let UI roots claim
     const maxCameraY = Math.max(...samples.map((s) => s.y));
     assert.ok(maxCameraY <= 21.2, `camera y envelope ${maxCameraY}`);
 
-    // UI roots: centre anchor, CoreHudCanvas at the origin.
-    const [panelX, panelY] = numbersFrom(bootstrap, /panel\.setPosition\((-?\d+),\s*(-?\d+),/, 'panel position');
-    const [hudX, hudY] = numbersFrom(bootstrap, /hud\.setPosition\((-?\d+),\s*(-?\d+),/, 'HUD position');
-    const [panelW, panelH] = numbersFrom(panel, PANEL_ROOT_SIZE, 'panel size');
-    const [hudW, hudH] = numbersFrom(hud, HUD_ROOT_SIZE, 'HUD size');
-    const roots = [
-        { name: 'ProducerPanel', layer: LAYER_UI_2D, cx: panelX, cy: panelY, w: panelW, h: panelH },
-        { name: 'CoreHUD', layer: LAYER_UI_2D, cx: hudX, cy: hudY, w: hudW, h: hudH },
-    ];
-
-    // Panel action Buttons: child nodes with no explicit layer (Cocos default = DEFAULT),
-    // positioned at local y = base - index * step (ProducerPanelController.ensureLayout).
-    assert.doesNotMatch(panel, /\.layer\s*=/);
-    const [baseY, stepY] = numbersFrom(panel, /new Vec3\(0, (\d+) - index \* (\d+), 0\)/, 'panel row layout');
-    const [buttonW, buttonH] = numbersFrom(panel, /transform\.setContentSize\((\d+), (\d+)\);\s*const label/, 'row size');
-    const entries = panel.match(/const entries = \[(.*?)\] as const/);
-    assert.ok(entries, 'panel entries');
-    const keys = [...entries[1].matchAll(/\['(\w+)'/g)].map((m) => m[1]);
-    const buttons = keys
-        .map((key, index) => ({ key, index }))
-        .filter(({ key }) => key.startsWith('Action_'))
-        .map(({ key, index }) => ({ name: key, layer: LAYER_DEFAULT, cx: panelX, cy: panelY + baseY - index * stepY, w: buttonW, h: buttonH }));
-    assert.deepEqual(buttons.map((b) => b.cy), [136, 98, 60]);
-
     // Engine rule: a node is hit-testable through a camera only if (camera.visibility & node.layer) != 0.
     const claims = (visibility, rect) => {
         if (((visibility & rect.layer) >>> 0) === 0) return 0;
         return samples.filter((p) => Math.abs(p.x - rect.cx) <= rect.w / 2 && Math.abs(p.y - rect.cy) <= rect.h / 2).length;
     };
 
-    // (a) Reproduce the bug: with visibility = ALL the panel root claims every sample.
-    assert.equal(claims(LAYER_ALL, roots[0]), samples.length);
+    // (a) Reproduce the original AUT-R-035 bug with its historical geometry (the pre-AUT-R-036 panel
+    // root: centre (28, 150), 600×330, canvas at the world origin): with visibility = ALL it claims every sample.
+    const historicalPanelRoot = { name: 'ProducerPanel (pre-AUT-R-036)', layer: LAYER_UI_2D, cx: 28, cy: 150, w: 600, h: 330 };
+    assert.equal(claims(LAYER_ALL, historicalPanelRoot), samples.length);
 
-    // (b) With the bootstrap's actual mask, no UI_2D root is hit-testable through the world camera.
+    // AUT-R-036: every node the bootstrap and the controllers create for the UI is UI_2D, including the
+    // controllers' label/Button rows (Cocos would otherwise default them to DEFAULT).
+    for (const [name, text] of [['CoreHudController', hud], ['ProducerPanelController', panel]]) {
+        const nodes = createdNodes(text);
+        assert.ok(nodes.length >= 1, `${name} creates rows`);
+        for (const variable of nodes) assert.match(text, new RegExp(`\\b${variable}\\.layer = Layers\\.Enum\\.UI_2D;`), `${name}: ${variable} is not UI_2D`);
+        assert.doesNotMatch(text, /\.layer\s*=\s*Layers\.Enum\.(?!UI_2D\b)/, `${name} assigns a non-UI_2D layer`);
+    }
+
+    // UI roots and rows at their real AUT-R-036 places for several screens (canvas bottom-left at the
+    // world origin, one design unit per world unit): all UI_2D.
+    const L = await import(uiLayoutUrl);
+    const rects = [];
+    for (const screen of [{ w: 1280, h: 720 }, { w: 2412, h: 1080 }, { w: 2772, h: 1272 }]) {
+        const layout = L.computeUiLayout(screen);
+        const toWorld = (rect, name) => ({ name, layer: LAYER_UI_2D, cx: (rect.x + rect.w / 2) / layout.scale, cy: (rect.y + rect.h / 2) / layout.scale, w: rect.w / layout.scale, h: rect.h / layout.scale });
+        rects.push(toWorld(layout.hud, 'CoreHUD'), toWorld(layout.panel, 'ProducerPanel'));
+        for (const [key, rect] of Object.entries(layout.buttons)) rects.push(toWorld(rect, key));
+    }
+
+    // (b) With the bootstrap's actual mask, no UI_2D root or row is hit-testable through the world camera.
     const visibility = evaluateVisibility(bootstrap);
     assert.equal((visibility & LAYER_UI_2D) >>> 0, 0);
-    for (const root of roots) assert.equal(claims(visibility, root), 0, `${root.name} claims world touches`);
-
-    // (c) DEFAULT-layer Buttons stay world-visible but sit far above the camera envelope.
-    for (const button of buttons) assert.equal(claims(visibility, button), 0, `${button.name} claims world touches`);
+    assert.equal(claims(visibility, historicalPanelRoot), 0);
+    for (const rect of rects) assert.equal(claims(visibility, rect), 0, `${rect.name} claims world touches`);
 });

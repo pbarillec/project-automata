@@ -13,14 +13,18 @@ import {
     Node,
     Prefab,
     primitives,
+    SafeArea,
+    screen,
     utils,
     Vec3,
     Color,
     UITransform,
+    view,
+    Widget,
 } from 'cc';
 import { DEBUG } from 'cc/env';
 import { MobileCameraController } from '../camera/MobileCameraController';
-import { configureDeviceDiagnostics, emitDeviceEvent, installDeviceErrorHook } from './DeviceDiagnostics';
+import { configureDeviceDiagnostics, emitDeviceEvent, installDeviceErrorHook, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
 import { PresentationController } from './PresentationController';
 import { FabricatorVisualController } from './FabricatorVisualController';
 import { ProducerSelectionController } from './ProducerSelectionController';
@@ -33,6 +37,7 @@ import { FileSaveStorage } from '../persistence/FileSaveStorage.ts';
 import { DefaultTimeService } from '../time/DefaultTimeService.ts';
 import { FactoryWorldStateBinding, type FactoryWorldAutomationSink } from './FactoryWorldStateBinding.ts';
 import type { DisplayNameSource } from './PresentationText.ts';
+import { CORE_HUD_LAYOUT, PANEL_ACTION_KEYS, PRODUCER_PANEL_LAYOUT, UI_EDGE_MARGIN, widgetAlignment, type UiCardSpec, type UiRect } from './UiLayout.ts';
 
 const { ccclass, property } = _decorator;
 
@@ -67,6 +72,10 @@ export class FactoryWorldBootstrap extends Component {
     private sessionWiring: { hud: CoreHudController; panel: ProducerPanelController; selection: ProducerSelectionController; presentation: PresentationController | null } | null = null;
     private saveRootPath = '';
     private lifecycleHooksRegistered = false;
+    /** AUT-R-036: frames left before the DEBUG `ui_layout` diagnostic (0 = none scheduled). */
+    private uiLayoutFrames = 0;
+    private uiLayoutReason = '';
+    private uiResizeRegistered = false;
 
     /** AUT-INFRA-001: structured [AUT-DEVICE] diagnostics exist only in DEBUG builds; release builds never emit. */
     public onLoad(): void {
@@ -85,12 +94,14 @@ export class FactoryWorldBootstrap extends Component {
         if (!site.getChildByName('NeutralFactoryKeyLight')) this.createLighting(site);
         this.createPresentationRegistry(site);
         const selection = this.createProducerSelection(site);
+        this.createUiRoot(site);
         const hud = this.createCoreHud();
         const panel = this.createProducerPanel();
         selection.onSelectionChanged = (producerId) => {
             panel.replaceSelection(producerId);
             this.binding?.onSelectionChanged(producerId);
         };
+        this.reportUiLayoutAfterSelection(selection);
         const presentation = site.getChildByName('PresentationAnchors')?.getComponent(PresentationController) ?? null;
         this.sessionWiring = { hud, panel, selection, presentation };
         this.startPersistentSession(presentation);
@@ -98,15 +109,21 @@ export class FactoryWorldBootstrap extends Component {
 
     /** AUT-INT-001: the binding activates here, after every component built in start() has started. */
     public update(deltaTime: number): void {
+        this.tickUiLayoutDiagnostics();
         if (this.pendingBinding) {
             this.activateSessionBinding(this.pendingBinding.binding, this.pendingBinding.status, this.pendingBinding.displayNames);
             this.pendingBinding = null;
+            this.scheduleUiLayoutDiagnostics('session_ready');
             return;
         }
         void this.binding?.tick(deltaTime);
     }
 
     public onDestroy(): void {
+        if (this.uiResizeRegistered) {
+            view.off('canvas-resize', this.onUiResize, this);
+            this.uiResizeRegistered = false;
+        }
         if (!this.lifecycleHooksRegistered) return;
         game.off(Game.EVENT_HIDE, this.onGameHide, this);
         game.off(Game.EVENT_SHOW, this.onGameShow, this);
@@ -323,32 +340,153 @@ export class FactoryWorldBootstrap extends Component {
         return controller;
     }
 
-    private createCoreHud(): CoreHudController {
+    /**
+     * AUT-R-036 screen-space UI root: a fit-height Canvas aligned with the screen and rendered by a
+     * dedicated orthographic UI camera that sees UI_2D only and draws above the WorldCamera with a
+     * depth-only clear, plus a full-screen `UiSafeArea` container that the HUD and the panel anchor to.
+     */
+    private createUiRoot(site: Node): void {
         const canvas = this.node.getChildByName('CoreHudCanvas') ?? new Node('CoreHudCanvas');
         canvas.parent = this.node;
         canvas.layer = Layers.Enum.UI_2D;
-        canvas.getComponent(Canvas) ?? canvas.addComponent(Canvas);
-        const canvasTransform = canvas.getComponent(UITransform) ?? canvas.addComponent(UITransform);
-        canvasTransform.setContentSize(720, 1280);
+        canvas.getComponent(UITransform) ?? canvas.addComponent(UITransform);
+        const canvasWidget = canvas.getComponent(Widget) ?? canvas.addComponent(Widget);
+        this.stretchWidget(canvasWidget);
+        canvasWidget.updateAlignment();
+        const canvasComponent = canvas.getComponent(Canvas) ?? canvas.addComponent(Canvas);
 
-        const hud = canvas.getChildByName('CoreHUD') ?? new Node('CoreHUD');
-        hud.parent = canvas;
+        const cameraNode = canvas.getChildByName('UICamera') ?? new Node('UICamera');
+        cameraNode.parent = canvas;
+        cameraNode.layer = Layers.Enum.UI_2D;
+        const uiCamera = cameraNode.getComponent(Camera) ?? cameraNode.addComponent(Camera);
+        uiCamera.projection = Camera.ProjectionType.ORTHO;
+        uiCamera.visibility = Layers.Enum.UI_2D;
+        uiCamera.clearFlags = Camera.ClearFlag.DEPTH_ONLY;
+        const worldCamera = site.getChildByName('CameraRig')?.getChildByName('WorldCamera')?.getComponent(Camera) ?? null;
+        uiCamera.priority = (worldCamera?.priority ?? 0) + 1;
+        uiCamera.near = 1;
+        uiCamera.far = 2000;
+        canvasComponent.cameraComponent = uiCamera;
+        canvasComponent.alignCanvasWithScreen = true;
+
+        const container = canvas.getChildByName('UiSafeArea') ?? new Node('UiSafeArea');
+        container.parent = canvas;
+        container.layer = Layers.Enum.UI_2D;
+        container.getComponent(UITransform) ?? container.addComponent(UITransform);
+        this.stretchWidget(container.getComponent(Widget) ?? container.addComponent(Widget));
+        container.getComponent(SafeArea) ?? container.addComponent(SafeArea);
+
+        if (!this.uiResizeRegistered) {
+            view.on('canvas-resize', this.onUiResize, this);
+            this.uiResizeRegistered = true;
+        }
+    }
+
+    private createCoreHud(): CoreHudController {
+        const container = this.uiSafeArea();
+        const hud = container.getChildByName('CoreHUD') ?? new Node('CoreHUD');
+        hud.parent = container;
         hud.layer = Layers.Enum.UI_2D;
-        hud.setPosition(28, 560, 0);
+        this.anchorCard(hud, CORE_HUD_LAYOUT);
         return hud.getComponent(CoreHudController) ?? hud.addComponent(CoreHudController);
     }
 
     private createProducerPanel(): ProducerPanelController {
-        const canvas = this.node.getChildByName('CoreHudCanvas') ?? new Node('CoreHudCanvas');
-        canvas.parent = this.node;
-        canvas.layer = Layers.Enum.UI_2D;
-        canvas.getComponent(Canvas) ?? canvas.addComponent(Canvas);
-        canvas.getComponent(UITransform) ?? canvas.addComponent(UITransform);
-        const panel = canvas.getChildByName('ProducerPanel') ?? new Node('ProducerPanel');
-        panel.parent = canvas;
+        const container = this.uiSafeArea();
+        const panel = container.getChildByName('ProducerPanel') ?? new Node('ProducerPanel');
+        panel.parent = container;
         panel.layer = Layers.Enum.UI_2D;
-        panel.setPosition(28, 150, 0);
+        this.anchorCard(panel, PRODUCER_PANEL_LAYOUT);
         return panel.getComponent(ProducerPanelController) ?? panel.addComponent(ProducerPanelController);
+    }
+
+    private uiSafeArea(): Node {
+        const container = this.node.getChildByName('CoreHudCanvas')?.getChildByName('UiSafeArea');
+        if (!container) throw new Error('createUiRoot() must run before the HUD and the panel are built.');
+        return container;
+    }
+
+    private stretchWidget(widget: Widget): void {
+        widget.isAlignTop = widget.isAlignBottom = widget.isAlignLeft = widget.isAlignRight = true;
+        widget.top = widget.bottom = widget.left = widget.right = 0;
+    }
+
+    /** Anchors a card to its UiLayout corner of the safe area; ALWAYS so safe-area or size changes re-align it. */
+    private anchorCard(node: Node, card: UiCardSpec): void {
+        node.getComponent(UITransform) ?? node.addComponent(UITransform);
+        const widget = node.getComponent(Widget) ?? node.addComponent(Widget);
+        const align = widgetAlignment(card.corner);
+        widget.isAlignTop = align.top;
+        widget.isAlignBottom = align.bottom;
+        widget.isAlignLeft = align.left;
+        widget.isAlignRight = align.right;
+        widget.top = widget.bottom = widget.left = widget.right = UI_EDGE_MARGIN;
+        widget.alignMode = Widget.AlignMode.ALWAYS;
+    }
+
+    // ---- AUT-R-036 DEBUG `ui_layout` diagnostic (emit only; never changes layout, selection or input) ----
+
+    /**
+     * DEBUG-only: after the panel refresh a selection change causes (replaceSelection + binding refresh, both
+     * synchronous in the wrapped handler), re-reports `ui_layout` with the real strings. Scheduling restarts
+     * the 2-frame countdown, so a burst of refreshes emits once.
+     */
+    private reportUiLayoutAfterSelection(selection: ProducerSelectionController): void {
+        if (!isDeviceDiagnosticsEnabled()) return;
+        const refreshPanel = selection.onSelectionChanged;
+        selection.onSelectionChanged = (producerId) => {
+            refreshPanel?.(producerId);
+            this.scheduleUiLayoutDiagnostics('selection_refresh');
+        };
+    }
+
+    private onUiResize(): void {
+        this.scheduleUiLayoutDiagnostics('screen_resize');
+    }
+
+    private scheduleUiLayoutDiagnostics(reason: string): void {
+        if (!isDeviceDiagnosticsEnabled()) return;
+        this.uiLayoutReason = reason;
+        this.uiLayoutFrames = 2;
+    }
+
+    private tickUiLayoutDiagnostics(): void {
+        if (this.uiLayoutFrames <= 0) return;
+        this.uiLayoutFrames -= 1;
+        if (this.uiLayoutFrames === 0) this.emitUiLayout(this.uiLayoutReason);
+    }
+
+    /**
+     * Screen rectangles of the HUD, the panel and its Button rows: bounding-box corners projected through
+     * the UI camera, so they share the bottom-left window frame of touches and `zones_projected`.
+     */
+    private emitUiLayout(reason: string): void {
+        const canvas = this.node.getChildByName('CoreHudCanvas');
+        const uiCamera = canvas?.getChildByName('UICamera')?.getComponent(Camera) ?? null;
+        const container = canvas?.getChildByName('UiSafeArea') ?? null;
+        if (!uiCamera || !container) return;
+        const rectOf = (node: Node | null | undefined): UiRect | null => {
+            const box = node?.getComponent(UITransform)?.getBoundingBoxToWorld();
+            if (!box) return null;
+            const a = uiCamera.worldToScreen(new Vec3(box.xMin, box.yMin, 0), new Vec3());
+            const b = uiCamera.worldToScreen(new Vec3(box.xMax, box.yMax, 0), new Vec3());
+            return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
+        };
+        const hud = container.getChildByName('CoreHUD');
+        const panel = container.getChildByName('ProducerPanel');
+        const rects: Record<string, UiRect | null> = { CoreHUD: rectOf(hud), ProducerPanel: rectOf(panel) };
+        for (const key of PANEL_ACTION_KEYS) rects[key] = rectOf(panel?.getChildByName(key));
+        const rowsOf = (card: Node | null, spec: UiCardSpec) => Object.fromEntries(spec.rows.map((row) => [row.key, rectOf(card?.getChildByName(row.key))]));
+        const rows = { CoreHUD: rowsOf(hud, CORE_HUD_LAYOUT), ProducerPanel: rowsOf(panel, PRODUCER_PANEL_LAYOUT) };
+        const windowSize = screen.windowSize;
+        emitDeviceEvent('ui_layout', {
+            reason,
+            screen: { w: windowSize.width, h: windowSize.height },
+            safeArea: rectOf(container),
+            corners: { CoreHUD: CORE_HUD_LAYOUT.corner, ProducerPanel: PRODUCER_PANEL_LAYOUT.corner },
+            rects,
+            rows,
+        });
     }
 
     private createBox(parent: Node, name: string, size: Vec3, position: Vec3, color: Color): Node {

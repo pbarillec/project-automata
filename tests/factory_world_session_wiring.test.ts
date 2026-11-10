@@ -78,17 +78,26 @@ test('load_failed keeps FactoryWorld inert and reports a DEBUG session_state dia
     assert.match(source, /configureDeviceDiagnostics\(\{ enabled: DEBUG === true \}\)/);
 });
 
-test('HUD and panel layout constants are unchanged (layout belongs to AUT-R-036)', async () => {
+test('AUT-R-036: HUD and panel are anchored by Widgets inside the UiSafeArea from UiLayout', async () => {
     const [bootstrap, hud, panel] = await Promise.all([
         read('assets/scripts/presentation/FactoryWorldBootstrap.ts'),
         read('assets/scripts/presentation/CoreHudController.ts'),
         read('assets/scripts/presentation/ProducerPanelController.ts'),
     ]);
-    assert.match(bootstrap, /canvasTransform\.setContentSize\(720, 1280\);/);
-    assert.match(bootstrap, /hud\.setPosition\(28, 560, 0\);/);
-    assert.match(bootstrap, /panel\.setPosition\(28, 150, 0\);/);
-    assert.match(hud, /transform\.setContentSize\(640, 310\);/);
-    assert.match(panel, /transform\.setContentSize\(600, 330\);/);
+    assert.doesNotMatch(bootstrap, /canvasTransform\.setContentSize\(/);
+    assert.doesNotMatch(bootstrap, /(hud|panel)\.setPosition\(/);
+    const createHud = methodBody(bootstrap, 'private createCoreHud(): CoreHudController {');
+    const createPanel = methodBody(bootstrap, 'private createProducerPanel(): ProducerPanelController {');
+    assert.match(createHud, /hud\.parent = container;/);
+    assert.match(createHud, /this\.anchorCard\(hud, CORE_HUD_LAYOUT\);/);
+    assert.match(createPanel, /panel\.parent = container;/);
+    assert.match(createPanel, /this\.anchorCard\(panel, PRODUCER_PANEL_LAYOUT\);/);
+    const anchor = methodBody(bootstrap, 'private anchorCard(node: Node, card: UiCardSpec): void {');
+    assert.match(anchor, /const align = widgetAlignment\(card\.corner\);/);
+    assert.match(anchor, /widget\.top = widget\.bottom = widget\.left = widget\.right = UI_EDGE_MARGIN;/);
+    assert.match(anchor, /widget\.alignMode = Widget\.AlignMode\.ALWAYS;/);
+    assert.match(hud, /transform\.setContentSize\(layout\.width, cardHeight\(layout\)\);/);
+    assert.match(panel, /transform\.setContentSize\(layout\.width, cardHeight\(layout\)\);/);
 });
 
 test('session core modules are engine-free; only the app port touches cc file APIs', async () => {

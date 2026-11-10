@@ -60,20 +60,22 @@ test('layout constants are unchanged (node names, positions, content sizes, font
     const hud = await read(HUD);
     const hudEntries = hud.match(/const entries = \[(.*?)\] as const/);
     assert.deepEqual([...hudEntries[1].matchAll(/\['(\w+)'/g)].map((m) => m[1]), ['IndustrialOutputValue', 'ProductionPerSecondValue', 'NextGoalValue', 'NextGoalContext', 'FreeOverclockValue', 'FreeOverclockTimer']);
-    assert.match(hud, /panel\.setPosition\(new Vec3\(0, 120 - index \* 48, 0\)\);/);
-    assert.match(hud, /transform\.setContentSize\(600, 54\);/);
-    assert.match(hud, /label\.fontSize = key === 'IndustrialOutputValue' \? 42 : 22;/);
-    assert.match(hud, /transform\.setContentSize\(640, 310\);/);
+    // AUT-R-036: positions, content sizes and font sizes come from UiLayout (CORE_HUD_LAYOUT).
+    assert.match(hud, /panel\.setPosition\(new Vec3\(0, cardRowCenterY\(layout, index\), 0\)\);/);
+    assert.match(hud, /transform\.setContentSize\(cardRowWidth\(layout\), row\.height\);/);
+    assert.match(hud, /label\.fontSize = row\.fontSize;/);
+    assert.match(hud, /transform\.setContentSize\(layout\.width, cardHeight\(layout\)\);/);
     assert.equal((hud.match(/setContentSize\(/g) ?? []).length, 2);
-    assert.equal((hud.match(/fontSize/g) ?? []).length, 1);
+    assert.equal((hud.match(/\.fontSize = /g) ?? []).length, 1);
 
     const panel = await read(PANEL);
     const panelEntries = panel.match(/const entries = \[(.*?)\] as const/);
     assert.deepEqual([...panelEntries[1].matchAll(/\['(\w+)'/g)].map((m) => m[1]), ['ProducerName', 'ProducerLevel', 'ProducerProduction', 'ProducerMilestone', 'Action_x1', 'Action_x10', 'Action_xMax']);
-    assert.match(panel, /node\.setPosition\(new Vec3\(0, 138 - index \* 38, 0\)\);/);
-    assert.match(panel, /transform\.setContentSize\(560, 36\);/);
-    assert.match(panel, /label\.fontSize = index === 0 \? 28 : 18;/);
-    assert.match(panel, /transform\.setContentSize\(600, 330\);/);
+    // AUT-R-036: positions, content sizes and font sizes come from UiLayout (PRODUCER_PANEL_LAYOUT).
+    assert.match(panel, /node\.setPosition\(new Vec3\(0, cardRowCenterY\(layout, index\), 0\)\);/);
+    assert.match(panel, /transform\.setContentSize\(cardRowWidth\(layout\), row\.height\);/);
+    assert.match(panel, /label\.fontSize = row\.fontSize;/);
+    assert.match(panel, /transform\.setContentSize\(layout\.width, cardHeight\(layout\)\);/);
     assert.equal((panel.match(/setContentSize\(/g) ?? []).length, 2);
     assert.equal((panel.match(/addComponent\(Button\)/g) ?? []).length, 1);
 });

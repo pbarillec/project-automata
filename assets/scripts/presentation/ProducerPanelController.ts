@@ -1,7 +1,8 @@
-import { _decorator, Button, Color, Component, EventHandler, EventTouch, Label, Node, Sprite, UITransform, Vec3 } from 'cc';
+import { _decorator, Button, Color, Component, EventHandler, EventTouch, Label, Layers, Node, Sprite, UITransform, Vec3 } from 'cc';
 import type { GameCommand } from '../domain/Commands.ts';
 import type { ProducerPanelActionId, ProducerPanelViewModel } from './ProducerPanelViewModel.ts';
 import { defaultPanelTexts, formatPanelTexts, pendingSelectionPanelTexts, type DisplayNameSource, type PanelTexts } from './PresentationText.ts';
+import { PRODUCER_PANEL_LAYOUT, cardHeight, cardRowCenterY, cardRowWidth } from './UiLayout.ts';
 
 const { ccclass } = _decorator;
 export type ProducerPanelCommandEmitter = (command: GameCommand) => void;
@@ -42,17 +43,20 @@ export class ProducerPanelController extends Component {
         if (this.labels.size > 0) return;
         const defaults = defaultPanelTexts();
         const entries = [['ProducerName', defaults.name], ['ProducerLevel', defaults.level], ['ProducerProduction', defaults.production], ['ProducerMilestone', defaults.milestone], ['Action_x1', defaults.actions.x1], ['Action_x10', defaults.actions.x10], ['Action_xMax', defaults.actions.xMax]] as const;
+        const layout = PRODUCER_PANEL_LAYOUT;
         entries.forEach(([key, text], index) => {
-            const node = new Node(key); node.parent = this.node; node.setPosition(new Vec3(0, 138 - index * 38, 0));
-            const transform = node.addComponent(UITransform); transform.setContentSize(560, 36);
-            const label = node.addComponent(Label); label.string = text; label.fontSize = index === 0 ? 28 : 18; label.color = new Color(238, 241, 233, 255); this.labels.set(key, label);
+            const row = layout.rows[index];
+            const node = new Node(key); node.layer = Layers.Enum.UI_2D; node.parent = this.node; node.setPosition(new Vec3(0, cardRowCenterY(layout, index), 0));
+            const transform = node.addComponent(UITransform); transform.setContentSize(cardRowWidth(layout), row.height);
+            // AUT-R-036: the row (and its Button hit area) keeps its UiLayout size; SHRINK is only a safety net.
+            const label = node.addComponent(Label); label.overflow = Label.Overflow.SHRINK; label.enableWrapText = false; label.string = text; label.fontSize = row.fontSize; label.lineHeight = row.height; label.color = new Color(238, 241, 233, 255); this.labels.set(key, label);
             if (key.startsWith('Action_')) {
                 const button = node.addComponent(Button);
                 const event = new EventHandler(); event.target = this.node; event.component = 'ProducerPanelController'; event.handler = 'onActionPressed'; event.customEventData = key.slice('Action_'.length);
                 button.clickEvents = [event];
             }
         });
-        const transform = this.node.getComponent(UITransform) ?? this.node.addComponent(UITransform); transform.setContentSize(600, 330);
+        const transform = this.node.getComponent(UITransform) ?? this.node.addComponent(UITransform); transform.setContentSize(layout.width, cardHeight(layout));
         if (!this.touchBlockRegistered) {
             this.touchBlockRegistered = true;
             this.node.on(Node.EventType.TOUCH_START, this.swallowTouch, this);
@@ -75,7 +79,7 @@ export class ProducerPanelController extends Component {
         for (const id of ['x1', 'x10', 'xMax'] as const) this.setText(`Action_${id}`, texts.actions[id]);
     }
 
-    /** The panel claims touches on its own 600x330 area (after child Buttons) so camera and selection never receive them. */
+    /** The panel claims touches on its own card area (UiLayout; after child Buttons) so camera and selection never receive them. */
     private swallowTouch(event: EventTouch): void { event.propagationStopped = true; }
 
     private setText(key: string, value: string): void { this.labels.get(key)!.string = value; }

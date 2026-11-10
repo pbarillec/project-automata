@@ -1,7 +1,8 @@
-import { _decorator, Color, Component, EventTouch, Label, Node, Sprite, UITransform, Vec3 } from 'cc';
+import { _decorator, Color, Component, EventTouch, Label, Layers, Node, Sprite, UITransform, Vec3 } from 'cc';
 import type { GameCommand } from '../domain/Commands.ts';
 import type { HudViewModel } from './HudViewModel.ts';
 import { defaultHudTexts, formatHudTexts, type DisplayNameSource } from './PresentationText.ts';
+import { CORE_HUD_LAYOUT, cardHeight, cardRowCenterY, cardRowWidth } from './UiLayout.ts';
 
 const { ccclass } = _decorator;
 
@@ -48,20 +49,27 @@ export class CoreHudController extends Component {
         if (this.labels.size > 0) return;
         const defaults = defaultHudTexts();
         const entries = [['IndustrialOutputValue', defaults.industrialOutput], ['ProductionPerSecondValue', defaults.productionPerSecond], ['NextGoalValue', defaults.nextGoal], ['NextGoalContext', defaults.nextGoalContext], ['FreeOverclockValue', defaults.freeOverclock], ['FreeOverclockTimer', defaults.freeOverclockTimer]] as const;
+        const layout = CORE_HUD_LAYOUT;
         entries.forEach(([key, text], index) => {
+            const row = layout.rows[index];
             const panel = new Node(key);
+            panel.layer = Layers.Enum.UI_2D;
             panel.parent = this.node;
-            panel.setPosition(new Vec3(0, 120 - index * 48, 0));
+            panel.setPosition(new Vec3(0, cardRowCenterY(layout, index), 0));
             const transform = panel.addComponent(UITransform);
-            transform.setContentSize(600, 54);
+            transform.setContentSize(cardRowWidth(layout), row.height);
             const label = panel.addComponent(Label);
+            // AUT-R-036: the row keeps its UiLayout size; SHRINK is only a safety net for over-long text.
+            label.overflow = Label.Overflow.SHRINK;
+            label.enableWrapText = false;
             label.string = text;
-            label.fontSize = key === 'IndustrialOutputValue' ? 42 : 22;
+            label.fontSize = row.fontSize;
+            label.lineHeight = row.height;
             label.color = new Color(238, 241, 233, 255);
             this.labels.set(key, label);
         });
         const transform = this.node.getComponent(UITransform) ?? this.node.addComponent(UITransform);
-        transform.setContentSize(640, 310);
+        transform.setContentSize(layout.width, cardHeight(layout));
         if (!this.touchBlockRegistered) {
             this.touchBlockRegistered = true;
             this.node.on(Node.EventType.TOUCH_START, this.swallowTouch, this);
@@ -75,7 +83,7 @@ export class CoreHudController extends Component {
         }
     }
 
-    /** The HUD claims touches on its own 640x310 area so camera and selection never receive them. */
+    /** The HUD claims touches on its own card area (UiLayout) so camera and selection never receive them. */
     private swallowTouch(event: EventTouch): void { event.propagationStopped = true; }
 
     private setText(key: string, value: string): void { this.labels.get(key)!.string = value; }

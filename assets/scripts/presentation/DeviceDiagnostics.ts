@@ -25,6 +25,8 @@ export const DEVICE_EVENT_TYPES = [
     'zones_projected',
     // AUT-INT-001: persistent session lifecycle (ready | suspended | resumed | load_failed).
     'session_state',
+    // AUT-R-036: HUD / panel / Button screen rectangles (bottom-left window frame) after session ready and on resize.
+    'ui_layout',
     'error',
 ] as const;
 
