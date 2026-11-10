@@ -321,10 +321,13 @@ Timings are design targets, not final economy values.
 ### 0:00--0:30 --- Learn by doing
 
 Scene: - almost-empty Manual Workshop; - one Fabricator; - clear
-interaction affordance.
+interaction affordance (HUD "Manual Produce" button, always visible).
 
-Player: - taps Fabricator; - sees machine cycle; - gains first
-Industrial Output; - buys first upgrade.
+Player: - taps Fabricator in the world to select and focus it
+(selection only; a world tap never changes the economy); - presses the
+HUD "Manual Produce" button; - sees machine cycle; - gains first
+Industrial Output; - buys first upgrade in the Producer Panel
+(×1/×10/×MAX).
 
 Learning objective: - operate machine; - earn; - improve machine.
 
@@ -332,21 +335,25 @@ Avoid long tutorial text.
 
 ### 0:30--2:00 --- First acceleration
 
-Player: - continues manual production; - buys several upgrades; - sees
+Player: - continues manual production via the HUD "Manual Produce"
+button; - buys several upgrades in the Producer Panel; - sees
 increasing output.
 
 A clear goal appears:
 
 **Automate Fabricator**
 
-Progress toward its cost is always visible.
+Progress toward its cost is always visible, in the HUD Next Goal.
 
 ### \~2:00 --- First Automation
 
-Player unlocks Auto Feeder.
+Player unlocks Auto Feeder by purchasing the breakthrough through the
+HUD Next Goal action ("Automate Fabricator").
 
 Presentation: - module installs; - conveyor/feeder activates; - machine
-starts cycling without taps; - "AUTOMATED" feedback.
+starts cycling without manual input; - "AUTOMATED" feedback.
+
+The HUD "Manual Produce" button stays visible after automation.
 
 This is one of the most important onboarding payoffs.
 

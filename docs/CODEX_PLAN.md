@@ -728,8 +728,8 @@ Goal: validate the tactile/visual hypothesis using the smallest meaningful playe
 
 **Dependencies:**
 - AUT-013, AUT-019, AUT-INT-001, AUT-LOC-001, AUT-R-036.
-- Owner decisions (2026-11-10): the Fabricator world tap stays selection only; manual production is an explicit HUD/producer-panel action; breakthrough purchases go through the HUD Next Goal flow.
-- Game Designer decisions still needed: where Manual Produce is placed, and the exact scope of the Next Goal action.
+- Owner decisions (2026-11-10): the Fabricator world tap stays selection only; manual production is an explicit, permanent HUD Manual Produce button (always visible, also after automation); breakthrough purchases go through the HUD Next Goal flow. GAME_DESIGN §9 updated accordingly.
+- Next Goal action scope (Technical Lead default, 2026-11-10): breakthrough goals only, enabled when eligible and affordable, one tap, no confirmation; producer builds stay in the Producer Panel.
 
 **Scope:**
 - A Manual Produce control that emits `manualProduce`.
