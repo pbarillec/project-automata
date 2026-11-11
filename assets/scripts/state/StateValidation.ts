@@ -89,6 +89,7 @@ function validateRunState(value: unknown, path: string, diagnostics: StateDiagno
         'statistics',
         'prestigePowerPeak',
         'progressionFlags',
+        'assistedBatches',
     ], diagnostics);
 
     requireNonNegativeFiniteNumber(value.industrialOutput, `${path}.industrialOutput`, diagnostics);
@@ -100,6 +101,34 @@ function validateRunState(value: unknown, path: string, diagnostics: StateDiagno
     validateRunStatistics(value.statistics, `${path}.statistics`, diagnostics);
     requireNonNegativeFiniteNumber(value.prestigePowerPeak, `${path}.prestigePowerPeak`, diagnostics);
     validateBooleanRecord(value.progressionFlags, `${path}.progressionFlags`, diagnostics);
+    validateAssistedBatchRecords(value.assistedBatches, `${path}.assistedBatches`, diagnostics);
+}
+
+function validateAssistedBatchRecords(value: unknown, path: string, diagnostics: StateDiagnostic[]): void {
+    if (!requireRecord(value, path, diagnostics)) {
+        return;
+    }
+
+    for (const key of sortedKeys(value)) {
+        const batch = value[key];
+        const itemPath = `${path}.${escapePathKey(key)}`;
+        validateStateKey(key, itemPath, diagnostics);
+        if (!requirePlainObject(batch, itemPath, 'AssistedBatchRunState', diagnostics)) {
+            continue;
+        }
+        requireExactKeys(itemPath, batch, ['durationSeconds', 'remainingSeconds'], diagnostics);
+        requirePositiveFiniteNumber(batch.durationSeconds, `${itemPath}.durationSeconds`, diagnostics);
+        requirePositiveFiniteNumber(batch.remainingSeconds, `${itemPath}.remainingSeconds`, diagnostics);
+        if (typeof batch.durationSeconds === 'number' && typeof batch.remainingSeconds === 'number' &&
+            batch.remainingSeconds > batch.durationSeconds) {
+            diagnostics.push(diagnostic(
+                'semantic',
+                'STATE_ASSISTED_BATCH_REMAINING_EXCEEDS_DURATION',
+                `${itemPath}.remainingSeconds`,
+                'Assisted batch remainingSeconds must not exceed durationSeconds.',
+            ));
+        }
+    }
 }
 
 function validateProducerRecords(value: unknown, path: string, diagnostics: StateDiagnostic[]): void {

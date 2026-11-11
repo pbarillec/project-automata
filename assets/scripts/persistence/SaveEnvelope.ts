@@ -6,12 +6,31 @@ import {
     migrateParsedSaveEnvelopeToCurrent,
     type SaveMigrationRegistry,
     type SaveMigrationResult,
+    type SaveMigrationStep,
 } from './SaveMigrations.ts';
 
-export const CURRENT_SAVE_VERSION = 1;
+/** AUT-GP-001: saveVersion 2 adds `payload.run.assistedBatches` (v1 → v2 migration below). */
+export const CURRENT_SAVE_VERSION = 2;
 export const SAVE_INTEGRITY_ALGORITHM = 'fnv1a32-payload-v1';
 export const SAVE_TIMESTAMP_UTC_ISO_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
-export const DEFAULT_SAVE_MIGRATION_REGISTRY = createSaveMigrationRegistry(CURRENT_SAVE_VERSION, []);
+
+/**
+ * AUT-GP-001 production migration: v1 saves had no assisted batch state. The step adds the empty
+ * record (no batch in flight, matching fresh state) and re-hashes the payload only when the v1
+ * integrity hash was valid, so a corrupted v1 save still fails final validation.
+ */
+export const SAVE_MIGRATION_V1_TO_V2_ASSISTED_BATCHES: SaveMigrationStep = Object.freeze({
+    id: 'v1-to-v2-assisted-batches',
+    sourceVersion: 1,
+    targetVersion: 2,
+    migrate: migrateV1ToV2AssistedBatches,
+});
+
+/** Every released production migration step, in source-version order. */
+export const PRODUCTION_SAVE_MIGRATION_STEPS: readonly SaveMigrationStep[] = Object.freeze([
+    SAVE_MIGRATION_V1_TO_V2_ASSISTED_BATCHES,
+]);
+export const DEFAULT_SAVE_MIGRATION_REGISTRY = createSaveMigrationRegistry(CURRENT_SAVE_VERSION, PRODUCTION_SAVE_MIGRATION_STEPS);
 
 export interface SaveEnvelopeMetadata {
     readonly saveVersion: typeof CURRENT_SAVE_VERSION;
@@ -281,6 +300,34 @@ export function assertSaveTimestampUtcIsoString(value: unknown): string {
     }
 
     return value as string;
+}
+
+function migrateV1ToV2AssistedBatches(envelope: Record<string, unknown>): Record<string, unknown> {
+    const payload = envelope.payload;
+    if (!isPlainObject(payload) || !isPlainObject(payload.run)) {
+        throw new Error('v1 save payload.run must be an object.');
+    }
+    if ('assistedBatches' in payload.run) {
+        throw new Error('v1 save payload.run must not already contain assistedBatches.');
+    }
+
+    const integrity = envelope.integrity;
+    const v1HashValid = isPlainObject(integrity) &&
+        integrity.algorithm === SAVE_INTEGRITY_ALGORITHM &&
+        integrity.payloadHash === fnv1a32Hex(stringifyCanonicalJson(payload));
+    const migratedPayload = {
+        ...payload,
+        run: { ...payload.run, assistedBatches: {} },
+    };
+
+    return {
+        ...envelope,
+        saveVersion: 2,
+        integrity: v1HashValid
+            ? { algorithm: SAVE_INTEGRITY_ALGORITHM, payloadHash: fnv1a32Hex(stringifyCanonicalJson(migratedPayload)) }
+            : integrity,
+        payload: migratedPayload,
+    };
 }
 
 export function calculatePayloadHash(payload: SavePayload): string {

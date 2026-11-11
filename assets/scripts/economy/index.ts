@@ -74,3 +74,10 @@ export type {
 export type {
     CrossedProducerMilestone,
 } from './ProducerMilestones.ts';
+
+export {
+    AssistedProductionInputError,
+    calculateAssistedBatchPayout,
+    calculateAssistedFloorProductionPerSecond,
+    validateAssistedProductionConfig,
+} from './AssistedProduction.ts';

@@ -664,8 +664,10 @@ function addMarker(
     });
 }
 
+/** AUT-GP-001: an Assembly batch launch is a manual action, like Manual Produce. */
 function isMeaningfulCommand(command: GameCommand): boolean {
     return command.type === 'manualProduce' ||
+        command.type === 'launchAssemblyBatch' ||
         command.type === 'buyProducerLevels' ||
         command.type === 'buyMaxProducerLevels' ||
         command.type === 'purchaseBreakthrough' ||

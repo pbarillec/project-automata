@@ -1,6 +1,7 @@
 import type { GameConfigRepository } from '../config/ConfigLoader.ts';
 import {
     applyProductionMultiplier,
+    calculateAssistedFloorProductionPerSecond,
     calculateMilestoneAdjustedProducerOutput,
     combineModifierSets,
     resolveEffectiveProducerProductionMultiplier,
@@ -14,10 +15,16 @@ import { createTemporaryBoostModifierSet } from './TemporaryBoosts.ts';
 
 export type ProductionRateProducerScope = 'all' | 'automated' | 'offlineEligible';
 export type ProductionRateTemporaryBoostMode = 'include' | 'exclude';
+/**
+ * AUT-GP-001: `apply` (default) runs assisted, not-yet-automated producers at their floor fraction;
+ * `ignore` returns their full rate (the batch payout base).
+ */
+export type ProductionRateAssistedFloorMode = 'apply' | 'ignore';
 
 export interface ProductionRateOptions {
     readonly producerScope: ProductionRateProducerScope;
     readonly temporaryBoosts: ProductionRateTemporaryBoostMode;
+    readonly assistedFloor?: ProductionRateAssistedFloorMode;
 }
 
 export interface ProducerProductionRateContribution {
@@ -61,9 +68,15 @@ export function calculateSustainedProducerProductionRateContributions(
         const level = state.run.producers[producer.id]?.level ?? 0;
         const milestoneAdjusted = calculateMilestoneAdjustedProducerOutput(producer, level, milestones, milestonePowerBonus);
         const modifier = resolveEffectiveProducerProductionMultiplier(modifierSet, producer.id);
+        const fullProductionPerSecond = applyProductionMultiplier(milestoneAdjusted, modifier);
+        const appliesAssistedFloor = (options.assistedFloor ?? 'apply') === 'apply' &&
+            producer.assistedProduction !== undefined &&
+            !automation.isAutomated;
         contributions.push({
             producerId: producer.id,
-            productionPerSecond: applyProductionMultiplier(milestoneAdjusted, modifier),
+            productionPerSecond: appliesAssistedFloor
+                ? calculateAssistedFloorProductionPerSecond(fullProductionPerSecond, producer.assistedProduction!)
+                : fullProductionPerSecond,
         });
     }
 

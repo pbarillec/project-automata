@@ -3,6 +3,7 @@ export type GameCommand =
     | AdvanceActiveSessionCommand
     | AdvanceAutomationCommand
     | ActivateFreeOverclockCommand
+    | LaunchAssemblyBatchCommand
     | BuyProducerLevelsCommand
     | BuyMaxProducerLevelsCommand
     | PurchaseBreakthroughCommand
@@ -25,6 +26,11 @@ export interface AdvanceAutomationCommand {
 
 export interface ActivateFreeOverclockCommand {
     readonly type: 'activateFreeOverclock';
+}
+
+/** AUT-GP-001: launch one Assembly Station batch while it is assisted (one at a time, no queue). */
+export interface LaunchAssemblyBatchCommand {
+    readonly type: 'launchAssemblyBatch';
 }
 
 export interface BuyProducerLevelsCommand {

@@ -5,6 +5,8 @@ export type DomainEvent =
     | TemporaryBoostExpiredEvent
     | TemporaryBoostSuspendedEvent
     | TemporaryBoostResumedEvent
+    | AssistedBatchLaunchedEvent
+    | AssistedBatchCompletedEvent
     | ProducerLevelsPurchasedEvent
     | ProducerConstructedEvent
     | ProducerMilestoneReachedEvent
@@ -25,13 +27,28 @@ export interface IndustrialOutputChangedEvent {
     readonly previousAmount: number;
     readonly newAmount: number;
     readonly delta: number;
-    readonly reason: 'manual_production' | 'automation_production' | 'producer_purchase' | 'breakthrough_purchase';
+    readonly reason: 'manual_production' | 'automation_production' | 'assisted_batch_production' | 'producer_purchase' | 'breakthrough_purchase';
 }
 
 export interface ProductionGrantedEvent {
     readonly type: 'productionGranted';
-    readonly source: 'manual' | 'automation';
+    readonly source: 'manual' | 'automation' | 'assisted_batch';
     readonly amount: number;
+}
+
+/** AUT-GP-001: an assisted batch was launched (it completes after `durationSeconds` of active time). */
+export interface AssistedBatchLaunchedEvent {
+    readonly type: 'assistedBatchLaunched';
+    readonly producerId: string;
+    readonly durationSeconds: number;
+}
+
+/** AUT-GP-001: an assisted batch completed and paid `payout` Industrial Output. */
+export interface AssistedBatchCompletedEvent {
+    readonly type: 'assistedBatchCompleted';
+    readonly producerId: string;
+    readonly durationSeconds: number;
+    readonly payout: number;
 }
 
 export interface TemporaryBoostActivatedEvent {

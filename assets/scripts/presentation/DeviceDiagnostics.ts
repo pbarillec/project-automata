@@ -31,6 +31,9 @@ export const DEVICE_EVENT_TYPES = [
     'command_result',
     // AUT-R-031-02: camera pose after a player gesture ends: { yaw, pitch, distance, focus, bounds, input, screen, zones }.
     'camera_state',
+    // AUT-GP-001: Assembly batch action: { phase: 'ui', state, visible, enabled, progress, remainingSeconds, payout, caption }
+    // on each UI state change / 10% of progress, and { phase: 'launched' | 'completed', producerId, durationSeconds, payout? }.
+    'assembly_batch',
     'error',
 ] as const;
 

@@ -40,6 +40,7 @@ export function createFreshRunState(): RunState {
         },
         prestigePowerPeak: 0,
         progressionFlags: {},
+        assistedBatches: {},
     };
 }
 

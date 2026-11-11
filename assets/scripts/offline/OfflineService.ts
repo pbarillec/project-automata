@@ -5,6 +5,8 @@ import {
     resolveCrossedRobotsBuiltThresholds,
 } from '../economy/index.ts';
 import {
+    ASSISTED_BATCH_COMPLETION_EPSILON_SECONDS,
+    calculateAssistedBatchPayoutForState,
     calculateOfflineEligibleDurableProducerProductionRateContributions,
     resolveEffectiveProducerAutomationState,
 } from '../progression/index.ts';
@@ -60,6 +62,21 @@ export interface OfflineProducerContribution {
     readonly industrialOutputReward: number;
 }
 
+/**
+ * AUT-GP-001: an assisted batch that was in flight at the absence boundary. Offline never launches a
+ * batch. A batch whose remaining time fits in the effective offline time completes and pays once,
+ * at the durable (boost-free) full rate, without offline efficiency (it is already-launched work);
+ * otherwise its timer advances by the effective offline time.
+ */
+export interface OfflineAssistedBatchSettlement {
+    readonly producerId: string;
+    readonly durationSeconds: number;
+    readonly remainingSecondsBefore: number;
+    readonly remainingSecondsAfter: number;
+    readonly completed: boolean;
+    readonly industrialOutputReward: number;
+}
+
 export interface OfflinePreviewBase {
     readonly status: OfflinePreviewStatus;
     readonly persistedAtUtcIso: UtcTimestampIsoString | null;
@@ -71,8 +88,11 @@ export interface OfflinePreviewBase {
     readonly efficiency: number;
     readonly capApplied: boolean;
     readonly producerContributions: readonly OfflineProducerContribution[];
+    readonly assistedBatchSettlements: readonly OfflineAssistedBatchSettlement[];
     readonly totalEligibleProductionPerSecond: number;
+    /** Includes `assistedBatchReward`. */
     readonly totalIndustrialOutputReward: number;
+    readonly assistedBatchReward: number;
     readonly robotsBuiltDelta: number;
 }
 
@@ -182,11 +202,17 @@ export function createOfflineProgressPreviewFromUtc(
         contribution.productionPerSecond,
         'offline eligible productionPerSecond',
     ), 0);
+    const assistedBatchSettlements = createAssistedBatchSettlements(repository, state, effectiveOfflineSeconds);
+    const assistedBatchReward = assistedBatchSettlements.reduce((total, settlement) => addFinite(
+        total,
+        settlement.industrialOutputReward,
+        'offline assisted batch reward',
+    ), 0);
     const totalIndustrialOutputReward = producerContributions.reduce((total, contribution) => addFinite(
         total,
         contribution.industrialOutputReward,
         'offline Industrial Output reward',
-    ), 0);
+    ), assistedBatchReward);
     const robotsBuiltDelta = calculateOfflineRobotsBuiltDelta(repository, state, effectiveOfflineSeconds, config.value.efficiency);
     const capApplied = elapsed.status === 'valid' && rawAbsenceSeconds !== null && rawAbsenceSeconds > config.value.capSeconds;
     const base = freezePlainObject({
@@ -199,8 +225,10 @@ export function createOfflineProgressPreviewFromUtc(
         efficiency: config.value.efficiency,
         capApplied,
         producerContributions,
+        assistedBatchSettlements,
         totalEligibleProductionPerSecond,
         totalIndustrialOutputReward,
+        assistedBatchReward,
         robotsBuiltDelta,
     });
 
@@ -310,6 +338,32 @@ function createProducerContributions(
     });
 }
 
+function createAssistedBatchSettlements(
+    repository: GameConfigRepository,
+    state: GameState,
+    effectiveOfflineSeconds: number,
+): OfflineAssistedBatchSettlement[] {
+    if (effectiveOfflineSeconds <= 0) {
+        return [];
+    }
+
+    return Object.keys(state.run.assistedBatches).sort().map((producerId) => {
+        const batch = state.run.assistedBatches[producerId];
+        const remainingSecondsAfter = batch.remainingSeconds - effectiveOfflineSeconds;
+        const completed = remainingSecondsAfter <= ASSISTED_BATCH_COMPLETION_EPSILON_SECONDS;
+        return Object.freeze({
+            producerId,
+            durationSeconds: batch.durationSeconds,
+            remainingSecondsBefore: batch.remainingSeconds,
+            remainingSecondsAfter: completed ? 0 : remainingSecondsAfter,
+            completed,
+            industrialOutputReward: completed
+                ? calculateAssistedBatchPayoutForState(repository, state, producerId, batch.durationSeconds, 'exclude')
+                : 0,
+        });
+    });
+}
+
 function resolveOfflineProducerContributionReason(
     repository: GameConfigRepository,
     state: GameState,
@@ -353,20 +407,21 @@ function calculateOfflineRobotsBuiltDelta(
 }
 
 function applyOfflineReward(draft: GameState, preview: OfflinePreviewReadyResult | OfflineNoRewardPreviewResult): void {
-    if (preview.totalIndustrialOutputReward > 0) {
+    const industrialOutputReward = clampNegativeZero(preview.totalIndustrialOutputReward - applyAssistedBatchSettlements(draft, preview));
+    if (industrialOutputReward > 0) {
         draft.run.industrialOutput = addFinite(
             draft.run.industrialOutput,
-            preview.totalIndustrialOutputReward,
+            industrialOutputReward,
             'industrialOutput',
         );
         draft.run.statistics.industrialOutputEarned = addFinite(
             draft.run.statistics.industrialOutputEarned,
-            preview.totalIndustrialOutputReward,
+            industrialOutputReward,
             'run.statistics.industrialOutputEarned',
         );
         draft.lifetime.industrialOutputEarned = addFinite(
             draft.lifetime.industrialOutputEarned,
-            preview.totalIndustrialOutputReward,
+            industrialOutputReward,
             'lifetime.industrialOutputEarned',
         );
     }
@@ -378,6 +433,38 @@ function applyOfflineReward(draft: GameState, preview: OfflinePreviewReadyResult
         draft.lifetime.robotsBuilt = addFinite(draft.lifetime.robotsBuilt, preview.robotsBuiltDelta, 'lifetime.robotsBuilt');
         resolveCrossedRobotsBuiltThresholds(previousRobotsBuilt, draft.run.robotsBuilt);
     }
+}
+
+/**
+ * Applies the preview's batch settlements to the draft. A settlement applies only while the batch is
+ * unchanged since the preview (same remaining time); if the active session already advanced or paid it,
+ * the settlement is skipped so a batch is never paid twice. Returns the reward of skipped settlements,
+ * which the caller withholds from the total.
+ */
+function applyAssistedBatchSettlements(
+    draft: GameState,
+    preview: OfflinePreviewReadyResult | OfflineNoRewardPreviewResult,
+): number {
+    let withheldReward = 0;
+    for (const settlement of preview.assistedBatchSettlements) {
+        const batch = draft.run.assistedBatches[settlement.producerId];
+        if (batch === undefined || batch.remainingSeconds !== settlement.remainingSecondsBefore) {
+            withheldReward = addFinite(withheldReward, settlement.industrialOutputReward, 'withheld assisted batch reward');
+            continue;
+        }
+
+        if (settlement.completed) {
+            delete draft.run.assistedBatches[settlement.producerId];
+        }
+        else {
+            batch.remainingSeconds = settlement.remainingSecondsAfter;
+        }
+    }
+    return withheldReward;
+}
+
+function clampNegativeZero(value: number): number {
+    return Object.is(value, -0) || Math.abs(value) < 1e-12 ? 0 : value;
 }
 
 function readOfflineConfig(config: Partial<OfflineProgressConfig> | undefined): {
@@ -451,8 +538,10 @@ function invalidPreviewWithBase(input: {
         efficiency: input.config.efficiency,
         capApplied: false,
         producerContributions: [],
+        assistedBatchSettlements: [],
         totalEligibleProductionPerSecond: 0,
         totalIndustrialOutputReward: 0,
+        assistedBatchReward: 0,
         robotsBuiltDelta: 0,
     };
 }

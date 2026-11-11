@@ -43,11 +43,13 @@ test('FactoryWorldBootstrap never builds or mutates game state itself', async ()
 test('inputs stay inert until the session is ready; then both command emitters route to binding.submit', async () => {
     const source = await read('assets/scripts/presentation/FactoryWorldBootstrap.ts');
     const emitters = [...source.matchAll(/(\w+)\.commandEmitter = \(command\) => \{ void binding\.submit\(command\); \};/g)].map((m) => m[1]);
-    assert.deepEqual(emitters, ['hud', 'panel']);
-    assert.equal((source.match(/commandEmitter =/g) || []).length, 2);
+    // AUT-GP-001: the Assembly batch Button is the third emitter.
+    assert.deepEqual(emitters, ['hud', 'panel', 'batch']);
+    assert.equal((source.match(/commandEmitter =/g) || []).length, 3);
     const activate = methodBody(source, 'private activateSessionBinding(');
     assert.match(activate, /wiring\.hud\.commandEmitter = /);
     assert.match(activate, /wiring\.panel\.commandEmitter = /);
+    assert.match(activate, /wiring\.batch\.commandEmitter = /);
     assert.match(activate, /binding\.init\(\);/);
     const start = methodBody(source, 'public start(): void {');
     assert.doesNotMatch(start, /commandEmitter/);

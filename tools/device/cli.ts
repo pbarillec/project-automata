@@ -7,10 +7,11 @@
  *   node tools/device/cli.ts r036 --apk <path> [--serial <id>] [--run-id <id>] [--skip-install]
  *   node tools/device/cli.ts ui001 --apk <path> [--serial <id>] [--run-id <id>] [--skip-install]
  *   node tools/device/cli.ts r031 --apk <path> [--serial <id>] [--run-id <id>] [--skip-install]
+ *   node tools/device/cli.ts gp001 --apk <path> [--serial <id>] [--run-id <id>] [--skip-install]
  *   node tools/device/cli.ts gate-build [--label <label>]
  *   node tools/device/cli.ts restore-build-config
  *
- * Exit codes for `c3`, `int001`, `r036`, `ui001` and `r031`: 0 PASS, 1 FAIL (functional class), 2 BLOCKED (environment), 3 invalid result.
+ * Exit codes for `c3`, `int001`, `r036`, `ui001`, `r031` and `gp001`: 0 PASS, 1 FAIL (functional class), 2 BLOCKED (environment), 3 invalid result.
  */
 import { AdbError, selectDevice } from './adb.ts';
 import { AdbDeviceDriver } from './driver.ts';
@@ -20,6 +21,7 @@ import { runInt001Scenario } from './scenarios/int001_session_persistence.ts';
 import { runR036Scenario } from './scenarios/r036_ui_layout.ts';
 import { runUi001Scenario } from './scenarios/ui001_core_loop.ts';
 import { runR031Scenario } from './scenarios/r031_tap_first_camera.ts';
+import { runGp001Scenario } from './scenarios/gp001_assembly_batch.ts';
 
 function parseArgs(argv: string[]): { command: string; flags: Record<string, string | boolean> } {
     const [command = 'help', ...rest] = argv;
@@ -48,7 +50,7 @@ async function main(): Promise<number> {
             return 2;
         }
     }
-    if (command === 'c3' || command === 'int001' || command === 'r036' || command === 'ui001' || command === 'r031') {
+    if (command === 'c3' || command === 'int001' || command === 'r036' || command === 'ui001' || command === 'r031' || command === 'gp001') {
         const scenarioOptions = {
             apkPath: typeof flags.apk === 'string' ? flags.apk : null,
             serial: typeof flags.serial === 'string' ? flags.serial : undefined,
@@ -63,7 +65,9 @@ async function main(): Promise<number> {
                     ? await runR036Scenario(new AdbDeviceDriver(), scenarioOptions)
                     : command === 'ui001'
                         ? await runUi001Scenario(new AdbDeviceDriver(), scenarioOptions)
-                        : await runR031Scenario(new AdbDeviceDriver(), scenarioOptions);
+                        : command === 'r031'
+                            ? await runR031Scenario(new AdbDeviceDriver(), scenarioOptions)
+                            : await runGp001Scenario(new AdbDeviceDriver(), scenarioOptions);
         const r = output.result;
         console.log(`${r.scenario_id} ${r.status}${r.failure_class ? ` ${r.failure_class}` : ''} → ${r.review_decision}`);
         if (r.first_failed_assertion) console.log(`first failed assertion: ${r.first_failed_assertion.id} @ ${r.first_failed_assertion.step}`);
@@ -83,7 +87,7 @@ async function main(): Promise<number> {
         console.log(restored ? 'restored tracked build config from temp/device/gate backup' : 'no backup found');
         return restored ? 0 : 1;
     }
-    console.log('usage: node tools/device/cli.ts devices | c3|int001|r036|ui001|r031 --apk <path> [--serial <id>] [--run-id <id>] [--skip-install] | gate-build [--label <l>] | restore-build-config');
+    console.log('usage: node tools/device/cli.ts devices | c3|int001|r036|ui001|r031|gp001 --apk <path> [--serial <id>] [--run-id <id>] [--skip-install] | gate-build [--label <l>] | restore-build-config');
     return command === 'help' ? 0 : 1;
 }
 

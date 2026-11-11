@@ -141,7 +141,7 @@ async function activeBoostState() {
 
 function metadata(savedAtUtc, label = 'aut-028') {
     return Object.freeze({
-        saveVersion: 1,
+        saveVersion: 2,
         gameVersion: '0.1.0-test',
         contentVersion: label,
         savedAtUtc,
@@ -221,9 +221,12 @@ async function syntheticV0Registry() {
     const {
         createIntegrityMetadata,
         createSaveMigrationRegistry,
+        CURRENT_SAVE_VERSION,
+        PRODUCTION_SAVE_MIGRATION_STEPS,
     } = await persistenceModule();
 
-    return createSaveMigrationRegistry(1, [{
+    // AUT-GP-001: the synthetic v0 -> v1 step chains into the production v1 -> v2 step.
+    return createSaveMigrationRegistry(CURRENT_SAVE_VERSION, [{
         id: 'synthetic-test-v0-to-v1',
         sourceVersion: 0,
         targetVersion: 1,
@@ -244,7 +247,7 @@ async function syntheticV0Registry() {
                 payload,
             };
         },
-    }]);
+    }, ...PRODUCTION_SAVE_MIGRATION_STEPS]);
 }
 
 test('startup distinguishes loaded main, exposes pending offline preview, and does not mutate state', async () => {

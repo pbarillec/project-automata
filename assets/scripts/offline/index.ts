@@ -9,6 +9,7 @@ export {
 } from './OfflineService.ts';
 
 export type {
+    OfflineAssistedBatchSettlement,
     OfflineCollectFailureResult,
     OfflineCollectInvalidResult,
     OfflineCollectNoRewardResult,

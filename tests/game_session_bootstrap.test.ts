@@ -63,7 +63,7 @@ test('corrupt main with a valid backup recovers from the backup', async () => {
     const { createFreshGameState } = await imp('assets/scripts/state/index.ts');
     const state = createFreshGameState();
     state.run.industrialOutput = 42;
-    const backup = serializeGameStateToSaveJson(state, { saveVersion: 1, gameVersion: 'test', contentVersion: 'test', savedAtUtc: '2026-11-10T08:00:00.000Z' });
+    const backup = serializeGameStateToSaveJson(state, { saveVersion: 2, gameVersion: 'test', contentVersion: 'test', savedAtUtc: '2026-11-10T08:00:00.000Z' });
     const h = await harness({ [SAVE_MAIN_NAME]: '{ corrupt', [SAVE_BACKUP_NAME]: backup });
 
     const result = await bootstrap(h);

@@ -232,6 +232,8 @@ test('template params match exactly what PresentationText supplies', async () =>
         'producer_panel.milestone.production_multiplier': ['multiplier'],
         'producer_panel.action': ['label', 'cost'],
         'producer_panel.action.unavailable': ['label', 'cost'],
+        'producer_panel.assembly_batch.ready': ['payout'],
+        'producer_panel.assembly_batch.running': ['percent', 'seconds'],
     };
     for (const key of base.keys()) {
         assert.deepEqual(extractPlaceholders(base.template(key)).sort(), (expected[key] ?? []).slice().sort(), key);
@@ -267,6 +269,8 @@ test('every catalogue entry is reachable from the composition paths (no dead key
     for (const state of ['unblocked', 'requirement_locked']) text.formatNextGoalContext({ progress: null, affordability: { ...affordability('not_applicable'), costFormatted: null }, blocking: { state } }, catalogue);
     text.formatPanelTexts({ selectedProducerId: 'fabricator', displayNameKey: 'producer.fabricator.name', level: 100, productionPerSecondFormatted: '0', milestone: { state: 'complete' }, actions: null }, catalogue);
     text.formatPanelTexts({ selectedProducerId: 'fabricator', displayNameKey: 'producer.fabricator.name', level: 1, productionPerSecondFormatted: '0', milestone: { state: 'next', nextThreshold: 10, levelsRemaining: 9, benefit: null }, actions: null }, catalogue);
+    // AUT-GP-001 Assembly batch captions.
+    for (const state of ['ready', 'running', 'hidden']) text.formatAssemblyBatchText({ state, progress: 0.4, remainingSeconds: 9, payoutFormatted: '90' }, catalogue);
     assert.deepEqual(base.keys().filter((key) => !used.has(key)), []);
 });
 

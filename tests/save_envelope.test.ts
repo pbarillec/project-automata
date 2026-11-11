@@ -8,7 +8,7 @@ const persistenceModuleUrl = pathToFileURL(path.join(repoRoot, 'assets/scripts/p
 const stateModuleUrl = pathToFileURL(path.join(repoRoot, 'assets/scripts/state/index.ts')).href;
 
 const metadata = Object.freeze({
-    saveVersion: 1,
+    saveVersion: 2,
     gameVersion: '0.1.0-test',
     contentVersion: '0.1.0-aut-010',
     savedAtUtc: '2026-08-22T08:30:45.123Z',
@@ -225,7 +225,7 @@ test('invalid JSON, missing envelope fields and unsupported saveVersion are reje
     ]);
 
     const envelope = JSON.parse(serializeGameStateToSaveJson(await freshState(), metadata));
-    envelope.saveVersion = 2;
+    envelope.saveVersion = 3;
     const unsupported = deserializeGameStateFromSaveJson(JSON.stringify(envelope));
     assert.deepEqual(unsupported.diagnostics.map((diagnostic) => diagnostic.code), [
         'SAVE_UNSUPPORTED_VERSION',

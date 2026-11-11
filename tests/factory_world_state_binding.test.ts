@@ -19,7 +19,7 @@ async function autoFeederSaveText() {
     state.run.industrialOutput = 1500;
     const purchase = purchaseBreakthrough(repo, state, 'auto_feeder');
     assert.equal(purchase.status, 'success');
-    return serializeGameStateToSaveJson(purchase.state, { saveVersion: 1, gameVersion: 'test', contentVersion: repo.contentVersion, savedAtUtc: '2026-11-10T08:00:00.000Z' });
+    return serializeGameStateToSaveJson(purchase.state, { saveVersion: 2, gameVersion: 'test', contentVersion: repo.contentVersion, savedAtUtc: '2026-11-10T08:00:00.000Z' });
 }
 
 async function readyForAutoFeederSaveText() {
@@ -28,7 +28,7 @@ async function readyForAutoFeederSaveText() {
     const state = createFreshGameState();
     state.run.producers.fabricator = { level: 15, isUnlocked: true, isBuilt: true };
     state.run.industrialOutput = 1500;
-    return serializeGameStateToSaveJson(state, { saveVersion: 1, gameVersion: 'test', contentVersion: 'test', savedAtUtc: '2026-11-10T08:00:00.000Z' });
+    return serializeGameStateToSaveJson(state, { saveVersion: 2, gameVersion: 'test', contentVersion: 'test', savedAtUtc: '2026-11-10T08:00:00.000Z' });
 }
 
 /** Mirrors FirstAutomationPresentationController: sync → syncFromState, events → consumeEvents (+ focus). */

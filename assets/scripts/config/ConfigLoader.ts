@@ -30,6 +30,14 @@ export interface ProducerConfig {
     costGrowth: number;
     baseProductionPerLevel: number;
     prerequisiteProducerIds: string[];
+    /** AUT-GP-001: present only for assisted producers (Assembly Station): reduced floor plus launched batches. */
+    assistedProduction?: AssistedProductionConfig;
+}
+
+/** AUT-GP-001 assisted production: `floorFraction` of the full rate runs continuously; a batch tops up the rest. */
+export interface AssistedProductionConfig {
+    floorFraction: number;
+    batchDurationSeconds: number;
 }
 
 export interface ProducerMilestoneConfig {
@@ -688,6 +696,7 @@ function parseProducerConfig(value: Record<string, unknown>, filePath: string, i
         'costGrowth',
         'baseProductionPerLevel',
         'prerequisiteProducerIds',
+        'assistedProduction',
     ], diagnostics);
 
     const id = readString(value, 'id', filePath, itemPath, diagnostics);
@@ -698,8 +707,12 @@ function parseProducerConfig(value: Record<string, unknown>, filePath: string, i
     const costGrowth = readNumber(value, 'costGrowth', filePath, itemPath, diagnostics);
     const baseProductionPerLevel = readNumber(value, 'baseProductionPerLevel', filePath, itemPath, diagnostics);
     const prerequisiteProducerIds = readOptionalStringArray(value, 'prerequisiteProducerIds', filePath, itemPath, diagnostics);
+    const assistedProduction = 'assistedProduction' in value
+        ? parseAssistedProductionConfig(value.assistedProduction, filePath, `${itemPath}.assistedProduction`, diagnostics)
+        : null;
 
     if (
+        assistedProduction === undefined ||
         id === undefined ||
         name === undefined ||
         displayNameKey === undefined ||
@@ -721,7 +734,24 @@ function parseProducerConfig(value: Record<string, unknown>, filePath: string, i
         costGrowth,
         baseProductionPerLevel,
         prerequisiteProducerIds,
+        ...(assistedProduction === null ? {} : { assistedProduction }),
     };
+}
+
+function parseAssistedProductionConfig(value: unknown, filePath: string, configPath: string, diagnostics: ConfigDiagnostic[]): AssistedProductionConfig | undefined {
+    if (!isPlainObject(value)) {
+        diagnostics.push(makeDiagnostic('structural', 'CONFIG_EXPECTED_OBJECT', filePath, configPath, 'assistedProduction must be an object.'));
+        return undefined;
+    }
+
+    validateAllowedKeys('structural', filePath, configPath, value, ['floorFraction', 'batchDurationSeconds'], diagnostics);
+    const floorFraction = readNumber(value, 'floorFraction', filePath, configPath, diagnostics);
+    const batchDurationSeconds = readNumber(value, 'batchDurationSeconds', filePath, configPath, diagnostics);
+    if (floorFraction === undefined || batchDurationSeconds === undefined) {
+        return undefined;
+    }
+
+    return { floorFraction, batchDurationSeconds };
 }
 
 function parseProducerMilestoneConfig(value: Record<string, unknown>, filePath: string, itemPath: string, diagnostics: ConfigDiagnostic[]): ProducerMilestoneConfig | undefined {
@@ -1155,6 +1185,14 @@ function validateSemanticNumbers(config: StructuredConfigSet, diagnostics: Confi
             }
             if (producer.baseProductionPerLevel <= 0) {
                 diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].baseProductionPerLevel`, 'baseProductionPerLevel must be greater than 0.'));
+            }
+            if (producer.assistedProduction !== undefined) {
+                if (producer.assistedProduction.floorFraction < 0 || producer.assistedProduction.floorFraction >= 1) {
+                    diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].assistedProduction.floorFraction`, 'assistedProduction.floorFraction must be at least 0 and below 1.'));
+                }
+                if (producer.assistedProduction.batchDurationSeconds <= 0) {
+                    diagnostics.push(makeDiagnostic('semantic', 'CONFIG_INVALID_NUMBER', envelope.filePath, `$.items[${index}].assistedProduction.batchDurationSeconds`, 'assistedProduction.batchDurationSeconds must be greater than 0.'));
+                }
             }
         });
     }

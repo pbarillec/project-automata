@@ -31,6 +31,7 @@ import { FabricatorVisualController } from './FabricatorVisualController';
 import { ProducerSelectionController } from './ProducerSelectionController';
 import { CoreHudController } from './CoreHudController';
 import { ProducerPanelController } from './ProducerPanelController';
+import { AssemblyBatchActionController } from './AssemblyBatchActionController';
 import { FirstAutomationPresentationController } from './FirstAutomationPresentationController';
 import { CocosFileSystemPort } from '../app/CocosFileSystemPort';
 import { bootstrapGameSession } from '../lifecycle/GameSessionBootstrap.ts';
@@ -38,9 +39,10 @@ import { FileSaveStorage } from '../persistence/FileSaveStorage.ts';
 import { DefaultTimeService } from '../time/DefaultTimeService.ts';
 import { FactoryWorldStateBinding, type FactoryWorldAutomationSink } from './FactoryWorldStateBinding.ts';
 import type { GameCommand } from '../domain/Commands.ts';
+import type { DomainEvent } from '../domain/Events.ts';
 import type { LifecycleCommandResult } from '../lifecycle/LifecycleSessionCoordinator.ts';
 import type { DisplayNameSource } from './PresentationText.ts';
-import { CORE_HUD_LAYOUT, HUD_ACTION_KEYS, PANEL_ACTION_KEYS, PRODUCER_PANEL_LAYOUT, UI_EDGE_MARGIN, widgetAlignment, type UiCardSpec, type UiRect } from './UiLayout.ts';
+import { ASSEMBLY_BATCH_ACTION_KEY, CORE_HUD_LAYOUT, HUD_ACTION_KEYS, PANEL_ACTION_KEYS, PRODUCER_PANEL_LAYOUT, UI_EDGE_MARGIN, widgetAlignment, type UiCardSpec, type UiRect } from './UiLayout.ts';
 import { ZONE_LAYOUT } from './FactoryZoneLayout.ts';
 import { CAMERA_PAN_BOUNDS_MARGIN, resolveCameraPanBounds } from './CameraPanBounds.ts';
 
@@ -64,7 +66,7 @@ export class FactoryWorldBootstrap extends Component {
     /** AUT-INT-001: the persistent session binding; null until the save has loaded (inputs stay inert). */
     private binding: FactoryWorldStateBinding | null = null;
     private pendingBinding: { binding: FactoryWorldStateBinding; status: string; displayNames: DisplayNameSource } | null = null;
-    private sessionWiring: { hud: CoreHudController; panel: ProducerPanelController; selection: ProducerSelectionController; presentation: PresentationController | null } | null = null;
+    private sessionWiring: { hud: CoreHudController; panel: ProducerPanelController; batch: AssemblyBatchActionController; selection: ProducerSelectionController; presentation: PresentationController | null } | null = null;
     private saveRootPath = '';
     private lifecycleHooksRegistered = false;
     /** AUT-R-036: frames left before the DEBUG `ui_layout` diagnostic (0 = none scheduled). */
@@ -96,13 +98,14 @@ export class FactoryWorldBootstrap extends Component {
         const panel = this.createProducerPanel();
         // AUT-R-036-02: Manual Produce sits in the bottom band, inside the panel card (before the HUD's first layout).
         hud.primaryActionHost = panel.node;
+        const batch = this.createAssemblyBatchAction(panel.node);
         selection.onSelectionChanged = (producerId) => {
             panel.replaceSelection(producerId);
             this.binding?.onSelectionChanged(producerId);
         };
         this.reportUiLayoutAfterSelection(selection);
         const presentation = site.getChildByName('PresentationAnchors')?.getComponent(PresentationController) ?? null;
-        this.sessionWiring = { hud, panel, selection, presentation };
+        this.sessionWiring = { hud, panel, batch, selection, presentation };
         this.startPersistentSession(presentation);
     }
 
@@ -164,6 +167,9 @@ export class FactoryWorldBootstrap extends Component {
                 } : null,
                 reportError: (context, error) => this.reportSessionError(context, error),
                 reportCommandResult: (command, commandResult) => this.emitCommandResult(command, commandResult),
+                // AUT-GP-001: the Assembly batch Button follows the same snapshots and selection as the panel.
+                assemblyBatch: this.sessionWiring?.batch ?? null,
+                observeDomainEvents: isDeviceDiagnosticsEnabled() ? (events) => this.emitAssemblyBatchEvents(events) : undefined,
             });
             this.pendingBinding = { binding, status: result.startup.status, displayNames: result.configRepository };
         }).catch((error: unknown) => {
@@ -182,6 +188,7 @@ export class FactoryWorldBootstrap extends Component {
         wiring.panel.displayNames = displayNames;
         wiring.hud.commandEmitter = (command) => { void binding.submit(command); };
         wiring.panel.commandEmitter = (command) => { void binding.submit(command); };
+        wiring.batch.commandEmitter = (command) => { void binding.submit(command); };
         if (!this.lifecycleHooksRegistered) {
             game.on(Game.EVENT_HIDE, this.onGameHide, this);
             game.on(Game.EVENT_SHOW, this.onGameShow, this);
@@ -229,6 +236,14 @@ export class FactoryWorldBootstrap extends Component {
             eventTypes: execution.events.map((event) => event.type),
             industrialOutput,
         });
+    }
+
+    /** AUT-GP-001 DEBUG-only `assembly_batch` diagnostic for the runtime's batch launch / completion events. */
+    private emitAssemblyBatchEvents(events: readonly DomainEvent[]): void {
+        for (const event of events) {
+            if (event.type === 'assistedBatchLaunched') emitDeviceEvent('assembly_batch', { phase: 'launched', producerId: event.producerId, durationSeconds: event.durationSeconds });
+            if (event.type === 'assistedBatchCompleted') emitDeviceEvent('assembly_batch', { phase: 'completed', producerId: event.producerId, durationSeconds: event.durationSeconds, payout: event.payout });
+        }
     }
 
     /** DEBUG-only `error` diagnostic; session failures never throw into the frame loop. */
@@ -442,6 +457,14 @@ export class FactoryWorldBootstrap extends Component {
         return panel.getComponent(ProducerPanelController) ?? panel.addComponent(ProducerPanelController);
     }
 
+    /** AUT-GP-001: the Assembly batch Button node, inside the panel card next to Manual Produce (bottom thumb zone). */
+    private createAssemblyBatchAction(panel: Node): AssemblyBatchActionController {
+        const node = panel.getChildByName(ASSEMBLY_BATCH_ACTION_KEY) ?? new Node(ASSEMBLY_BATCH_ACTION_KEY);
+        node.parent = panel;
+        node.layer = Layers.Enum.UI_2D;
+        return node.getComponent(AssemblyBatchActionController) ?? node.addComponent(AssemblyBatchActionController);
+    }
+
     private uiSafeArea(): Node {
         const container = this.node.getChildByName('CoreHudCanvas')?.getChildByName('UiSafeArea');
         if (!container) throw new Error('createUiRoot() must run before the HUD and the panel are built.');
@@ -524,6 +547,9 @@ export class FactoryWorldBootstrap extends Component {
         const rects: Record<string, UiRect | null> = { CoreHUD: rectOf(hud), ProducerPanel: rectOf(panel) };
         for (const key of PANEL_ACTION_KEYS) rects[key] = rectOf(panel?.getChildByName(key));
         for (const key of HUD_ACTION_KEYS) rects[key] = rectOf(hud?.getChildByName(key) ?? panel?.getChildByName(key));
+        // AUT-GP-001: the batch Button rect only while it is shown (null when hidden).
+        const batchNode = panel?.getChildByName(ASSEMBLY_BATCH_ACTION_KEY) ?? null;
+        rects[ASSEMBLY_BATCH_ACTION_KEY] = batchNode?.active ? rectOf(batchNode) : null;
         const rowsOf = (card: Node | null, spec: UiCardSpec) => Object.fromEntries(spec.rows.map((row) => [row.key, rectOf(card?.getChildByName(row.key))]));
         const rows = { CoreHUD: rowsOf(hud, CORE_HUD_LAYOUT), ProducerPanel: rowsOf(panel, PRODUCER_PANEL_LAYOUT) };
         // AUT-UI-001: effective (post-SHRINK) font size of every non-empty label in design units; null while empty.
@@ -540,6 +566,7 @@ export class FactoryWorldBootstrap extends Component {
             ProducerPanel: Object.fromEntries([...PRODUCER_PANEL_LAYOUT.rows.map((row) => row.key), ...PANEL_ACTION_KEYS].map((key) => [key, fontOf(panel, key)])),
         };
         const hudActions = this.sessionWiring?.hud.getActionStates() ?? null;
+        const assemblyBatch = this.sessionWiring?.batch.getActionState() ?? null;
         const windowSize = screen.windowSize;
         emitDeviceEvent('ui_layout', {
             reason,
@@ -550,6 +577,7 @@ export class FactoryWorldBootstrap extends Component {
             rows,
             fontSizes,
             hudActions,
+            assemblyBatch,
         });
     }
 

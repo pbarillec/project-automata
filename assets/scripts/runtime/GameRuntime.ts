@@ -8,8 +8,10 @@ import {
     resolveCrossedProducerMilestones,
 } from '../economy/index.ts';
 import {
+    ASSEMBLY_STATION_PRODUCER_ID,
     AUTOMATED_FACTORY_ERA_ID,
     activateFreeOverclock,
+    advanceAssistedBatches,
     advanceTemporaryBoosts,
     applyDefaultAutomationForConstructedProducer,
     applyEraTransition,
@@ -22,7 +24,9 @@ import {
     createRebootPreview,
     executeRebootCivilization,
     evaluateProducerBuildProgression,
+    getSecondsUntilNextAssistedBatchCompletion,
     getSecondsUntilNextTemporaryBoostTransition,
+    launchAssistedBatch,
     purchaseBreakthrough,
     purchasePermanentUpgrade,
     type RebootPreview,
@@ -44,6 +48,8 @@ export type CommandRejectionReason =
     | 'boost_already_active'
     | 'boost_suspended'
     | 'boost_on_cooldown'
+    | 'assisted_batch_unavailable'
+    | 'assisted_batch_already_running'
     | 'locked_producer'
     | 'insufficient_balance'
     | 'no_affordable_levels'
@@ -119,9 +125,11 @@ export class GameRuntime {
         const draft = cloneGameState(this.currentState);
         const previousAmount = draft.run.industrialOutput;
         applyOnlineProductionAndBoostProgression(
+            this.repository,
             draft,
             elapsedSeconds,
             (segmentDraft) => calculateAutomatedProductionPerSecond(this.repository, segmentDraft),
+            false,
         );
         return draft.run.industrialOutput - previousAmount;
     }
@@ -155,6 +163,10 @@ export class GameRuntime {
 
     activateFreeOverclock(): CommandExecutionResult {
         return this.execute({ type: 'activateFreeOverclock' });
+    }
+
+    launchAssemblyBatch(): CommandExecutionResult {
+        return this.execute({ type: 'launchAssemblyBatch' });
     }
 
     createRebootPreview(): RebootPreview {
@@ -241,6 +253,10 @@ function executeGameCommandInternal(
             return executeActivateFreeOverclock(state, parsedCommand.command);
         }
 
+        if (parsedCommand.command.type === 'launchAssemblyBatch') {
+            return executeLaunchAssemblyBatch(repository, state, parsedCommand.command);
+        }
+
         if (parsedCommand.command.type === 'buyProducerLevels') {
             return executeBuyProducerLevels(repository, state, parsedCommand.command);
         }
@@ -313,6 +329,7 @@ function executeAdvanceActiveSession(
         state,
         command,
         (draft) => calculateOnlineProductionPerSecond(repository, draft),
+        true,
     );
 }
 
@@ -326,6 +343,7 @@ function executeAdvanceAutomation(
         state,
         command,
         (draft) => calculateAutomatedProductionPerSecond(repository, draft),
+        false,
     );
 }
 
@@ -334,12 +352,15 @@ function executeElapsedProduction(
     state: GameState,
     command: GameCommand & { type: 'advanceActiveSession' | 'advanceAutomation' },
     calculateProductionPerSecond: (draft: GameState) => number,
+    includeAssistedBatches: boolean,
 ): InternalCommandExecutionResult {
     const draft = cloneGameState(state);
     const productionAndBoostEvents = applyOnlineProductionAndBoostProgression(
+        repository,
         draft,
         command.elapsedSeconds,
         calculateProductionPerSecond,
+        includeAssistedBatches,
     );
     const robotsBuilt = calculateRobotsBuiltFromRobotLineElapsedSeconds(getRobotLineLevel(state), command.elapsedSeconds);
 
@@ -387,19 +408,30 @@ function executeActivateFreeOverclock(
     return commit(command, draft, result.events);
 }
 
+/**
+ * Advances production and temporary boosts over `elapsedSeconds`, split at every boost transition and,
+ * with `includeAssistedBatches` (active session only, AUT-GP-001), at every assisted batch completion so
+ * a batch pays with the rate of the segment it completes in.
+ */
 function applyOnlineProductionAndBoostProgression(
+    repository: GameConfigRepository,
     draft: GameState,
     elapsedSeconds: number,
     calculateProductionPerSecond: (draft: GameState) => number,
+    includeAssistedBatches: boolean,
 ): DomainEvent[] {
     let remainingSeconds = elapsedSeconds;
     const events: DomainEvent[] = [];
 
     while (remainingSeconds > 0) {
         const nextBoostTransitionSeconds = getSecondsUntilNextTemporaryBoostTransition(draft.boosts);
-        const segmentSeconds = nextBoostTransitionSeconds === null
+        const nextBatchCompletionSeconds = includeAssistedBatches ? getSecondsUntilNextAssistedBatchCompletion(draft) : null;
+        let segmentSeconds = nextBoostTransitionSeconds === null
             ? remainingSeconds
             : Math.min(remainingSeconds, nextBoostTransitionSeconds);
+        if (nextBatchCompletionSeconds !== null) {
+            segmentSeconds = Math.min(segmentSeconds, nextBatchCompletionSeconds);
+        }
 
         if (segmentSeconds <= 0) {
             break;
@@ -431,6 +463,12 @@ function applyOnlineProductionAndBoostProgression(
             );
         }
 
+        if (includeAssistedBatches) {
+            for (const completion of advanceAssistedBatches(repository, draft, segmentSeconds, 'include')) {
+                events.push(...creditAssistedBatchPayout(draft, completion.producerId, completion.durationSeconds, completion.payout));
+            }
+        }
+
         const boostResult = advanceTemporaryBoosts(draft.boosts, segmentSeconds);
         draft.boosts = boostResult.boosts;
         events.push(...boostResult.events);
@@ -439,6 +477,67 @@ function applyOnlineProductionAndBoostProgression(
     }
 
     return events;
+}
+
+function creditAssistedBatchPayout(draft: GameState, producerId: string, durationSeconds: number, payout: number): DomainEvent[] {
+    const events: DomainEvent[] = [];
+    if (payout > 0) {
+        const previousAmount = draft.run.industrialOutput;
+        draft.run.industrialOutput = addFinite(draft.run.industrialOutput, payout, 'industrialOutput');
+        draft.run.statistics.industrialOutputEarned = addFinite(
+            draft.run.statistics.industrialOutputEarned,
+            payout,
+            'run.statistics.industrialOutputEarned',
+        );
+        draft.lifetime.industrialOutputEarned = addFinite(
+            draft.lifetime.industrialOutputEarned,
+            payout,
+            'lifetime.industrialOutputEarned',
+        );
+        events.push(
+            {
+                type: 'productionGranted',
+                source: 'assisted_batch',
+                amount: payout,
+            },
+            industrialOutputChanged(previousAmount, draft.run.industrialOutput, 'assisted_batch_production'),
+        );
+    }
+
+    events.push({
+        type: 'assistedBatchCompleted',
+        producerId,
+        durationSeconds,
+        payout,
+    });
+    return events;
+}
+
+function executeLaunchAssemblyBatch(
+    repository: GameConfigRepository,
+    state: GameState,
+    command: GameCommand & { type: 'launchAssemblyBatch' },
+): InternalCommandExecutionResult {
+    const result = launchAssistedBatch(repository, state, ASSEMBLY_STATION_PRODUCER_ID);
+    if (result.status === 'running') {
+        return reject('assisted_batch_already_running', 'An Assembly batch is already running.', {
+            producerId: ASSEMBLY_STATION_PRODUCER_ID,
+            remainingSeconds: result.availability.batch?.remainingSeconds ?? null,
+        });
+    }
+
+    if (result.status !== 'launched') {
+        return reject('assisted_batch_unavailable', 'Assembly batches are unavailable.', {
+            producerId: ASSEMBLY_STATION_PRODUCER_ID,
+            status: result.status,
+        });
+    }
+
+    return commit(command, result.state, [{
+        type: 'assistedBatchLaunched',
+        producerId: ASSEMBLY_STATION_PRODUCER_ID,
+        durationSeconds: result.batch.durationSeconds,
+    }]);
 }
 
 function executeManualProduce(state: GameState, command: GameCommand & { type: 'manualProduce' }): InternalCommandExecutionResult {
@@ -826,6 +925,10 @@ function parseGameCommand(command: unknown): { ok: true; command: GameCommand } 
         return { ok: true, command: { type: 'activateFreeOverclock' } };
     }
 
+    if (command.type === 'launchAssemblyBatch') {
+        return { ok: true, command: { type: 'launchAssemblyBatch' } };
+    }
+
     if (command.type === 'advanceAutomation') {
         if (typeof command.elapsedSeconds !== 'number' || !Number.isFinite(command.elapsedSeconds) || command.elapsedSeconds < 0) {
             return reject('invalid_elapsed_seconds', 'elapsedSeconds must be a non-negative finite number.');
@@ -972,7 +1075,7 @@ function reject(
 function industrialOutputChanged(
     previousAmount: number,
     newAmount: number,
-    reason: 'manual_production' | 'automation_production' | 'producer_purchase' | 'breakthrough_purchase',
+    reason: 'manual_production' | 'automation_production' | 'assisted_batch_production' | 'producer_purchase' | 'breakthrough_purchase',
 ): DomainEvent {
     return {
         type: 'industrialOutputChanged',

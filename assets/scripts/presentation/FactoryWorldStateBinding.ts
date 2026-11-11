@@ -8,6 +8,7 @@ import type {
     LifecycleSuspendResult,
 } from '../lifecycle/LifecycleSessionCoordinator.ts';
 import type { GameState } from '../state/GameState.ts';
+import { createAssemblyBatchViewModel, type AssemblyBatchViewModel } from './AssemblyBatchViewModel.ts';
 import { createHudViewModel, type HudViewModel } from './HudViewModel.ts';
 import { createProducerPanelViewModel, type ProducerPanelViewModel } from './ProducerPanelViewModel.ts';
 
@@ -39,6 +40,11 @@ export interface FactoryWorldPanelSink {
     refresh(viewModel: ProducerPanelViewModel): void;
 }
 
+/** AUT-GP-001: the Assembly batch action, refreshed with the panel (same snapshot and selection). */
+export interface FactoryWorldAssemblyBatchSink {
+    refresh(viewModel: AssemblyBatchViewModel): void;
+}
+
 export type FactoryWorldErrorReporter = (context: string, error: unknown) => void;
 /** AUT-UI-001: observes every result the session returned for a submitted command (accepted or rejected). */
 export type FactoryWorldCommandResultReporter = (command: GameCommand, result: LifecycleCommandResult) => void;
@@ -54,6 +60,10 @@ export interface FactoryWorldStateBindingOptions {
     readonly camera?: FactoryWorldCameraSink | null;
     /** AUT-UI-001: optional observer called after each submit (FactoryWorld passes a DEBUG diagnostic). */
     readonly reportCommandResult?: FactoryWorldCommandResultReporter;
+    /** AUT-GP-001: optional Assembly batch action sink. */
+    readonly assemblyBatch?: FactoryWorldAssemblyBatchSink | null;
+    /** AUT-GP-001: optional observer of the domain events fanned out (FactoryWorld passes a DEBUG diagnostic). */
+    readonly observeDomainEvents?: (events: readonly DomainEvent[]) => void;
     /** Minimum active time between ordinary save requests from `tick` (the dirty policy still decides). */
     readonly saveRequestIntervalSeconds?: number;
 }
@@ -91,6 +101,8 @@ export class FactoryWorldStateBinding {
     private readonly hud: FactoryWorldHudSink | null;
     private readonly panel: FactoryWorldPanelSink | null;
     private readonly camera: FactoryWorldCameraSink | null;
+    private readonly assemblyBatch: FactoryWorldAssemblyBatchSink | null;
+    private readonly observeDomainEvents: ((events: readonly DomainEvent[]) => void) | null;
     private readonly reportError: FactoryWorldErrorReporter;
     private readonly reportCommandResult: FactoryWorldCommandResultReporter | null;
     private readonly saveRequestIntervalSeconds: number;
@@ -106,6 +118,8 @@ export class FactoryWorldStateBinding {
         this.hud = options.hud;
         this.panel = options.panel;
         this.camera = options.camera ?? null;
+        this.assemblyBatch = options.assemblyBatch ?? null;
+        this.observeDomainEvents = options.observeDomainEvents ?? null;
         this.reportError = options.reportError ?? (() => undefined);
         this.reportCommandResult = options.reportCommandResult ?? null;
         this.saveRequestIntervalSeconds = options.saveRequestIntervalSeconds ?? FACTORY_WORLD_SAVE_REQUEST_INTERVAL_SECONDS;
@@ -138,7 +152,9 @@ export class FactoryWorldStateBinding {
         const producerId = resolveSelectedProducerId(selectionId);
         this.selectedProducerId = producerId;
         this.guard('selection', () => {
-            this.panel?.refresh(createProducerPanelViewModel(this.configRepository, this.session.getStateSnapshot(), producerId));
+            const snapshot = this.session.getStateSnapshot();
+            this.panel?.refresh(createProducerPanelViewModel(this.configRepository, snapshot, producerId));
+            this.assemblyBatch?.refresh(createAssemblyBatchViewModel(this.configRepository, snapshot, producerId));
         });
     }
 
@@ -220,11 +236,14 @@ export class FactoryWorldStateBinding {
             this.refreshViews(snapshot);
             this.camera?.syncPanBounds(snapshot);
         });
+        const observeDomainEvents = this.observeDomainEvents;
+        if (observeDomainEvents) this.guard('observe_events', () => observeDomainEvents(events));
     }
 
     private refreshViews(snapshot: GameState): void {
         this.hud?.refresh(createHudViewModel(this.configRepository, snapshot));
         this.panel?.refresh(createProducerPanelViewModel(this.configRepository, snapshot, this.selectedProducerId));
+        this.assemblyBatch?.refresh(createAssemblyBatchViewModel(this.configRepository, snapshot, this.selectedProducerId));
     }
 
     private guard(context: string, action: () => void): void {

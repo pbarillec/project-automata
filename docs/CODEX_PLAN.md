@@ -865,13 +865,73 @@ Also no regression in C3, INT-001, R-036 or UI-001. Multi-touch cannot be driven
 
 **Status note:** the visual human gate passed on 2026-11-11 (owner, NE2215). Further mechanical-logic and visual-flow polish is deferred.
 
+## AUT-GP-001 — Manual Assembly Batch (Assisted Production)
+
+**ID note:** `GP` is used because this is a new gameplay mechanic (a runtime command and the rate rule behind it). Economy owns only its values, so `ECO` does not fit.
+
+**Objective:** Implement Assembly assisted production per GAME_DESIGN §5/§9: the player launches short batches, and the first Worker Bot automates the station (owner decision 2026-11-11).
+
+**Dependencies:** AUT-013, AUT-014, AUT-016, AUT-036, AUT-037, AUT-LOC-001, AUT-R-036-02. Required before AUT-039.
+
+**Scope (owner decision 2026-11-11: reduced floor plus batch):**
+- Before Worker Bot, Assembly runs at a reduced continuous rate (the floor). A tapped short batch brings it up to full output. After Worker Bot, it runs at the full automated rate and batches stop.
+- `launchAssemblyBatch` `GameCommand`, through `GameRuntime` only:
+  - one batch at a time, with no queue;
+  - hidden or disabled while Assembly is level 0, after Worker Bot, and when A3 Inherited Automation makes Assembly start automated.
+- Batch output = `assemblyRatePerSec(level, current multipliers incl. boosts) × duration × (1 − floor)`. It goes through the existing formula modules and is never duplicated.
+- Data-driven values in `data/economy/`:
+  - batch duration (proposal: about 10–20 s);
+  - floor fraction (proposal: about 0.5).
+- Offline: no relaunch; at most one in-flight batch is paid on resume. The batch state persists in the save.
+- UI: a batch action on the Assembly producer panel or in the bottom band (thumb zone, §20), with progress feedback, minimal existing styling and catalogue text only.
+
+**Constraints:** the economy proposal is unsimulated. Economy signs off the final floor and duration from the simulator output. No other economy, monetization or art change.
+
+**Tests:**
+- Command legality, the single-batch rule and payout.
+- The floor rate before Worker Bot, and the full rate with no batches after it.
+- The A3 case.
+- Offline and resume payout.
+- Save round-trip.
+- View model and command emission.
+- Text resolves.
+
+**Simulation:**
+- `BuiltInStrategies` relaunch the batch at each decision; `PacingRegression` counts it as a manual action.
+- Rerun all 4 pacing profiles and accept the baseline diffs explicitly.
+- Check worker_bot against its 6:00–15:00 window and the dead-zone policy.
+
+**Device check (automated):** a seeded save with Assembly at level 1 or more → tap batch → `command_result launchAssemblyBatch` ok; progress shown; the payout arrives. The UI001, R036 and INT001 scenarios still pass.
+
+**Human gate:** the feel of the batch tap and the relief. It can be combined into the AUT-039 product gate.
+
+**Acceptance:** Assembly is assisted until Worker Bot and automated after it, through the runtime only. Economy has signed off the values.
+
 ## AUT-039 — Assembly + First Worker Bot Vertical Slice
 
 **Objective:** Complete the first playable validation path through Assembly Station and First Robot.
 
-**Dependencies:** AUT-014, AUT-015, AUT-032, AUT-038, AUT-INT-001, AUT-LOC-001, AUT-R-036, AUT-UI-001, AUT-R-031-02, AUT-R-036-02. The Orchestrator decides whether AUT-039 also waits for AUT-VIS-002.
+**Dependencies:** AUT-014, AUT-015, AUT-032, AUT-038, AUT-INT-001, AUT-LOC-001, AUT-R-036, AUT-UI-001, AUT-R-031-02, AUT-R-036-02, AUT-GP-001. The Orchestrator decides whether AUT-039 also waits for AUT-VIS-002.
 
 **Scope:** Assembly visual states needed for slice, Worker Bot reveal, one predefined robot route/work loop.
+
+**Scope clarifications (Technical Lead 2026-11-11, derived from GAME_DESIGN §9/§18, ART_DIRECTION §6.5/§14.2/§15.4, TECHNICAL_DESIGN §14):**
+- Trigger: the existing runtime `firstRobotProduced` event (Worker Bot breakthrough, `first_robot` run flag). A save that already owns Worker Bot rebuilds the robot in its work loop with no reveal replay (AUT-INT-001 pattern).
+- Assembly visual states: unbuilt foundation, Lv1 open workstation, Lv10 Worker Bot frontier, automated by Worker Bot. Projected by a pure resolver from `GameState`, alongside the Fabricator resolver.
+- Worker Bot reveal: activate the robot, give it a short focus through the existing reveal API, move it to Assembly, then start the work loop. Reuse the AUT-038 focus/reveal infrastructure.
+- Route: one predefined, deterministic, engine-free waypoint loop at Assembly. One robot instance; no pool, no AI and no pathfinding.
+- Art intent (Art Director 2026-11-11). Coordinates are world (x, z).
+  - Bay stand-in: `structure-high.glb` at (-3.4, 0.7).
+  - Storage anchor: `box-large` at (-0.8, 0.95).
+  - Route entry: (-3.4, 0.7) → (-2.6, 0.3) → (-1.8, -1.3).
+  - Route loop: (-1.8, -1.3) → (-1.4, -0.3) → (-0.8, 0.45) → (-1.2, -0.3).
+  - Clips: `Robot_ThumbsUp` (activation), then `Robot_Walking`, then `Robot_Idle` at the station.
+  - Assembly Lv1: slab + `machine-bed` + `conveyor-corner`. Lv10 adds `robot-arm-b` + `screen-panel-wide`.
+  - Reveal: 3.0 s, tunable.
+  - The slice uses the Worker Bot event only.
+  - Assembly swaps to its built model until AUT-040.
+  - The short Civ 2+ acknowledgement is deferred.
+- Out of scope: the reusable construction sequence (AUT-040), the robot population and pool (AUT-041), the Founder Robot variant, new HUD text, Assembly Lv25+ states, and any economy, progression, camera-API or layout change.
 
 **Tests:** scene/state smoke; FirstRobot event creates presentation but no economic worker entity.
 
@@ -1361,7 +1421,7 @@ Goal: finish identity, performance, error handling, release build and automated 
 
 ## M3 — Vertical Slice
 
-**Tasks:** AUT-031 → AUT-039 (incl. AUT-INT-001, AUT-LOC-001, AUT-R-036, AUT-UI-001, AUT-R-031-02, AUT-R-036-02, AUT-VIS-002).  
+**Tasks:** AUT-031 → AUT-039 (incl. AUT-INT-001, AUT-LOC-001, AUT-R-036, AUT-UI-001, AUT-R-031-02, AUT-R-036-02, AUT-VIS-002, AUT-GP-001).  
 **Exit:** real Android slice, in portrait, demonstrates manual production → first automation → Assembly → First Robot.  
 **Human product gate:** comprehension, camera framing, bounded pan and automatic focus/reveal beats, automation payoff, visual progression, Next Goal and First Robot must feel convincing.
 

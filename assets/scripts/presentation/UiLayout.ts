@@ -147,6 +147,46 @@ export const PRODUCER_PANEL_LAYOUT: UiCardSpec = {
     primaryAction: { key: 'ManualProduceAction', height: 52, fontSize: 24, gap: 4 },
 };
 
+/**
+ * AUT-GP-001: the Assembly batch Button shares the panel's primary row (bottom thumb zone, GAME_DESIGN §20)
+ * with Manual Produce while it is visible: Manual Produce takes the left half, the batch the right half,
+ * `PANEL_PRIMARY_SPLIT_GAP` apart. Hidden, Manual Produce keeps the full row. The card height (and so the
+ * coverage budget) is unchanged.
+ */
+export const ASSEMBLY_BATCH_ACTION_KEY = 'AssemblyBatchAction';
+export const PANEL_PRIMARY_SPLIT_GAP = 10;
+
+/** Local rects (relative to the card centre) of the split primary row: `primary` left, `secondary` right. */
+export function cardPrimaryActionSplitRects(card: UiCardSpec, gap: number = PANEL_PRIMARY_SPLIT_GAP): { primary: { x: number; y: number; w: number; h: number }; secondary: { x: number; y: number; w: number; h: number } } {
+    const primary = card.primaryAction;
+    if (!primary) throw new RangeError(`${card.name} has no primary action`);
+    const full = cardActionRect(card, primary.key);
+    const w = (full.w - gap) / 2;
+    return {
+        primary: { x: full.x - full.w / 2 + w / 2, y: full.y, w, h: full.h },
+        secondary: { x: full.x + full.w / 2 - w / 2, y: full.y, w, h: full.h },
+    };
+}
+
+/** Screen rects (pixels, bottom-left origin) of the split primary row for a screen and safe area. */
+export function computePanelPrimarySplitRects(
+    screenPx: { w: number; h: number },
+    safeAreaPx: UiRect = { x: 0, y: 0, w: screenPx.w, h: screenPx.h },
+    panelCard: UiCardSpec = PRODUCER_PANEL_LAYOUT,
+): { primary: UiRect; secondary: UiRect } {
+    if (!(screenPx.w > 0 && screenPx.h > 0)) throw new RangeError('screen size must be positive');
+    const scale = screenPx.w / UI_DESIGN_RESOLUTION.width;
+    const panel = anchoredRect(panelCard, safeAreaPx, scale);
+    const split = cardPrimaryActionSplitRects(panelCard);
+    const toScreen = (local: { x: number; y: number; w: number; h: number }): UiRect => ({
+        x: panel.x + panel.w / 2 + (local.x - local.w / 2) * scale,
+        y: panel.y + panel.h / 2 + (local.y - local.h / 2) * scale,
+        w: local.w * scale,
+        h: local.h * scale,
+    });
+    return { primary: toScreen(split.primary), secondary: toScreen(split.secondary) };
+}
+
 /** The card whose layout places HUD action `key` (Manual Produce: the panel band; Next Goal: the HUD). */
 export function hudActionCard(key: HudActionKey): UiCardSpec {
     return PRODUCER_PANEL_LAYOUT.primaryAction?.key === key ? PRODUCER_PANEL_LAYOUT : CORE_HUD_LAYOUT;

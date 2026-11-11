@@ -23,7 +23,11 @@
       "baseProductionPerLevel": 12,
       "prerequisiteProducerIds": [
         "fabricator"
-      ]
+      ],
+      "assistedProduction": {
+        "floorFraction": 0.5,
+        "batchDurationSeconds": 15
+      }
     },
     {
       "id": "robot_line",

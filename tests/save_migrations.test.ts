@@ -41,9 +41,12 @@ async function syntheticV0Registry() {
     const {
         createIntegrityMetadata,
         createSaveMigrationRegistry,
+        CURRENT_SAVE_VERSION,
+        PRODUCTION_SAVE_MIGRATION_STEPS,
     } = await persistenceModule();
 
-    return createSaveMigrationRegistry(1, [{
+    // AUT-GP-001: the synthetic v0 -> v1 step chains into the production v1 -> v2 step.
+    return createSaveMigrationRegistry(CURRENT_SAVE_VERSION, [{
         id: 'synthetic-test-v0-to-v1',
         sourceVersion: 0,
         targetVersion: 1,
@@ -64,7 +67,7 @@ async function syntheticV0Registry() {
                 payload,
             };
         },
-    }]);
+    }, ...PRODUCTION_SAVE_MIGRATION_STEPS]);
 }
 
 test('synthetic v0 fixture migrates through one explicit step and receives deterministic defaults', async () => {
@@ -75,10 +78,14 @@ test('synthetic v0 fixture migrates through one explicit step and receives deter
     const result = deserializeGameStateFromSaveJson(JSON.stringify(parsedBefore), { migrations });
 
     assert.equal(result.diagnostics.length, 0);
-    assert.equal(result.envelope.saveVersion, 1);
+    assert.equal(result.envelope.saveVersion, 2);
     assert.equal(result.state.settings.reducedMotion, false);
+    assert.deepEqual(result.state.run.assistedBatches, {});
     assert.equal(result.migration.migrated, true);
-    assert.deepEqual(result.migration.appliedMigrations.map((migration) => migration.id), ['synthetic-test-v0-to-v1']);
+    assert.deepEqual(result.migration.appliedMigrations.map((migration) => migration.id), [
+        'synthetic-test-v0-to-v1',
+        'v1-to-v2-assisted-batches',
+    ]);
 
     assert.equal(parsedBefore.saveVersion, 0);
     assert.equal('integrity' in parsedBefore, false);
@@ -121,14 +128,14 @@ test('current-version saves bypass migration transformation and validate normall
     } = await persistenceModule();
     const { createFreshGameState } = await stateModule();
     const text = serializeGameStateToSaveJson(createFreshGameState(), {
-        saveVersion: 1,
+        saveVersion: 2,
         gameVersion: '0.1.0-test',
         contentVersion: 'current-test',
         savedAtUtc: '2026-08-22T08:30:45.123Z',
     });
     const parsed = JSON.parse(text);
     let called = false;
-    const migrations = createSaveMigrationRegistry(1, [{
+    const migrations = createSaveMigrationRegistry(2, [{
         id: 'should-not-run-v0-to-v1',
         sourceVersion: 0,
         targetVersion: 1,
@@ -153,20 +160,20 @@ test('future and unsupported legacy versions are rejected deterministically', as
     } = await persistenceModule();
     const { createFreshGameState } = await stateModule();
     const currentText = serializeGameStateToSaveJson(createFreshGameState(), {
-        saveVersion: 1,
+        saveVersion: 2,
         gameVersion: '0.1.0-test',
         contentVersion: 'current-test',
         savedAtUtc: '2026-08-22T08:30:45.123Z',
     });
 
     const future = JSON.parse(currentText);
-    future.saveVersion = 2;
+    future.saveVersion = 3;
     const futureResult = deserializeGameStateFromSaveJson(JSON.stringify(future));
     assert.deepEqual(futureResult.diagnostics.map((diagnostic) => diagnostic.code), ['SAVE_UNSUPPORTED_VERSION']);
 
     const unsupportedLegacy = parseFixture('synthetic_v0_progress.json');
     const unsupportedResult = deserializeGameStateFromSaveJson(JSON.stringify(unsupportedLegacy), {
-        migrations: createSaveMigrationRegistry(1, []),
+        migrations: createSaveMigrationRegistry(2, []),
     });
     assert.deepEqual(unsupportedResult.diagnostics.map((diagnostic) => diagnostic.code), ['SAVE_UNSUPPORTED_LEGACY_VERSION']);
 });
@@ -278,4 +285,86 @@ test('failed legacy main migration still allows fallback to a migratable backup'
     assert.equal(loaded.status, 'recovered_backup');
     assert.equal(loaded.state.settings.reducedMotion, false);
     assert.equal(storage.getFile(SAVE_BACKUP_NAME), legacyBackup);
+});
+
+async function realV1SaveText(mutateState) {
+    const { calculatePayloadHash, serializeGameStateToSaveJson } = await persistenceModule();
+    const { createFreshGameState } = await stateModule();
+    const state = createFreshGameState();
+    mutateState?.(state);
+    const current = JSON.parse(serializeGameStateToSaveJson(state, {
+        saveVersion: 2,
+        gameVersion: '0.1.0-test',
+        contentVersion: 'v1-test',
+        savedAtUtc: '2026-11-11T08:00:00.000Z',
+    }));
+    delete current.payload.run.assistedBatches;
+    current.saveVersion = 1;
+    current.integrity = { algorithm: current.integrity.algorithm, payloadHash: calculatePayloadHash(current.payload) };
+    return JSON.stringify(current);
+}
+
+test('AUT-GP-001 production v1 -> v2 migration adds an empty assisted batch record and keeps progress', async () => {
+    const { CURRENT_SAVE_VERSION, deserializeGameStateFromSaveJson } = await persistenceModule();
+    const text = await realV1SaveText((state) => {
+        state.run.industrialOutput = 4321;
+        state.run.producers.assembly_station = { level: 3, isUnlocked: true, isBuilt: true };
+    });
+
+    const result = deserializeGameStateFromSaveJson(text);
+
+    assert.equal(CURRENT_SAVE_VERSION, 2);
+    assert.equal(result.diagnostics.length, 0);
+    assert.equal(result.envelope.saveVersion, 2);
+    assert.deepEqual(result.state.run.assistedBatches, {});
+    assert.equal(result.state.run.industrialOutput, 4321);
+    assert.equal(result.state.run.producers.assembly_station.level, 3);
+    assert.deepEqual(result.migration.appliedMigrations.map((migration) => migration.id), ['v1-to-v2-assisted-batches']);
+    assert.equal(JSON.parse(text).payload.run.assistedBatches, undefined, 'the parsed legacy input is not mutated');
+});
+
+test('AUT-GP-001 v1 -> v2 migration never launders a corrupted v1 integrity hash', async () => {
+    const { deserializeGameStateFromSaveJson } = await persistenceModule();
+    const corrupted = JSON.parse(await realV1SaveText());
+    corrupted.payload.run.industrialOutput = 999999;
+
+    const result = deserializeGameStateFromSaveJson(JSON.stringify(corrupted));
+
+    assert.equal(result.state, undefined);
+    assert.deepEqual(result.diagnostics.map((diagnostic) => diagnostic.code), ['SAVE_PAYLOAD_HASH_MISMATCH']);
+});
+
+test('AUT-GP-001 an in-flight assisted batch survives a current-version save round-trip', async () => {
+    const { assertDeserializeGameStateFromSaveJson, serializeGameStateToSaveJson } = await persistenceModule();
+    const { createFreshGameState } = await stateModule();
+    const state = createFreshGameState();
+    state.run.producers.fabricator = { level: 15, isUnlocked: true, isBuilt: true };
+    state.run.producers.assembly_station = { level: 2, isUnlocked: true, isBuilt: true };
+    state.run.assistedBatches.assembly_station = { durationSeconds: 15, remainingSeconds: 6.25 };
+
+    const text = serializeGameStateToSaveJson(state, {
+        saveVersion: 2,
+        gameVersion: '0.1.0-test',
+        contentVersion: 'round-trip',
+        savedAtUtc: '2026-11-11T08:00:00.000Z',
+    });
+    const loaded = assertDeserializeGameStateFromSaveJson(text);
+
+    assert.deepEqual(loaded.state.run.assistedBatches, { assembly_station: { durationSeconds: 15, remainingSeconds: 6.25 } });
+});
+
+test('AUT-GP-001 invalid assisted batch state is rejected by GameState validation', async () => {
+    const { createFreshGameState, validateGameState } = await stateModule();
+    const cases = [
+        [{ durationSeconds: 15, remainingSeconds: 0 }, 'STATE_INVALID_POSITIVE_NUMBER'],
+        [{ durationSeconds: 15, remainingSeconds: 16 }, 'STATE_ASSISTED_BATCH_REMAINING_EXCEEDS_DURATION'],
+        [{ durationSeconds: 15 }, null],
+    ];
+    for (const [batch, code] of cases) {
+        const state = createFreshGameState();
+        state.run.assistedBatches.assembly_station = batch;
+        const result = validateGameState(state);
+        assert.equal(result.value, undefined, JSON.stringify(batch));
+        if (code !== null) assert.ok(result.diagnostics.some((diagnostic) => diagnostic.code === code), JSON.stringify(result.diagnostics));
+    }
 });

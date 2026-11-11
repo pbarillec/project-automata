@@ -32,6 +32,23 @@ export {
 } from './ProductionRates.ts';
 
 export {
+    ASSEMBLY_STATION_PRODUCER_ID,
+    ASSISTED_BATCH_COMPLETION_EPSILON_SECONDS,
+    advanceAssistedBatches,
+    calculateAssistedBatchPayoutForState,
+    getSecondsUntilNextAssistedBatchCompletion,
+    launchAssistedBatch,
+    resolveAssistedBatchAvailability,
+} from './AssistedProduction.ts';
+
+export type {
+    AssistedBatchAvailability,
+    AssistedBatchCompletion,
+    AssistedBatchLaunchResult,
+    AssistedBatchStatus,
+} from './AssistedProduction.ts';
+
+export {
     AI_CORE_REWARD_COEFFICIENT,
     PrestigeInputError,
     calculateAiCoreReward,
@@ -126,6 +143,7 @@ export type {
 
 export type {
     ProducerProductionRateContribution,
+    ProductionRateAssistedFloorMode,
     ProductionRateOptions,
     ProductionRateProducerScope,
     ProductionRateTemporaryBoostMode,

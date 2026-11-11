@@ -19,6 +19,14 @@ export interface RunState {
     statistics: RunStatisticsState;
     prestigePowerPeak: number;
     progressionFlags: StateRecord<boolean>;
+    /** AUT-GP-001: the in-flight assisted batch per producer id (at most one each); absent when idle. */
+    assistedBatches: StateRecord<AssistedBatchRunState>;
+}
+
+/** AUT-GP-001: one launched assisted batch; it pays on completion and is then removed. */
+export interface AssistedBatchRunState {
+    durationSeconds: number;
+    remainingSeconds: number;
 }
 
 export interface ProducerRunState {

@@ -2,12 +2,14 @@ import type { GameConfigRepository, ProducerConfig } from '../config/ConfigLoade
 import type { GameCommand } from '../domain/Commands.ts';
 import type { CommandExecutionResult } from '../runtime/index.ts';
 import {
+    ASSEMBLY_STATION_PRODUCER_ID,
     calculateMaxAffordableProducerProgressionPurchase,
     calculateProducerProgressionPurchase,
     evaluateBreakthroughEligibility,
     evaluateProducerBuildProgression,
     getSecondsUntilNextTemporaryBoostTransition,
     isFreeOverclockUnlocked,
+    resolveAssistedBatchAvailability,
     resolveNextGoal,
     type LockedBreakthroughRequirement,
     type NextGoal,
@@ -239,6 +241,7 @@ function performProgressionDecision(
     settings: NormalizedProgressionPolicyStrategyConfig,
 ): void {
     activateFreeOverclockIfConfigured(simulator, settings);
+    launchAssemblyBatchIfAvailable(repository, simulator);
 
     if (settings.target.type === 'producerLevel' &&
         readProducerLevel(simulator, settings.target.producerId) > 0) {
@@ -487,6 +490,7 @@ function waitUntilCondition(
         stepSeconds: (snapshot) => {
             recordCivilizationOneCheckpoints(simulator);
             activateFreeOverclockIfConfigured(simulator, settings);
+            launchAssemblyBatchIfAvailable(simulator.repository, simulator);
 
             const refreshedSnapshot = simulator.createSnapshot();
             if (condition(refreshedSnapshot)) {
@@ -534,6 +538,19 @@ function activateFreeOverclockIfConfigured(
     if (result.ok) {
         simulator.metrics.recordObservation(simulator.createSnapshot(), 'strategy:boost:free_overclock');
     }
+}
+
+/**
+ * AUT-GP-001: every policy decision relaunches the Assembly batch when it is legally available (assisted,
+ * none in flight). Strategies never wait for a batch to finish; they keep their decision cadence.
+ */
+function launchAssemblyBatchIfAvailable(repository: GameConfigRepository, simulator: HeadlessSimulator): void {
+    const availability = resolveAssistedBatchAvailability(repository, simulator.getStateSnapshot(), ASSEMBLY_STATION_PRODUCER_ID);
+    if (availability.status !== 'available') {
+        return;
+    }
+
+    executeRequired(simulator, { type: 'launchAssemblyBatch' }, 'strategy_launch_assembly_batch');
 }
 
 function advanceAfterAction(

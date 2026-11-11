@@ -123,9 +123,9 @@ test('Fabricator world tap stays selection only: the selection path never import
     }
     const bootstrap = await read(BOOTSTRAP);
     assert.match(bootstrap, /selection\.onSelectionChanged = \(producerId\) => \{\s*panel\.replaceSelection\(producerId\);\s*this\.binding\?\.onSelectionChanged\(producerId\);\s*\};/);
-    // Exactly the two existing emitters (HUD, panel) reach binding.submit.
-    assert.deepEqual([...bootstrap.matchAll(/(\w+)\.commandEmitter = \(command\) => \{ void binding\.submit\(command\); \};/g)].map((m) => m[1]), ['hud', 'panel']);
-    assert.equal((bootstrap.match(/binding\.submit\(/g) ?? []).length, 2);
+    // Exactly the HUD, panel and (AUT-GP-001) Assembly batch emitters reach binding.submit.
+    assert.deepEqual([...bootstrap.matchAll(/(\w+)\.commandEmitter = \(command\) => \{ void binding\.submit\(command\); \};/g)].map((m) => m[1]), ['hud', 'panel', 'batch']);
+    assert.equal((bootstrap.match(/binding\.submit\(/g) ?? []).length, 3);
 });
 
 test('the bootstrap passes a DEBUG-only command_result emitter to the binding hook', async () => {

@@ -2,6 +2,7 @@ import type { GameConfigRepository } from '../config/ConfigLoader.ts';
 import { getDefaultTextCatalogue, type TextCatalogue } from '../localization/index.ts';
 import { resolveNextGoalAction, type NextGoalAction } from './CoreLoopActions.ts';
 import type { FreeOverclockViewState, HudNextGoalViewModel, HudViewModel } from './HudViewModel.ts';
+import type { AssemblyBatchViewModel } from './AssemblyBatchViewModel.ts';
 import type { ProducerPanelActionId, ProducerPanelPurchaseAction, ProducerPanelViewModel } from './ProducerPanelViewModel.ts';
 
 /**
@@ -158,6 +159,21 @@ export function defaultPanelTexts(catalogue: TextCatalogue = getDefaultTextCatal
             xMax: catalogue.resolveText('producer_panel.buy_max'),
         }),
     });
+}
+
+/**
+ * AUT-GP-001 Assembly batch caption: "Launch batch +90" while ready, "Batch 40% • 9s" while running
+ * (the progress feedback), empty while hidden.
+ */
+export function formatAssemblyBatchText(viewModel: AssemblyBatchViewModel, catalogue: TextCatalogue = getDefaultTextCatalogue()): string {
+    if (viewModel.state === 'ready') return catalogue.resolveText('producer_panel.assembly_batch.ready', { payout: viewModel.payoutFormatted });
+    if (viewModel.state === 'running') {
+        return catalogue.resolveText('producer_panel.assembly_batch.running', {
+            percent: Math.floor(viewModel.progress * 100),
+            seconds: viewModel.remainingSeconds ?? 0,
+        });
+    }
+    return '';
 }
 
 export function formatPanelAction(action: ProducerPanelPurchaseAction | undefined, catalogue: TextCatalogue = getDefaultTextCatalogue()): string {

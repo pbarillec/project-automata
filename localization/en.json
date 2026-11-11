@@ -55,6 +55,8 @@
     "producer_panel.buy_10": "Buy ×10",
     "producer_panel.buy_max": "Buy ×MAX",
     "producer_panel.action": "{label} {cost}",
-    "producer_panel.action.unavailable": "{label} {cost} • Unavailable"
+    "producer_panel.action.unavailable": "{label} {cost} • Unavailable",
+    "producer_panel.assembly_batch.ready": "Launch batch +{payout}",
+    "producer_panel.assembly_batch.running": "Batch {percent}% • {seconds}s"
   }
 }

@@ -141,6 +141,9 @@ test('prestige eligible production excludes temporary boosts but includes durabl
     setProducerLevel(state, 'fabricator', 25);
     setProducerLevel(state, 'assembly_station', 10);
     state.run.purchasedBreakthroughIds = ['auto_feeder', 'worker_bot', 'robotic_logistics'];
+    // AUT-GP-001: owning Worker Bot automates Assembly (its setProducerAutomation effect); without it the
+    // assisted floor would apply.
+    state.run.automation.assembly_station = { isAutomated: true, isOfflineEligible: false, unlockedByBreakthroughId: 'worker_bot' };
     state.meta.permanentUpgradeRanks = {
         optimized_fabrication: 1,
         industrial_scaling: 1,

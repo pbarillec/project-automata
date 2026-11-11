@@ -1,5 +1,6 @@
 export type {
     ActiveBoostState,
+    AssistedBatchRunState,
     AutomationRunState,
     BoostCooldownState,
     BoostState,
