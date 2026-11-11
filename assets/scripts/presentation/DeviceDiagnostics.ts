@@ -29,6 +29,8 @@ export const DEVICE_EVENT_TYPES = [
     'ui_layout',
     // AUT-UI-001: the session's result for each submitted command: { command, ok, reason, eventTypes, industrialOutput }.
     'command_result',
+    // AUT-R-031-02: camera pose after a player gesture ends: { yaw, pitch, distance, focus, bounds, input, screen, zones }.
+    'camera_state',
     'error',
 ] as const;
 

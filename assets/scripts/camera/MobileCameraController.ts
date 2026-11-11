@@ -11,17 +11,22 @@ import {
     Vec3,
 } from 'cc';
 import {
-    applyCameraRelativePan,
-    applyOrbitDelta,
-    applyPinchZoom,
+    applyCameraGestureInput,
     boundedFocusForTarget,
+    CameraBounds,
+    CameraFocusKind,
+    CameraInputFlags,
+    CameraOneFingerMode,
     CameraState,
     CameraTuning,
     clampCameraState,
+    DEFAULT_CAMERA_INPUT_FLAGS,
     DEFAULT_CAMERA_STATE,
     DEFAULT_CAMERA_TUNING,
+    easeFocusDistance,
+    expandCameraBoundsToInclude,
     FocusTransition,
-    resolveFocusTransitionAfterUserInput,
+    resolveFocusBeatDistance,
     startFocusTransition,
     stepFocusTransition,
 } from './CameraMath';
@@ -98,9 +103,25 @@ export class MobileCameraController extends Component {
     @property
     public focusTransitionSeconds = 0.45;
 
+    /** AUT-R-031-02: what a one-finger drag does. The default ('orbit') keeps the AUT-031 CameraSpike set. */
+    @property
+    public oneFingerMode: CameraOneFingerMode = DEFAULT_CAMERA_INPUT_FLAGS.oneFingerMode;
+
+    /** AUT-R-031-02: two-finger pan + pinch zoom. The default (true) keeps the AUT-031 CameraSpike set. */
+    @property
+    public multiTouchEnabled = DEFAULT_CAMERA_INPUT_FLAGS.multiTouchEnabled;
+
+    /** AUT-R-031-02: called once when a touch sequence that moved the camera has fully ended (diagnostics only). */
+    public onCameraGestureEnded: ((state: CameraState) => void) | null = null;
+
     private tracker: TouchGestureTracker = new TouchGestureTracker();
     private state: CameraState = { ...DEFAULT_CAMERA_STATE, focus: { ...DEFAULT_CAMERA_STATE.focus } };
     private focusTransition: FocusTransition | null = null;
+    /** Distance eased alongside the running focus transition (null when the beat keeps the distance). */
+    private focusDistanceEase: { from: number; to: number } | null = null;
+    /** AUT-R-031-02: player pan bounds (the unlocked zones); null = the serialized global focus bounds. */
+    private panBounds: CameraBounds | null = null;
+    private cameraMovedByGesture = false;
     private lastTapMarker: Vec2 | null = null;
 
     public onLoad(): void {
@@ -137,6 +158,16 @@ export class MobileCameraController extends Component {
         const result = stepFocusTransition(this.state, this.focusTransition, deltaSeconds, this.tuning());
         this.state = result.state;
         this.focusTransition = result.transition;
+        if (this.focusDistanceEase) {
+            const progress = result.transition && result.transition.durationSeconds > 0
+                ? result.transition.elapsedSeconds / result.transition.durationSeconds
+                : 1;
+            this.state = clampCameraState({
+                ...this.state,
+                distance: easeFocusDistance(this.focusDistanceEase.from, this.focusDistanceEase.to, progress),
+            }, this.tuning());
+            if (!result.transition) this.focusDistanceEase = null;
+        }
         this.applyCameraPose();
         if (!this.focusTransition && isDeviceDiagnosticsEnabled()) {
             emitDeviceEvent('camera_focus', { phase: 'settled', focus: { ...this.state.focus }, distance: this.state.distance });
@@ -148,14 +179,45 @@ export class MobileCameraController extends Component {
         return this.focusTransition !== null;
     }
 
+    /** Selection focus: eases to the target and to the default distance (TECHNICAL_DESIGN §13.3). */
     public focusOnWorldTarget(target: Vec3): void {
-        if (this.focusDistance > 0) {
-            this.state = clampCameraState({
-                ...this.state,
-                distance: this.focusDistance,
-            }, this.tuning());
-        }
+        this.startFocusBeat(target, 'selection');
+    }
 
+    /** Reveal/payoff beat: eases to the target and pushes in to `focusDistance` (the default distance when 0). */
+    public focusOnRevealTarget(target: Vec3): void {
+        this.startFocusBeat(target, 'reveal');
+    }
+
+    /**
+     * AUT-R-031-02: bounds that clamp the player's pan (the unlocked zones); null restores the global bounds.
+     * Automatic focus beats keep the global focus bounds; nothing moves when the bounds change.
+     */
+    public setFocusBounds(bounds: CameraBounds | null): void {
+        this.panBounds = bounds ? { minX: bounds.minX, maxX: bounds.maxX, minZ: bounds.minZ, maxZ: bounds.maxZ } : null;
+    }
+
+    /** The bounds that clamp the player's pan. */
+    public getFocusBounds(): CameraBounds {
+        return this.panBounds ? { ...this.panBounds } : { ...this.tuning().focusBounds };
+    }
+
+    /** The serialized global focus bounds (focusMinX..focusMaxZ). */
+    public getGlobalFocusBounds(): CameraBounds {
+        return { minX: this.focusMinX, maxX: this.focusMaxX, minZ: this.focusMinZ, maxZ: this.focusMaxZ };
+    }
+
+    public getInputFlags(): CameraInputFlags {
+        return { oneFingerMode: this.oneFingerMode, multiTouchEnabled: this.multiTouchEnabled };
+    }
+
+    private startFocusBeat(target: Vec3, kind: CameraFocusKind): void {
+        const fromDistance = this.state.distance;
+        const distance = clampCameraState({
+            ...this.state,
+            distance: resolveFocusBeatDistance(kind, this.defaultDistance, this.focusDistance),
+        }, this.tuning()).distance;
+        this.focusDistanceEase = distance !== fromDistance ? { from: fromDistance, to: distance } : null;
         this.focusTransition = startFocusTransition(
             this.state,
             { x: target.x, z: target.z },
@@ -163,12 +225,13 @@ export class MobileCameraController extends Component {
             this.tuning(),
         );
         if (isDeviceDiagnosticsEnabled()) {
-            emitDeviceEvent('camera_focus', { phase: 'started', target: { x: target.x, y: target.y, z: target.z }, distance: this.state.distance, seconds: this.focusTransitionSeconds });
+            emitDeviceEvent('camera_focus', { phase: 'started', kind, target: { x: target.x, y: target.y, z: target.z }, distance, fromDistance, defaultDistance: this.defaultDistance, seconds: this.focusTransitionSeconds });
         }
     }
 
     public applyConfiguredInitialView(): void {
         this.focusTransition = null;
+        this.focusDistanceEase = null;
         this.state = clampCameraState({
             yawDeg: this.defaultYawDeg,
             pitchDeg: this.defaultPitchDeg,
@@ -180,6 +243,7 @@ export class MobileCameraController extends Component {
 
     public snapToWorldTarget(target: Vec3): void {
         this.focusTransition = null;
+        this.focusDistanceEase = null;
         this.state = clampCameraState({
             ...this.state,
             focus: boundedFocusForTarget({ x: target.x, z: target.z }, this.tuning()),
@@ -242,12 +306,14 @@ export class MobileCameraController extends Component {
             x: location.x,
             y: location.y,
         }));
+        this.reportGestureEndIfReleased();
     }
 
     private onTouchCancel(event: EventTouch): void {
         const touch = this.primaryTouch(event);
         if (!touch) {
             this.tracker.cancel();
+            this.reportGestureEndIfReleased();
             return;
         }
 
@@ -257,6 +323,7 @@ export class MobileCameraController extends Component {
             x: location.x,
             y: location.y,
         }));
+        this.reportGestureEndIfReleased();
     }
 
     private handleOutputs(outputs: GestureOutput[]): void {
@@ -271,31 +338,38 @@ export class MobileCameraController extends Component {
                 continue;
             }
 
-            if (output.type === 'orbit') {
-                if (this.focusTransition && isDeviceDiagnosticsEnabled()) emitDeviceEvent('camera_focus', { phase: 'cancelled', reason: 'orbit' });
-                this.focusTransition = resolveFocusTransitionAfterUserInput(this.focusTransition, true);
-                this.state = applyOrbitDelta(this.state, {
-                    x: output.deltaX,
-                    y: output.deltaY,
-                }, this.tuning());
-                cameraChanged = true;
-            } else if (output.type === 'panZoom') {
-                if (this.focusTransition && isDeviceDiagnosticsEnabled()) emitDeviceEvent('camera_focus', { phase: 'cancelled', reason: 'panZoom' });
-                this.focusTransition = resolveFocusTransitionAfterUserInput(this.focusTransition, true);
-                if (output.zoomScale !== null) {
-                    this.state = applyPinchZoom(this.state, output.zoomScale, this.tuning());
-                }
-                this.state = applyCameraRelativePan(this.state, {
-                    x: output.centerDeltaX,
-                    y: output.centerDeltaY,
-                }, this.tuning());
-                cameraChanged = true;
+            // AUT-R-031-02: the capability flags route the gesture; a switched-off gesture is a no-op
+            // (no camera change, and a running focus beat keeps running).
+            const result = applyCameraGestureInput(this.state, this.focusTransition, output, this.getInputFlags(), this.gestureTuning());
+            if (!result.applied) {
+                continue;
             }
+            if (this.focusTransition && isDeviceDiagnosticsEnabled()) emitDeviceEvent('camera_focus', { phase: 'cancelled', reason: result.action });
+            if (!result.transition) this.focusDistanceEase = null;
+            this.state = result.state;
+            this.focusTransition = result.transition;
+            cameraChanged = true;
         }
 
         if (cameraChanged) {
+            this.cameraMovedByGesture = true;
             this.applyCameraPose();
         }
+    }
+
+    /** Player gestures clamp to the pan bounds, grown to contain the current focus so a pan never snaps. */
+    private gestureTuning(): CameraTuning {
+        const tuning = this.tuning();
+        return this.panBounds ? { ...tuning, focusBounds: expandCameraBoundsToInclude(this.panBounds, this.state.focus) } : tuning;
+    }
+
+    /** Reports a finished camera gesture once every touch of the sequence is released. */
+    private reportGestureEndIfReleased(): void {
+        if (!this.cameraMovedByGesture || this.tracker.activeTouchCount() > 0) {
+            return;
+        }
+        this.cameraMovedByGesture = false;
+        this.onCameraGestureEnded?.(this.getCameraState());
     }
 
     private applyCameraPose(): void {

@@ -252,3 +252,125 @@ export function cloneCameraState(state: CameraState): CameraState {
         },
     };
 }
+
+// ---- AUT-R-031-02 tap-first input: capability flags, gesture routing and focus distance policy ----
+
+/** What a one-finger drag does: the AUT-031 spike orbits; FactoryWorld pans; `none` ignores it. */
+export type CameraOneFingerMode = 'orbit' | 'pan' | 'none';
+
+export interface CameraInputFlags {
+    readonly oneFingerMode: CameraOneFingerMode;
+    readonly multiTouchEnabled: boolean;
+}
+
+/** Defaults keep the AUT-031 CameraSpike gesture set (one-finger orbit, two-finger pan + pinch). */
+export const DEFAULT_CAMERA_INPUT_FLAGS: CameraInputFlags = Object.freeze({
+    oneFingerMode: 'orbit',
+    multiTouchEnabled: true,
+});
+
+/** Camera-relevant gesture outputs (structurally the `orbit` / `panZoom` outputs of TouchGestureModel). */
+export type CameraGestureInput =
+    | { readonly type: 'orbit'; readonly deltaX: number; readonly deltaY: number }
+    | { readonly type: 'panZoom'; readonly centerDeltaX: number; readonly centerDeltaY: number; readonly zoomScale: number | null };
+
+export type CameraGestureAction = 'orbit' | 'pan' | 'panZoom' | 'ignored';
+
+export interface CameraGestureResult {
+    readonly state: CameraState;
+    readonly transition: FocusTransition | null;
+    /** True when the gesture moved the camera (and therefore interrupted any focus beat). */
+    readonly applied: boolean;
+    readonly action: CameraGestureAction;
+}
+
+/**
+ * Routes one gesture through the capability flags. A switched-off gesture is a no-op: the state is
+ * unchanged and a running focus transition keeps running. An applied gesture interrupts the beat.
+ */
+export function applyCameraGestureInput(
+    state: CameraState,
+    transition: FocusTransition | null,
+    gesture: CameraGestureInput,
+    flags: CameraInputFlags = DEFAULT_CAMERA_INPUT_FLAGS,
+    tuning: CameraTuning = DEFAULT_CAMERA_TUNING,
+): CameraGestureResult {
+    let next: CameraState | null = null;
+    let action: CameraGestureAction = 'ignored';
+
+    if (gesture.type === 'orbit') {
+        if (flags.oneFingerMode === 'orbit') {
+            next = applyOrbitDelta(state, { x: gesture.deltaX, y: gesture.deltaY }, tuning);
+            action = 'orbit';
+        } else if (flags.oneFingerMode === 'pan') {
+            next = applyCameraRelativePan(state, { x: gesture.deltaX, y: gesture.deltaY }, tuning);
+            action = 'pan';
+        }
+    } else if (gesture.type === 'panZoom' && flags.multiTouchEnabled) {
+        next = gesture.zoomScale !== null ? applyPinchZoom(state, gesture.zoomScale, tuning) : state;
+        next = applyCameraRelativePan(next, { x: gesture.centerDeltaX, y: gesture.centerDeltaY }, tuning);
+        action = 'panZoom';
+    }
+
+    const applied = next !== null;
+    return {
+        state: next ?? state,
+        transition: resolveFocusTransitionAfterUserInput(transition, applied),
+        applied,
+        action,
+    };
+}
+
+export type CameraFocusKind = 'selection' | 'reveal';
+
+/**
+ * Focus distance policy (TECHNICAL_DESIGN §13.3): a selection focus keeps (and restores) the default
+ * distance; only a reveal beat pushes in to `focusDistance`, when one is configured (> 0).
+ */
+export function resolveFocusBeatDistance(kind: CameraFocusKind, defaultDistance: number, focusDistance: number): number {
+    if (kind === 'reveal' && Number.isFinite(focusDistance) && focusDistance > 0) {
+        return focusDistance;
+    }
+    return defaultDistance;
+}
+
+/** Smoothstep easing shared by the distance ease of a focus beat (same curve as stepFocusTransition). */
+export function easeFocusProgress(t: number): number {
+    const clamped = clampNumber(t, 0, 1);
+    return clamped * clamped * (3 - (2 * clamped));
+}
+
+/** Distance eased alongside a focus transition: `progress` is the transition's elapsed / duration. */
+export function easeFocusDistance(fromDistance: number, toDistance: number, progress: number): number {
+    return fromDistance + ((toDistance - fromDistance) * easeFocusProgress(progress));
+}
+
+/** Focus bounds clamped inside `outer` (an empty intersection collapses onto the nearest edge of `outer`). */
+export function intersectCameraBounds(inner: CameraBounds, outer: CameraBounds): CameraBounds {
+    const minX = clampNumber(Math.max(inner.minX, outer.minX), outer.minX, outer.maxX);
+    const maxX = clampNumber(Math.min(inner.maxX, outer.maxX), outer.minX, outer.maxX);
+    const minZ = clampNumber(Math.max(inner.minZ, outer.minZ), outer.minZ, outer.maxZ);
+    const maxZ = clampNumber(Math.min(inner.maxZ, outer.maxZ), outer.minZ, outer.maxZ);
+    return {
+        minX: Math.min(minX, maxX),
+        maxX: Math.max(minX, maxX),
+        minZ: Math.min(minZ, maxZ),
+        maxZ: Math.max(minZ, maxZ),
+    };
+}
+
+/**
+ * Pan bounds grown just enough to contain `focus`. A focus beat may leave the focus outside the pan bounds
+ * (e.g. a selection focus on a locked zone); clamping a pan to this box never snaps the camera and never
+ * moves the focus further outside the bounds on either axis.
+ */
+export function expandCameraBoundsToInclude(bounds: CameraBounds, focus: CameraFocus): CameraBounds {
+    const x = sanitizeFinite(focus.x, bounds.minX);
+    const z = sanitizeFinite(focus.z, bounds.minZ);
+    return {
+        minX: Math.min(bounds.minX, x),
+        maxX: Math.max(bounds.maxX, x),
+        minZ: Math.min(bounds.minZ, z),
+        maxZ: Math.max(bounds.maxZ, z),
+    };
+}

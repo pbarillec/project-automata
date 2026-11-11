@@ -155,7 +155,7 @@ export class FirstAutomationPresentationController extends Component {
             return;
         }
 
-        this.cameraController.focusOnWorldTarget(target);
+        this.cameraController.focusOnRevealTarget(target);
         this.emitRevealStarted('runtime', true);
         this.viewModel.acknowledgeFocusBeat();
 

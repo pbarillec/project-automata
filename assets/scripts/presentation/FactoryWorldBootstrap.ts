@@ -41,6 +41,8 @@ import type { GameCommand } from '../domain/Commands.ts';
 import type { LifecycleCommandResult } from '../lifecycle/LifecycleSessionCoordinator.ts';
 import type { DisplayNameSource } from './PresentationText.ts';
 import { CORE_HUD_LAYOUT, HUD_ACTION_KEYS, PANEL_ACTION_KEYS, PRODUCER_PANEL_LAYOUT, UI_EDGE_MARGIN, widgetAlignment, type UiCardSpec, type UiRect } from './UiLayout.ts';
+import { ZONE_LAYOUT } from './FactoryZoneLayout.ts';
+import { CAMERA_PAN_BOUNDS_MARGIN, resolveCameraPanBounds } from './CameraPanBounds.ts';
 
 const { ccclass, property } = _decorator;
 
@@ -51,16 +53,6 @@ export const FACTORY_ZONE_IDS = [
     'AutomatedCell',
     'AdvancedRoboticsComplex',
 ] as const;
-
-type FactoryZoneId = typeof FACTORY_ZONE_IDS[number];
-
-const ZONE_LAYOUT: Record<FactoryZoneId, { x: number; z: number; width: number; depth: number }> = {
-    Fabricator: { x: -6, z: -3, width: 5, depth: 4 },
-    AssemblyStation: { x: -2, z: -1.8, width: 4, depth: 3.5 },
-    RobotLine: { x: 3.5, z: -1.2, width: 6, depth: 3.5 },
-    AutomatedCell: { x: 6.2, z: 3.2, width: 4.5, depth: 4 },
-    AdvancedRoboticsComplex: { x: 2, z: 6, width: 6, depth: 5.5 },
-};
 
 /** Builds the single persistent world shell; producer state belongs to later tasks. */
 @ccclass('FactoryWorldBootstrap')
@@ -79,6 +71,8 @@ export class FactoryWorldBootstrap extends Component {
     private uiLayoutFrames = 0;
     private uiLayoutReason = '';
     private uiResizeRegistered = false;
+    /** AUT-R-031-02: frames left before the DEBUG `camera_state` diagnostic (0 = none scheduled). */
+    private cameraStateFrames = 0;
 
     /** AUT-INFRA-001: structured [AUT-DEVICE] diagnostics exist only in DEBUG builds; release builds never emit. */
     public onLoad(): void {
@@ -113,6 +107,7 @@ export class FactoryWorldBootstrap extends Component {
     /** AUT-INT-001: the binding activates here, after every component built in start() has started. */
     public update(deltaTime: number): void {
         this.tickUiLayoutDiagnostics();
+        this.tickCameraStateDiagnostics();
         if (this.pendingBinding) {
             this.activateSessionBinding(this.pendingBinding.binding, this.pendingBinding.status, this.pendingBinding.displayNames);
             this.pendingBinding = null;
@@ -149,6 +144,7 @@ export class FactoryWorldBootstrap extends Component {
             syncAutomationState: (snapshot) => presentation.syncAutomationState(snapshot),
             consumeDomainEvents: (snapshot, events) => presentation.consumeDomainEvents(snapshot, events),
         } : null;
+        const cameraController = this.cameraController();
         bootstrapGameSession({ storage, timeService: new DefaultTimeService() }).then((result) => {
             if (!result.startup.ok) {
                 this.emitSessionState('load_failed', result.startup.status, null, false);
@@ -160,6 +156,10 @@ export class FactoryWorldBootstrap extends Component {
                 automation,
                 hud: this.sessionWiring?.hud ?? null,
                 panel: this.sessionWiring?.panel ?? null,
+                // AUT-R-031-02: the pan bounds follow the unlocked zones of every fresh snapshot.
+                camera: cameraController ? {
+                    syncPanBounds: (snapshot) => cameraController.setFocusBounds(resolveCameraPanBounds(result.configRepository, snapshot, ZONE_LAYOUT, CAMERA_PAN_BOUNDS_MARGIN, cameraController.getGlobalFocusBounds())),
+                } : null,
                 reportError: (context, error) => this.reportSessionError(context, error),
                 reportCommandResult: (command, commandResult) => this.emitCommandResult(command, commandResult),
             });
@@ -317,7 +317,16 @@ export class FactoryWorldBootstrap extends Component {
         controller.defaultFocusZ = -1.8;
         // AUT-038 reveal pushes in from the 12.5 default so the feeder line reads.
         controller.focusDistance = 9.5;
+        // AUT-R-031-02 tap-first input: one-finger drag pans (clamped to the unlocked zones); no orbit,
+        // no pinch zoom, no two-finger pan. Taps stay with ProducerSelectionController.
+        controller.oneFingerMode = 'pan';
+        controller.multiTouchEnabled = false;
         controller.applyConfiguredInitialView();
+        if (isDeviceDiagnosticsEnabled()) controller.onCameraGestureEnded = () => this.scheduleCameraStateDiagnostics();
+    }
+
+    private cameraController(): MobileCameraController | null {
+        return this.node.getChildByName('FactorySite')?.getChildByName('CameraRig')?.getComponent(MobileCameraController) ?? null;
     }
 
     private createLighting(parent: Node): void {
@@ -525,6 +534,49 @@ export class FactoryWorldBootstrap extends Component {
             rows,
             fontSizes,
             hudActions,
+        });
+    }
+
+    // ---- AUT-R-031-02 DEBUG `camera_state` diagnostic (emit only; never changes camera, selection or input) ----
+
+    /** Two frames after a camera gesture ends, so the camera matrices used for the projection are current. */
+    private scheduleCameraStateDiagnostics(): void {
+        if (!isDeviceDiagnosticsEnabled()) return;
+        this.cameraStateFrames = 2;
+    }
+
+    private tickCameraStateDiagnostics(): void {
+        if (this.cameraStateFrames <= 0) return;
+        this.cameraStateFrames -= 1;
+        if (this.cameraStateFrames === 0) this.emitCameraState('gesture_end');
+    }
+
+    /** Camera pose, active pan bounds and the zone centres projected through the WorldCamera (bottom-left window frame). */
+    private emitCameraState(reason: string): void {
+        const controller = this.cameraController();
+        if (!controller) return;
+        const state = controller.getCameraState();
+        const site = this.node.getChildByName('FactorySite');
+        const camera = site?.getChildByName('CameraRig')?.getChildByName('WorldCamera')?.getComponent(Camera) ?? null;
+        const windowSize = screen.windowSize;
+        const zones = FACTORY_ZONE_IDS.map((id) => {
+            const target = site?.getChildByName(`Zone_${id}`)?.getChildByName(`${id}_SelectableTarget`);
+            const world = target?.worldPosition ?? null;
+            const projected = camera && world ? camera.worldToScreen(world, new Vec3()) : null;
+            const onScreen = projected !== null && projected.x >= 0 && projected.y >= 0
+                && projected.x <= windowSize.width && projected.y <= windowSize.height && projected.z > 0 && projected.z < 1;
+            return { id, sx: projected?.x ?? null, sy: projected?.y ?? null, onScreen };
+        });
+        emitDeviceEvent('camera_state', {
+            reason,
+            yaw: state.yawDeg,
+            pitch: state.pitchDeg,
+            distance: state.distance,
+            focus: state.focus,
+            bounds: controller.getFocusBounds(),
+            input: controller.getInputFlags(),
+            screen: { w: windowSize.width, h: windowSize.height },
+            zones,
         });
     }
 
