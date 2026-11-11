@@ -863,6 +863,8 @@ Also no regression in C3, INT-001, R-036 or UI-001. Multi-touch cannot be driven
 
 **Acceptance:** the higher-level modules read as one coherent machine.
 
+**Status note:** the visual human gate passed on 2026-11-11 (owner, NE2215). Further mechanical-logic and visual-flow polish is deferred.
+
 ## AUT-039 — Assembly + First Worker Bot Vertical Slice
 
 **Objective:** Complete the first playable validation path through Assembly Station and First Robot.
