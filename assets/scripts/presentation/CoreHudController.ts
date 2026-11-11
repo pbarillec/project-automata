@@ -3,7 +3,7 @@ import type { GameCommand } from '../domain/Commands.ts';
 import { resolveManualProduceAction, resolveNextGoalAction } from './CoreLoopActions.ts';
 import type { HudViewModel } from './HudViewModel.ts';
 import { defaultHudTexts, formatHudTexts, type DisplayNameSource } from './PresentationText.ts';
-import { CORE_HUD_LAYOUT, HUD_ACTION_KEYS, cardActionRect, cardHeight, cardRowCenterY, cardRowWidth, type HudActionKey } from './UiLayout.ts';
+import { CORE_HUD_LAYOUT, HUD_ACTION_KEYS, cardActionFontSize, cardActionRect, cardHeight, cardRowCenterY, cardRowWidth, hudActionCard, type HudActionKey } from './UiLayout.ts';
 
 const { ccclass } = _decorator;
 
@@ -19,6 +19,11 @@ export interface HudActionState {
 @ccclass('CoreHudController')
 export class CoreHudController extends Component {
     public commandEmitter: HudCommandEmitter | null = null;
+    /**
+     * AUT-R-036-02: card node that hosts the actions UiLayout places outside the HUD (Manual Produce, in
+     * the bottom band). Set by the bootstrap before the first layout; null keeps them on the HUD node.
+     */
+    public primaryActionHost: Node | null = null;
     private labels = new Map<string, Label>();
     private buttons = new Map<HudActionKey, Button>();
     private latest: HudViewModel | null = null;
@@ -104,20 +109,22 @@ export class CoreHudController extends Component {
             this.labels.set(key, label);
         });
         // AUT-UI-001: one Button per action on its own child node; the root keeps only its touch swallowing.
-        const actionRow = layout.actionRow!;
+        // AUT-R-036-02: Manual Produce is laid out in the bottom (panel) band; its node goes under
+        // `primaryActionHost` (the panel card, which swallows touches on its area). Wiring is unchanged.
         const actionDefaults: Record<HudActionKey, string> = { ManualProduceAction: defaults.manualProduceAction, NextGoalAction: defaults.nextGoalAction };
         for (const key of HUD_ACTION_KEYS) {
-            const rect = cardActionRect(layout, key);
+            const card = hudActionCard(key);
+            const rect = cardActionRect(card, key);
             const node = new Node(key);
             node.layer = Layers.Enum.UI_2D;
-            node.parent = this.node;
+            node.parent = card === layout ? this.node : (this.primaryActionHost ?? this.node);
             node.setPosition(new Vec3(rect.x, rect.y, 0));
             node.addComponent(UITransform).setContentSize(rect.w, rect.h);
             const label = node.addComponent(Label);
             label.overflow = Label.Overflow.SHRINK;
             label.enableWrapText = false;
             label.string = actionDefaults[key];
-            label.fontSize = actionRow.fontSize;
+            label.fontSize = cardActionFontSize(card, key);
             label.lineHeight = rect.h;
             label.color = new Color(238, 241, 233, 255);
             this.labels.set(key, label);

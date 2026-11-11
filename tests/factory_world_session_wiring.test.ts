@@ -95,6 +95,8 @@ test('AUT-R-036: HUD and panel are anchored by Widgets inside the UiSafeArea fro
     const anchor = methodBody(bootstrap, 'private anchorCard(node: Node, card: UiCardSpec): void {');
     assert.match(anchor, /const align = widgetAlignment\(card\.corner\);/);
     assert.match(anchor, /widget\.top = widget\.bottom = widget\.left = widget\.right = UI_EDGE_MARGIN;/);
+    // AUT-R-036-02: full-width bands centred horizontally in the safe area.
+    assert.match(anchor, /widget\.isAlignHorizontalCenter = align\.horizontalCenter;\s*widget\.horizontalCenter = 0;/);
     assert.match(anchor, /widget\.alignMode = Widget\.AlignMode\.ALWAYS;/);
     assert.match(hud, /transform\.setContentSize\(layout\.width, cardHeight\(layout\)\);/);
     assert.match(panel, /transform\.setContentSize\(layout\.width, cardHeight\(layout\)\);/);

@@ -2,7 +2,7 @@ import { _decorator, Button, Color, Component, EventHandler, EventTouch, Label, 
 import type { GameCommand } from '../domain/Commands.ts';
 import type { ProducerPanelActionId, ProducerPanelViewModel } from './ProducerPanelViewModel.ts';
 import { defaultPanelTexts, formatPanelTexts, pendingSelectionPanelTexts, type DisplayNameSource, type PanelTexts } from './PresentationText.ts';
-import { PRODUCER_PANEL_LAYOUT, cardHeight, cardRowCenterY, cardRowWidth } from './UiLayout.ts';
+import { PANEL_ACTION_KEYS, PRODUCER_PANEL_LAYOUT, cardActionRect, cardHeight, cardRowCenterY, cardRowWidth, type PanelActionKey } from './UiLayout.ts';
 
 const { ccclass } = _decorator;
 export type ProducerPanelCommandEmitter = (command: GameCommand) => void;
@@ -42,20 +42,28 @@ export class ProducerPanelController extends Component {
     private ensureLayout(): void {
         if (this.labels.size > 0) return;
         const defaults = defaultPanelTexts();
-        const entries = [['ProducerName', defaults.name], ['ProducerLevel', defaults.level], ['ProducerProduction', defaults.production], ['ProducerMilestone', defaults.milestone], ['Action_x1', defaults.actions.x1], ['Action_x10', defaults.actions.x10], ['Action_xMax', defaults.actions.xMax]] as const;
+        const entries = [['ProducerName', defaults.name], ['ProducerLevel', defaults.level], ['ProducerProduction', defaults.production], ['ProducerMilestone', defaults.milestone]] as const;
         const layout = PRODUCER_PANEL_LAYOUT;
         entries.forEach(([key, text], index) => {
             const row = layout.rows[index];
             const node = new Node(key); node.layer = Layers.Enum.UI_2D; node.parent = this.node; node.setPosition(new Vec3(0, cardRowCenterY(layout, index), 0));
             const transform = node.addComponent(UITransform); transform.setContentSize(cardRowWidth(layout), row.height);
-            // AUT-R-036: the row (and its Button hit area) keeps its UiLayout size; SHRINK is only a safety net.
+            // AUT-R-036: the row keeps its UiLayout size; SHRINK is only a safety net.
             const label = node.addComponent(Label); label.overflow = Label.Overflow.SHRINK; label.enableWrapText = false; label.string = text; label.fontSize = row.fontSize; label.lineHeight = row.height; label.color = new Color(238, 241, 233, 255); this.labels.set(key, label);
-            if (key.startsWith('Action_')) {
-                const button = node.addComponent(Button);
-                const event = new EventHandler(); event.target = this.node; event.component = 'ProducerPanelController'; event.handler = 'onActionPressed'; event.customEventData = key.slice('Action_'.length);
-                button.clickEvents = [event];
-            }
         });
+        // AUT-R-036-02: ×1/×10/×MAX side by side in the action row; each Button keeps its UiLayout rect as hit area.
+        const actionRow = layout.actionRow!;
+        const actionDefaults: Record<PanelActionKey, string> = { Action_x1: defaults.actions.x1, Action_x10: defaults.actions.x10, Action_xMax: defaults.actions.xMax };
+        for (const key of PANEL_ACTION_KEYS) {
+            const rect = cardActionRect(layout, key);
+            const node = new Node(key); node.layer = Layers.Enum.UI_2D; node.parent = this.node; node.setPosition(new Vec3(rect.x, rect.y, 0));
+            node.addComponent(UITransform).setContentSize(rect.w, rect.h);
+            // Two-line caption (UiLayout captionLines): wraps inside the Button, SHRINK stays the safety net.
+            const actionLabel = node.addComponent(Label); actionLabel.overflow = Label.Overflow.SHRINK; actionLabel.enableWrapText = true; actionLabel.string = actionDefaults[key]; actionLabel.fontSize = actionRow.fontSize; actionLabel.lineHeight = actionRow.lineHeight ?? rect.h; actionLabel.color = new Color(238, 241, 233, 255); this.labels.set(key, actionLabel);
+            const button = node.addComponent(Button);
+            const event = new EventHandler(); event.target = this.node; event.component = 'ProducerPanelController'; event.handler = 'onActionPressed'; event.customEventData = key.slice('Action_'.length);
+            button.clickEvents = [event];
+        }
         const transform = this.node.getComponent(UITransform) ?? this.node.addComponent(UITransform); transform.setContentSize(layout.width, cardHeight(layout));
         if (!this.touchBlockRegistered) {
             this.touchBlockRegistered = true;

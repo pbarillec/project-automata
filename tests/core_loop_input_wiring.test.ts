@@ -98,7 +98,11 @@ test('HUD Buttons live on child nodes; the root keeps exactly its four TOUCH swa
     const touchCalls = source.match(/[\w.]+\.on\(Node\.EventType\.TOUCH_[A-Z]+[^)]*\)/g) ?? [];
     assert.deepEqual(touchCalls, ['START', 'MOVE', 'END', 'CANCEL'].map((phase) => `this.node.on(Node.EventType.TOUCH_${phase}, this.swallowTouch, this)`));
     assert.equal((source.match(/addComponent\(Button\)/g) ?? []).length, 1);
-    assert.match(source, /const node = new Node\(key\);\s*node\.layer = Layers\.Enum\.UI_2D;\s*node\.parent = this\.node;/);
+    // AUT-R-036-02: Manual Produce's node goes under the bottom-band host card; Next Goal stays on the HUD node.
+    assert.match(source, /const node = new Node\(key\);\s*node\.layer = Layers\.Enum\.UI_2D;\s*node\.parent = card === layout \? this\.node : \(this\.primaryActionHost \?\? this\.node\);/);
+    assert.match(source, /public primaryActionHost: Node \| null = null;/);
+    // The Button handler target stays the HUD node and component, wherever the Button node is parented.
+    assert.match(source, /event\.target = this\.node; event\.component = 'CoreHudController';/);
     assert.match(source, /const button = node\.addComponent\(Button\);/);
     assert.doesNotMatch(source, /this\.node\.addComponent\(Button\)/);
     assert.match(source, /event\.handler = 'onActionPressed'; event\.customEventData = key;/);

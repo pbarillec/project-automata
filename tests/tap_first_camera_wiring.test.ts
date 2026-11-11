@@ -24,14 +24,16 @@ test('AUT-R-031-02: FactoryWorld enables one-finger pan only; CameraSpike keeps 
     const rig = methodBody(bootstrap, 'private createCameraRig(parent: Node): void {');
     assert.match(rig, /controller\.oneFingerMode = 'pan';/);
     assert.match(rig, /controller\.multiTouchEnabled = false;/);
-    // Framing values unchanged (portrait framing belongs to AUT-R-036-02).
+    // AUT-R-036-02 portrait framing (Scene Presentation, owner Option A 2026-11-11).
     for (const line of ['controller.focusMinX = -9;', 'controller.focusMaxX = 9;', 'controller.focusMinZ = -6;', 'controller.focusMaxZ = 8;',
-        'controller.defaultYawDeg = 135;', 'controller.defaultPitchDeg = 48;', 'controller.defaultDistance = 12.5;',
-        'controller.defaultFocusX = -3.8;', 'controller.defaultFocusZ = -1.8;', 'controller.focusDistance = 9.5;']) {
+        'controller.defaultYawDeg = 135;', 'controller.defaultPitchDeg = 48;', 'controller.defaultDistance = 14;',
+        'controller.defaultFocusX = -2.5;', 'controller.defaultFocusZ = 0;', 'controller.focusDistance = 9.5;',
+        'controller.panUnitsPerPixelAtDistance = 0.001;', 'camera.fovAxis = Camera.FOVAxis.HORIZONTAL;', 'camera.fov = 55;']) {
         assert.ok(rig.includes(line), line);
     }
     const spike = await read('assets/scripts/presentation/CameraSpikeBootstrap.ts');
-    assert.doesNotMatch(spike, /oneFingerMode|multiTouchEnabled|setFocusBounds/);
+    assert.doesNotMatch(spike, /oneFingerMode|multiTouchEnabled|setFocusBounds|fovAxis|panUnitsPerPixelAtDistance/);
+    assert.match(spike, /camera\.fov = 45;/);
 });
 
 test('AUT-R-031-02: the reveal pushes in through focusOnRevealTarget; selection keeps focusOnWorldTarget', async () => {

@@ -18,9 +18,12 @@ import {
 import type { DeviceDriver } from '../driver.ts';
 import type { EventStream } from '../events.ts';
 import { buildResult, validateDeviceResult, type DeviceInfo, type DeviceResult } from '../result.ts';
+import { parseUiLayout, pickCalibrationPoint } from '../ui_geometry.ts';
 
 export const C3_SCENARIO_ID = 'C3-producer-selection';
 export const PRODUCER_ZONE_ORDER = ['Fabricator', 'AssemblyStation', 'RobotLine', 'AutomatedCell', 'AdvancedRoboticsComplex'] as const;
+/** AUT-R-036-02: calibration point (display fractions) used only when the APK reports no `ui_layout`: the upper factory band, outside the portrait UI bands and above the zones. */
+export const C3_CALIBRATION_FALLBACK = { fx: 0.5, fy: 0.25 } as const;
 
 export interface C3Options {
     taskId: string;
@@ -162,7 +165,7 @@ export async function runC3Scenario(driver: DeviceDriver, partial: Partial<C3Opt
         if (!displaySize) return;
         const display = displaySize as { width: number; height: number };
         const win = { w: projection.w, h: projection.h };
-        const calAdb = { x: Math.round(display.width * 0.04), y: Math.round(display.height * 0.08) };
+        const calAdb = { x: Math.round(display.width * C3_CALIBRATION_FALLBACK.fx), y: Math.round(display.height * C3_CALIBRATION_FALLBACK.fy) };
         const calExpected = adbToCocos(calAdb, win, display);
         let cursor = stream!.cursor;
         await driver.tap(calAdb.x, calAdb.y);
@@ -301,7 +304,23 @@ export async function runC3Scenario(driver: DeviceDriver, partial: Partial<C3Opt
         const win = { w: projection.w, h: projection.h };
 
         // ---- Calibration self-check (harness coordinate conversion) --------------------
-        const calAdb = { x: Math.round(display.width * 0.04), y: Math.round(display.height * 0.08) };
+        // AUT-R-036-02: the point is picked clear of every UI rect of the DEBUG `ui_layout` (portrait bands
+        // cover the old top-left 4% × 8% point, and the HUD would swallow it).
+        const layoutRecord = await stream.waitFor((e) => e.evt === 'ui_layout', 0, options.timeouts.projectionMs);
+        const uiLayout = parseUiLayout(layoutRecord?.event);
+        let calAdb: { x: number; y: number };
+        if (uiLayout) {
+            const picked = pickCalibrationPoint(uiLayout, display, (adb) => adbToCocos(adb, win, display));
+            assertions.push({ id: 'calibration_point_clear_of_ui', step: 'calibration', ok: picked !== null });
+            if (!picked) {
+                failure = { failureClass: 'MARKER_PRESENTATION', assertion: 'calibration_point_clear_of_ui', step: 'calibration', expected: 'a calibration candidate outside every UI rect', actual: uiLayout.rects, evidenceLines: layoutRecord ? [layoutRecord.record.line] : [] };
+                throw new Error('stop');
+            }
+            calAdb = picked.adb;
+        } else {
+            warnings.push(`no ui_layout diagnostic; calibrating at the fallback point ${JSON.stringify(C3_CALIBRATION_FALLBACK)}`);
+            calAdb = { x: Math.round(display.width * C3_CALIBRATION_FALLBACK.fx), y: Math.round(display.height * C3_CALIBRATION_FALLBACK.fy) };
+        }
         const calExpected = adbToCocos(calAdb, win, display);
         let cursor = stream.cursor;
         await driver.tap(calAdb.x, calAdb.y);

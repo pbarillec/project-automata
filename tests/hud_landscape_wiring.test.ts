@@ -114,7 +114,10 @@ test('AUT-R-036: the DEBUG ui_layout diagnostic is scheduled after session activ
     assert.match(emit, /uiCamera\.worldToScreen\(new Vec3\(box\.xMax, box\.yMax, 0\), new Vec3\(\)\)/);
     assert.match(emit, /for \(const key of PANEL_ACTION_KEYS\) rects\[key\] = rectOf\(panel\?\.getChildByName\(key\)\);/);
     // AUT-UI-001: the HUD action Buttons, effective (post-SHRINK) font sizes and HUD action states are reported too.
-    assert.match(emit, /for \(const key of HUD_ACTION_KEYS\) rects\[key\] = rectOf\(hud\?\.getChildByName\(key\)\);/);
+    // AUT-R-036-02: Manual Produce is reported from the panel card that hosts it.
+    assert.match(emit, /for \(const key of HUD_ACTION_KEYS\) rects\[key\] = rectOf\(hud\?\.getChildByName\(key\) \?\? panel\?\.getChildByName\(key\)\);/);
+    const start = methodBody(source, 'public start(): void {');
+    assert.match(start, /const panel = this\.createProducerPanel\(\);\s*\/\/[^\n]*\n\s*hud\.primaryActionHost = panel\.node;/);
     assert.match(emit, /label\.actualFontSize/);
     assert.match(emit, /hudActions,/);
     assert.match(emit, /emitDeviceEvent\('ui_layout', \{/);
@@ -131,7 +134,8 @@ test('AUT-R-036: FactoryWorld.scene keeps no UI nodes (the UI root is runtime-bu
     const settings = JSON.parse(await read('settings/v2/packages/project.json'));
     assert.deepEqual(settings, {
         __version__: '1.0.6',
-        general: { designResolution: { width: 1280, height: 720, fitWidth: false, fitHeight: true } },
+        // AUT-R-036-02: portrait 720×1280, fixed width.
+        general: { designResolution: { width: 720, height: 1280, fitWidth: true, fitHeight: false } },
     });
 });
 
@@ -142,7 +146,9 @@ test('AUT-R-036 retry 1: every HUD and panel label shrinks inside its fixed row 
         assert.ok(labels.length >= 1, `${rel} creates labels`);
         for (const label of labels) {
             assert.match(source, new RegExp(`\\b${label}\\.overflow = Label\\.Overflow\\.SHRINK;`), `${rel}: ${label} is not SHRINK`);
-            assert.match(source, new RegExp(`\\b${label}\\.enableWrapText = false;`), `${rel}: ${label} wraps`);
+            // AUT-R-036-02: the only wrapping labels are the panel's ×1/×10/×MAX captions (UiLayout captionLines 2).
+            if (rel === PANEL && label === 'actionLabel') assert.match(source, /\bactionLabel\.enableWrapText = true;/);
+            else assert.match(source, new RegExp(`\\b${label}\\.enableWrapText = false;`), `${rel}: ${label} wraps`);
             // Overflow is set before the first string so the row never takes the text's size.
             assert.ok(source.indexOf(`${label}.overflow =`) < source.indexOf(`${label}.string =`), `${rel}: overflow after string`);
         }

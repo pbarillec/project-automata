@@ -26,7 +26,7 @@ import {
     serializeGameStateToSaveJson,
 } from '../../../assets/scripts/persistence/index.ts';
 import { createProducerPanelViewModel } from '../../../assets/scripts/presentation/ProducerPanelViewModel.ts';
-import { computeUiLayout, HUD_ACTION_KEYS, UI_MIN_BODY_FONT_SIZE, type HudActionKey } from '../../../assets/scripts/presentation/UiLayout.ts';
+import { computeUiLayout, HUD_ACTION_KEYS, hudActionCard, UI_MIN_BODY_FONT_SIZE, type HudActionKey } from '../../../assets/scripts/presentation/UiLayout.ts';
 import { MANUAL_PRODUCTION_AMOUNT } from '../../../assets/scripts/runtime/index.ts';
 import { createFreshGameState } from '../../../assets/scripts/state/index.ts';
 import { AdbError, pngSize, selectDevice } from '../adb.ts';
@@ -35,7 +35,7 @@ import { cocosToAdb, type AssertionFailure, type AssertionRecord, type FailureCl
 import type { SessionDeviceDriver } from '../driver.ts';
 import type { EventStream } from '../events.ts';
 import { buildResult, validateDeviceResult, type DeviceInfo, type DeviceResult } from '../result.ts';
-import { evaluateUiTap, parseUiLayout, rectCentre, rectInside, rectsOverlapBeyond, toRect, uiRectsAt, type Rect, type UiLayoutSnapshot } from '../ui_geometry.ts';
+import { evaluateUiTap, factoryBandOf, parseUiLayout, pointInRect, rectCentre, rectInside, rectsOverlapBeyond, toRect, uiRectsAt, type ProjectedZone, type Rect, type UiLayoutSnapshot } from '../ui_geometry.ts';
 import { renderSummary, summarizeErrors } from './c3_producer_selection.ts';
 import { SAVE_FILE_NAMES } from './int001_session_persistence.ts';
 
@@ -71,6 +71,9 @@ export const DEFAULT_UI001_OPTIONS: Omit<Ui001Options, 'apkPath'> = {
         chainMs: 4_000, revealMs: 20_000, suspendMs: 10_000, noRevealWindowMs: 3_000,
     },
 };
+
+/** AUT-R-036-02: the zone whose projection stands for the reveal target (the Auto Feeder payoff plays on the Fabricator line). */
+export const UI001_REVEAL_ZONE = 'Fabricator';
 
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const asLine = (event: ParsedDeviceEvent | null | undefined) => (event ? [`[AUT-DEVICE] ${JSON.stringify(event)}`] : []);
@@ -165,17 +168,18 @@ class Checker {
 }
 
 /**
- * The HUD action Buttons in a `ui_layout`: reported, inside the HUD card, disjoint, and at their UiLayout
- * prediction (±2 px). Failures are MARKER_PRESENTATION.
+ * The HUD action Buttons in a `ui_layout`: reported, inside the card UiLayout places them in (AUT-R-036-02:
+ * Manual Produce in the bottom panel band, Next Goal in the HUD; the id `hud_actions_inside_hud` is kept),
+ * disjoint, and at their UiLayout prediction (±2 px). Failures are MARKER_PRESENTATION.
  */
 export function evaluateHudActionLayout(step: string, layout: UiLayoutSnapshot, event: ParsedDeviceEvent, tolerancePx = 2): StepEvaluation {
     const c = new Checker(step, asLine(event));
     const { rects } = parseHudActions(event);
     const missing = HUD_ACTION_KEYS.filter((key) => !rects[key] || rects[key]!.w <= 0 || rects[key]!.h <= 0);
     if (!c.check('hud_action_rects_present', missing.length === 0, 'MARKER_PRESENTATION', HUD_ACTION_KEYS, { missing })) return c.result();
-    const hud = layout.rects.CoreHUD;
-    const outside = HUD_ACTION_KEYS.filter((key) => !hud || !rectInside(hud, rects[key]!));
-    if (!c.check('hud_actions_inside_hud', outside.length === 0, 'MARKER_PRESENTATION', { CoreHUD: hud }, { outside: outside.map((key) => ({ key, rect: rects[key] })) })) return c.result();
+    const hostOf = (key: HudActionKey) => layout.rects[hudActionCard(key).name as 'CoreHUD' | 'ProducerPanel'];
+    const outside = HUD_ACTION_KEYS.filter((key) => { const host = hostOf(key); return !host || !rectInside(host, rects[key]!); });
+    if (!c.check('hud_actions_inside_hud', outside.length === 0, 'MARKER_PRESENTATION', Object.fromEntries(HUD_ACTION_KEYS.map((key) => [key, hudActionCard(key).name])), { outside: outside.map((key) => ({ key, rect: rects[key], card: hostOf(key) })) })) return c.result();
     if (!c.check('hud_actions_do_not_overlap', !rectsOverlapBeyond(rects.ManualProduceAction!, rects.NextGoalAction!, 0.5), 'MARKER_PRESENTATION', { overlap: false }, rects)) return c.result();
     const predicted = computeUiLayout(layout.screen, layout.safeArea ?? undefined).hudButtons;
     const mismatched = HUD_ACTION_KEYS.filter((key) => {
@@ -465,6 +469,13 @@ export async function runUi001Scenario(driver: SessionDeviceDriver, partial: Par
             check('payoff_reveal_started', 'next_goal_purchase', started !== null, 'CAMERA_FOCUS', { evt: 'reveal_state', phase: 'started', source: 'runtime' }, stream.eventsSince(cursor).filter((e) => e.evt === 'reveal_state'));
             const complete = await stream.waitFor((e) => e.evt === 'reveal_state' && e.phase === 'complete' && e.source === 'runtime', started!.record.index, options.timeouts.revealMs);
             check('payoff_reveal_complete', 'next_goal_purchase', complete !== null, 'CAMERA_FOCUS', { evt: 'reveal_state', phase: 'complete', source: 'runtime' }, stream.eventsSince(started!.record.index).filter((e) => e.evt === 'reveal_state'));
+            // AUT-R-036-02: once the reveal beat settles, its target (the Fabricator line) is on screen inside the factory band.
+            const revealProjection = await stream.waitFor((e) => e.evt === 'zones_projected' && Array.isArray(e.zones), started!.record.index, options.timeouts.chainMs);
+            const revealZone = (revealProjection?.event.zones as ProjectedZone[] | undefined)?.find((z) => z.id === UI001_REVEAL_ZONE) ?? null;
+            const revealBand = factoryBandOf(seededLaunch.layout);
+            const revealCentre = revealZone && typeof revealZone.sx === 'number' && typeof revealZone.sy === 'number' ? { x: revealZone.sx, y: revealZone.sy } : null;
+            check('reveal_target_on_screen', 'next_goal_purchase', revealZone !== null && revealZone.onScreen && revealCentre !== null && revealBand !== null && pointInRect(revealBand, revealCentre) && uiRectsAt(seededLaunch.layout, revealCentre).length === 0,
+                'CAMERA_FOCUS', { id: UI001_REVEAL_ZONE, onScreen: true, insideFactoryBand: revealBand }, { zone: revealZone, projected: revealProjection !== null }, asLine(revealProjection?.event));
             const leaked = stream.eventsSince(cursor).filter((e) => e.evt === 'selection_raycast' || e.evt === 'selection_state' || (e.evt === 'camera_focus' && e.source === 'selection'));
             check('purchase_tap_no_selection', 'next_goal_purchase', leaked.length === 0, 'SELECTION_STATE', { selection_events: 0 }, { leaked: leaked.map((e) => e.evt) }, leaked.flatMap(asLine));
             steps.push({ id: 'next_goal_purchase', kind: 'tap', adb: nextGoalTap, result: purchased!.event, reveal: [started!.event, complete!.event], screenshot: await capture('auto_feeder_purchased') });

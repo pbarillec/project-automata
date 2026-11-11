@@ -69,18 +69,24 @@ test('layout constants are unchanged (node names, positions, content sizes, font
     assert.equal((hud.match(/setContentSize\(/g) ?? []).length, 3);
     assert.equal((hud.match(/\.fontSize = /g) ?? []).length, 2);
     assert.match(hud, /node\.addComponent\(UITransform\)\.setContentSize\(rect\.w, rect\.h\);/);
-    assert.match(hud, /label\.fontSize = actionRow\.fontSize;/);
+    assert.match(hud, /label\.fontSize = cardActionFontSize\(card, key\);/);
     assert.equal((hud.match(/addComponent\(Button\)/g) ?? []).length, 1);
 
     const panel = await read(PANEL);
     const panelEntries = panel.match(/const entries = \[(.*?)\] as const/);
-    assert.deepEqual([...panelEntries[1].matchAll(/\['(\w+)'/g)].map((m) => m[1]), ['ProducerName', 'ProducerLevel', 'ProducerProduction', 'ProducerMilestone', 'Action_x1', 'Action_x10', 'Action_xMax']);
+    // AUT-R-036-02: the ×1/×10/×MAX Buttons moved from stacked rows to the panel's action row (same node names).
+    assert.deepEqual([...panelEntries[1].matchAll(/\['(\w+)'/g)].map((m) => m[1]), ['ProducerName', 'ProducerLevel', 'ProducerProduction', 'ProducerMilestone']);
+    assert.match(panel, /for \(const key of PANEL_ACTION_KEYS\) \{/);
     // AUT-R-036: positions, content sizes and font sizes come from UiLayout (PRODUCER_PANEL_LAYOUT).
     assert.match(panel, /node\.setPosition\(new Vec3\(0, cardRowCenterY\(layout, index\), 0\)\);/);
     assert.match(panel, /transform\.setContentSize\(cardRowWidth\(layout\), row\.height\);/);
     assert.match(panel, /label\.fontSize = row\.fontSize;/);
     assert.match(panel, /transform\.setContentSize\(layout\.width, cardHeight\(layout\)\);/);
-    assert.equal((panel.match(/setContentSize\(/g) ?? []).length, 2);
+    // One more content size and font size for the action Buttons, both from UiLayout's action row.
+    assert.equal((panel.match(/setContentSize\(/g) ?? []).length, 3);
+    assert.equal((panel.match(/\.fontSize = /g) ?? []).length, 2);
+    assert.match(panel, /node\.addComponent\(UITransform\)\.setContentSize\(rect\.w, rect\.h\);/);
+    assert.match(panel, /actionLabel\.fontSize = actionRow\.fontSize;/);
     assert.equal((panel.match(/addComponent\(Button\)/g) ?? []).length, 1);
 });
 

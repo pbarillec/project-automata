@@ -832,7 +832,7 @@ Also no regression in C3, INT-001, R-036 or UI-001. Multi-touch cannot be driven
 - Updated device-scenario tests.
 
 **Device check (automated):**
-- At the default view, all five projected zone centres are inside the factory band, and none sits under the UI.
+- At the default view, the Fabricator, Assembly, RobotLine and AdvancedRoboticsComplex zone centres are inside the factory band, and none sits under the UI. AutomatedCell may sit just off the left edge and is reached by panning once unlocked (owner decision 2026-11-11: keep yaw 135°, Option A).
 - The reveal target is on screen.
 - R-036, C3, INT-001, UI-001 and R-031-02 each pass twice in a row.
 - CameraSpike launch smoke.

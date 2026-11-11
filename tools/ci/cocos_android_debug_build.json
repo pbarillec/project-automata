@@ -60,10 +60,10 @@
       "resizeableActivity": true,
       "maxAspectRatio": "2.4",
       "orientation": {
-        "portrait": false,
+        "portrait": true,
         "upsideDown": false,
-        "landscapeRight": true,
-        "landscapeLeft": true
+        "landscapeRight": false,
+        "landscapeLeft": false
       },
       "apiLevel": 36,
       "appABIs": [

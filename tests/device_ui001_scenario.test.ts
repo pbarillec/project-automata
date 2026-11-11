@@ -8,18 +8,19 @@ const { pathToFileURL } = require('node:url');
 // AUT-UI-001 device scenario against a simulated FactoryWorld DEBUG build (mocked adb + logcat streams).
 const repoRoot = path.resolve(__dirname, '..');
 const imp = (rel) => import(pathToFileURL(path.join(repoRoot, rel)).href);
-const W = 2412;
-const H = 1080;
+// AUT-R-036-02: the simulated NE2215 runs in portrait.
+const W = 1080;
+const H = 2412;
 const WRITABLE_PARENT = '/data/user/0/com.projectautomata.androidbaseline';
 const WRITABLE = `${WRITABLE_PARENT}/files/`;
-const SAFE = { x: 96, y: 0, w: W - 192, h: H };
-// Projection observed on the NE2215 (2412×1080, bottom-left origin).
+const SAFE = { x: 0, y: 96, w: W, h: H - 192 };
+// Simulated portrait default-view projection (1080×2412, bottom-left origin).
 const ZONES = [
-    { id: 'Fabricator', sx: 1450.4, sy: 607.02, onScreen: true },
-    { id: 'AssemblyStation', sx: 1061.71, sy: 447.94, onScreen: true },
-    { id: 'RobotLine', sx: 412.81, sy: 59.08, onScreen: true },
-    { id: 'AutomatedCell', sx: -178.74, sy: 214.45, onScreen: false },
-    { id: 'AdvancedRoboticsComplex', sx: 263.2, sy: 656.15, onScreen: true },
+    { id: 'Fabricator', sx: 620, sy: 1150, onScreen: true },
+    { id: 'AssemblyStation', sx: 380, sy: 1000, onScreen: true },
+    { id: 'RobotLine', sx: 200, sy: 700, onScreen: true },
+    { id: 'AutomatedCell', sx: -120, sy: 900, onScreen: false },
+    { id: 'AdvancedRoboticsComplex', sx: 300, sy: 1600, onScreen: true },
 ];
 
 function png(width, height) {
@@ -36,7 +37,8 @@ async function layoutPayload(reason, hudActions, mode) {
     const rects = { CoreHUD: layout.hud, ProducerPanel: layout.panel, ...layout.buttons, ...layout.hudButtons };
     if (mode === 'no_hud_action_rects') { delete rects.ManualProduceAction; delete rects.NextGoalAction; }
     const sizes = (card) => Object.fromEntries(card.rows.map((row) => [row.key, row.fontSize]));
-    const fontSizes = { CoreHUD: { ...sizes(L.CORE_HUD_LAYOUT), ManualProduceAction: 22, NextGoalAction: hudActions.NextGoalAction.visible ? 22 : null }, ProducerPanel: sizes(L.PRODUCER_PANEL_LAYOUT) };
+    const panelActions = Object.fromEntries(L.PANEL_ACTION_KEYS.map((key) => [key, L.PRODUCER_PANEL_LAYOUT.actionRow.fontSize]));
+    const fontSizes = { CoreHUD: { ...sizes(L.CORE_HUD_LAYOUT), ManualProduceAction: 22, NextGoalAction: hudActions.NextGoalAction.visible ? 22 : null }, ProducerPanel: { ...sizes(L.PRODUCER_PANEL_LAYOUT), ...panelActions } };
     if (mode === 'small_font') fontSizes.CoreHUD.NextGoalContext = 17.5;
     return { reason, screen: { w: W, h: H }, safeArea: layout.safeArea, rects, rows: { CoreHUD: layout.rows.hud, ProducerPanel: layout.rows.panel }, fontSizes, hudActions, _layout: layout };
 }
@@ -127,6 +129,8 @@ async function simulatedDevice(mode) {
                 result(command, true, ['industrialOutputChanged', 'breakthroughPurchased', 'automationStateChanged']);
                 emit('camera_focus', { phase: 'started', distance: 9.5 });
                 emit('camera_focus', { phase: 'settled', distance: 9.5 });
+                // The reveal pushes in on the Fabricator line; `reveal_off_screen` loses it.
+                emit('zones_projected', { reason: 'camera_settled', screen: { w: W, h: H }, zones: mode === 'reveal_off_screen' ? ZONES.map((z) => (z.id === 'Fabricator' ? { ...z, sx: -50, onScreen: false } : z)) : ZONES });
                 if (mode !== 'no_reveal_complete') emit('reveal_state', { phase: 'complete', source: 'runtime', automated: true, focusRequested: true, reason: 'focus_finished' });
                 return;
             }
@@ -193,7 +197,7 @@ test('AUT-UI-001 (simulated): manual produce ×N → fresh Next Goal inert → F
     assert.equal(manual.taps, scenario.manualTapCount(3));
     assert.deepEqual(manual.industrialOutput, Array.from({ length: manual.taps }, (_, i) => (i + 1) * MANUAL_PRODUCTION_AMOUNT));
     const ids = new Set(result.assertions.filter((a) => a.ok).map((a) => a.id));
-    for (const id of ['saves_cleared', 'hud_action_rects_present', 'hud_actions_inside_hud', 'hud_actions_do_not_overlap', 'hud_actions_match_ui_layout', 'effective_font_size_min_fresh_launch', 'manual_produce_enabled', 'manual_produce_output_rises', 'one_command_per_tap', 'ui_tap_no_selection_state', 'fresh_next_goal_action_unavailable', 'fresh_next_goal_tap_no_command', 'fabricator_selected', 'fabricator_tap_no_command', 'buy_x1_ok', 'seeded_save_pushed', 'next_goal_action_enabled', 'purchase_ok', 'payoff_reveal_started', 'payoff_reveal_complete', 'purchase_tap_no_selection', 'second_tap_no_second_purchase', 'exactly_one_purchase', 'suspend_save_ok', 'relaunch_loaded_main_owned', 'relaunch_no_reveal_replay', 'no_errors_after_scene_ready_final']) {
+    for (const id of ['saves_cleared', 'hud_action_rects_present', 'hud_actions_inside_hud', 'hud_actions_do_not_overlap', 'hud_actions_match_ui_layout', 'effective_font_size_min_fresh_launch', 'manual_produce_enabled', 'manual_produce_output_rises', 'one_command_per_tap', 'ui_tap_no_selection_state', 'fresh_next_goal_action_unavailable', 'fresh_next_goal_tap_no_command', 'fabricator_selected', 'fabricator_tap_no_command', 'buy_x1_ok', 'seeded_save_pushed', 'next_goal_action_enabled', 'purchase_ok', 'payoff_reveal_started', 'payoff_reveal_complete', 'reveal_target_on_screen', 'purchase_tap_no_selection', 'second_tap_no_second_purchase', 'exactly_one_purchase', 'suspend_save_ok', 'relaunch_loaded_main_owned', 'relaunch_no_reveal_replay', 'no_errors_after_scene_ready_final']) {
         assert.ok(ids.has(id), id);
     }
     // The seed went to the reported writable path; the saved seed is kept as evidence.
@@ -232,6 +236,7 @@ for (const [mode, assertion, failureClass] of [
     ['disabled_emits', 'fresh_next_goal_tap_no_command', 'RUNTIME_ERROR'],
     ['double_purchase', 'second_tap_no_second_purchase', 'RUNTIME_ERROR'],
     ['no_reveal_complete', 'payoff_reveal_complete', 'CAMERA_FOCUS'],
+    ['reveal_off_screen', 'reveal_target_on_screen', 'CAMERA_FOCUS'],
     ['replay_reveal', 'relaunch_no_reveal_replay', 'CAMERA_FOCUS'],
     ['small_font', 'effective_font_size_min_fresh_launch', 'MARKER_PRESENTATION'],
     ['no_hud_action_rects', 'hud_action_rects_present', 'MARKER_PRESENTATION'],

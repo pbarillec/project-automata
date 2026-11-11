@@ -8,9 +8,10 @@ const { pathToFileURL } = require('node:url');
 const repoRoot = path.resolve(__dirname, '..');
 const imp = (rel) => import(pathToFileURL(path.join(repoRoot, rel)).href);
 
-const W = 2772;
-const H = 1272;
-const ZONES = { Fabricator: [1386, 636], AssemblyStation: [1700, 560], RobotLine: [2000, 420], AutomatedCell: [1500, 300], AdvancedRoboticsComplex: [900, 300] };
+// AUT-R-036-02: portrait SimPhone; every zone centre sits in the factory band between the UI bands.
+const W = 1272;
+const H = 2772;
+const ZONES = { Fabricator: [636, 1386], AssemblyStation: [800, 1700], RobotLine: [1000, 2000], AutomatedCell: [400, 1100], AdvancedRoboticsComplex: [300, 900] };
 
 function png(width, height) {
     const b = Buffer.alloc(33);
@@ -27,6 +28,9 @@ function png(width, height) {
 async function simulatedDevice(mode, devices = [{ serial: 'SIM', state: 'device', model: 'SimPhone' }]) {
     const { EventStream } = await imp('tools/device/events.ts');
     const { formatDeviceEvent } = await imp('assets/scripts/presentation/DeviceDiagnostics.ts');
+    const L = await imp('assets/scripts/presentation/UiLayout.ts');
+    const ui = L.computeUiLayout({ w: W, h: H });
+    const uiLayout = { reason: 'session_ready', screen: { w: W, h: H }, safeArea: ui.safeArea, rects: { CoreHUD: ui.hud, ProducerPanel: ui.panel, ...ui.buttons }, rows: {} };
     let seq = 0;
     let stream = null;
     let selected = null;
@@ -50,6 +54,7 @@ async function simulatedDevice(mode, devices = [{ serial: 'SIM', state: 'device'
                 stream.pushLine('11-05 16:44:57.947 1 2 E Cocos   :     at ProducerHighlight.ensureMarker (assets/main/index.js:1:1)');
             } else {
                 emit('scene_ready', projection('scene_ready'));
+                if (mode !== 'no_ui_layout') emit('ui_layout', uiLayout);
             }
             if (mode === 'reveal_idle') return;
             if (mode !== 'no_reveal_state') emit('reveal_state', { phase: 'started', source: 'human_gate', automated: true, focusRequested: true });
@@ -226,4 +231,24 @@ test('AUT-INFRA-001: run ids and artifact paths are deterministic and confined t
     assert.equal(p.runDir, path.join('temp', 'device', 'r1'));
     assert.equal(p.screenshot(3, 'tap 1/Fabricator'), path.join('temp', 'device', 'r1', 'screenshots', '03-tap_1_Fabricator.png'));
     assert.throws(() => runPaths('../escape'));
+});
+
+test('AUT-R-036-02 C3 (simulated): calibration is picked clear of the portrait UI bands; without ui_layout it falls back with a warning', async () => {
+    const { pointInRect } = await imp('tools/device/ui_geometry.ts');
+    const L = await imp('assets/scripts/presentation/UiLayout.ts');
+    const ui = L.computeUiLayout({ w: W, h: H });
+    const { result, driver } = await run('pass');
+    assert.equal(result.status, 'PASS', JSON.stringify(result.first_failed_assertion));
+    assert.ok(result.assertions.some((a) => a.id === 'calibration_point_clear_of_ui' && a.ok));
+    const calibration = result.steps.find((s) => s.id === 'calibration');
+    for (const rect of [ui.hud, ui.panel]) assert.equal(pointInRect(rect, calibration.expectedCocos), false, 'calibration under the UI');
+    // The old landscape point (4% × 8% of the display) would land on the portrait HUD.
+    assert.equal(pointInRect(ui.hud, { x: Math.round(W * 0.04), y: H - Math.round(H * 0.08) }), true);
+    assert.deepEqual(driver.log.find((entry) => entry[0] === 'tap').slice(1), [Math.round(W * 0.5), H - Math.round(H * 0.25)]);
+
+    const { C3_CALIBRATION_FALLBACK } = await imp('tools/device/scenarios/c3_producer_selection.ts');
+    const legacy = await run('no_ui_layout');
+    assert.equal(legacy.result.status, 'PASS', JSON.stringify(legacy.result.first_failed_assertion));
+    assert.ok(legacy.result.warnings.some((w) => /no ui_layout diagnostic/.test(w)));
+    assert.deepEqual(legacy.result.steps.find((s) => s.id === 'calibration').adb, { x: Math.round(W * C3_CALIBRATION_FALLBACK.fx), y: Math.round(H * C3_CALIBRATION_FALLBACK.fy) });
 });

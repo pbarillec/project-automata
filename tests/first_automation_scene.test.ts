@@ -60,13 +60,17 @@ test('AUT-038 G1: FactoryWorld factoryPrefabs are index-aligned with SERIALIZED_
     });
 });
 
-test('AUT-038 G2: FactoryWorld camera defaults stay at the approved framing', async () => {
+// AUT-R-036-02: the approved framing is now the portrait one (Scene Presentation, owner Option A 2026-11-11).
+test('AUT-038 G2 / AUT-R-036-02: FactoryWorld camera defaults stay at the approved portrait framing', async () => {
     const source = await readFile(path.join(repoRoot, 'assets/scripts/presentation/FactoryWorldBootstrap.ts'), 'utf8');
     const expected = {
-        defaultYawDeg: '135', defaultPitchDeg: '48', defaultDistance: '12.5',
-        defaultFocusX: '-3.8', defaultFocusZ: '-1.8', focusDistance: '9.5',
+        defaultYawDeg: '135', defaultPitchDeg: '48', defaultDistance: '14',
+        defaultFocusX: '-2.5', defaultFocusZ: '0', focusDistance: '9.5',
         focusMinX: '-9', focusMaxX: '9', focusMinZ: '-6', focusMaxZ: '8',
+        panUnitsPerPixelAtDistance: '0.001',
     };
+    assert.deepEqual([...source.matchAll(/camera\.fov = ([0-9.]+);/g)].map((m) => m[1]), ['55']);
+    assert.match(source, /camera\.fovAxis = Camera\.FOVAxis\.HORIZONTAL;/);
     for (const [field, value] of Object.entries(expected)) {
         const matches = [...source.matchAll(new RegExp(`controller\\.${field} = (-?[0-9.]+);`, 'g'))].map((m) => m[1]);
         assert.deepEqual(matches, [value], field);

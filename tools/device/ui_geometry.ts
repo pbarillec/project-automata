@@ -186,6 +186,53 @@ export function evaluateUiGeometry(input: UiGeometryInput): StepEvaluation {
     return c.result();
 }
 
+/**
+ * AUT-R-036-02 default view (owner decision 2026-11-11, Option A, yaw 135°): these zone centres must
+ * project inside the factory band and not under the UI. AutomatedCell may sit just off the left edge
+ * and is reached by panning once unlocked.
+ */
+export const DEFAULT_VIEW_REQUIRED_ZONES = ['Fabricator', 'AssemblyStation', 'RobotLine', 'AdvancedRoboticsComplex'] as const;
+export const DEFAULT_VIEW_OPTIONAL_ZONES = ['AutomatedCell'] as const;
+
+/** Full-width band between the panel top and the HUD bottom (portrait bands); null when not derivable. */
+export function factoryBandOf(layout: UiLayoutSnapshot): Rect | null {
+    const hud = layout.rects.CoreHUD;
+    const panel = layout.rects.ProducerPanel;
+    if (!hud || !panel) return null;
+    const bottom = panel.y + panel.h;
+    return hud.y > bottom ? { x: 0, y: bottom, w: layout.screen.w, h: hud.y - bottom } : null;
+}
+
+export interface FramingInput {
+    step: string;
+    layout: UiLayoutSnapshot;
+    zones: ProjectedZone[];
+    required?: readonly string[];
+    evidenceLines?: string[];
+}
+
+/**
+ * AUT-R-036-02: at the default view every required zone centre is projected on screen, inside the
+ * factory band and under no UI rect. Optional zones are not asserted here (an on-screen one is still
+ * covered by `no_zone_centre_under_ui`). Failures are MARKER_PRESENTATION (framing → Scene Presentation).
+ */
+export function evaluateDefaultFraming(input: FramingInput): StepEvaluation {
+    const c = new GeometryChecker(input.step, input.evidenceLines ?? []);
+    const band = factoryBandOf(input.layout);
+    if (!c.check('factory_band_present', band !== null, 'MARKER_PRESENTATION', 'HUD band above the panel band', { CoreHUD: input.layout.rects.CoreHUD, ProducerPanel: input.layout.rects.ProducerPanel })) return c.result();
+    const required = input.required ?? DEFAULT_VIEW_REQUIRED_ZONES;
+    const failing = required.flatMap((id) => {
+        const zone = input.zones.find((z) => z.id === id);
+        if (!zone || !zone.onScreen || !isNumber(zone.sx) || !isNumber(zone.sy)) return [{ id, reason: 'not on screen', zone: zone ?? null }];
+        const centre = { x: zone.sx, y: zone.sy };
+        if (!pointInRect(band!, centre)) return [{ id, reason: 'outside the factory band', centre }];
+        const under = uiRectsAt(input.layout, centre);
+        return under.length > 0 ? [{ id, reason: 'under the UI', centre, under }] : [];
+    });
+    c.check('default_view_zones_in_factory_band', failing.length === 0, 'MARKER_PRESENTATION', { required, band }, { failing });
+    return c.result();
+}
+
 export interface UiTapInput {
     step: string;
     target: string;
@@ -223,8 +270,10 @@ function withEvidence(result: StepEvaluation, lines: string[]): StepEvaluation {
  * Picks a calibration point (adb fractions of the display) whose Cocos position is clear of every UI
  * rect by `clearancePx`, so the self-check touch reaches the world input listeners.
  */
+// AUT-R-036-02: in portrait the first four fall on the HUD / panel bands; 50% × 25% is the upper factory
+// band (open sky above the factory at the default framing), so it reaches the world without selecting a zone.
 export const CALIBRATION_CANDIDATES: ReadonlyArray<{ fx: number; fy: number }> = [
-    { fx: 0.04, fy: 0.08 }, { fx: 0.5, fy: 0.08 }, { fx: 0.04, fy: 0.92 }, { fx: 0.5, fy: 0.92 }, { fx: 0.96, fy: 0.5 },
+    { fx: 0.04, fy: 0.08 }, { fx: 0.5, fy: 0.08 }, { fx: 0.04, fy: 0.92 }, { fx: 0.5, fy: 0.92 }, { fx: 0.5, fy: 0.25 }, { fx: 0.96, fy: 0.5 },
 ];
 
 export function pickCalibrationPoint(

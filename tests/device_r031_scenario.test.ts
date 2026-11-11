@@ -7,12 +7,13 @@ const { pathToFileURL } = require('node:url');
 
 const repoRoot = path.resolve(__dirname, '..');
 const imp = (rel) => import(pathToFileURL(path.join(repoRoot, rel)).href);
-const W = 2412;
-const H = 1080;
+// AUT-R-036-02: the simulated NE2215 runs in portrait with the portrait default framing.
+const W = 1080;
+const H = 2412;
 const WRITABLE_PARENT = '/data/user/0/com.projectautomata.androidbaseline';
-const SAFE = { x: 96, y: 0, w: W - 192, h: H };
+const SAFE = { x: 0, y: 96, w: W, h: H - 192 };
 const BOUNDS = { minX: -9, maxX: -2.5, minZ: -6, maxZ: 0 };
-const BASELINE = { yawDeg: 135, pitchDeg: 48, distance: 12.5, focus: { x: -3.8, z: -1.8 } };
+const BASELINE = { yawDeg: 135, pitchDeg: 48, distance: 14, focus: { x: -2.5, z: 0 } };
 
 function png(width, height) {
     const b = Buffer.alloc(33);
@@ -22,13 +23,13 @@ function png(width, height) {
     return b;
 }
 
-// Projection observed on the NE2215 (C3 run, 2412×1080, bottom-left origin).
+// Simulated portrait default-view projection (1080×2412, bottom-left origin).
 const ZONES = [
-    { id: 'Fabricator', sx: 1450.4, sy: 607.02, onScreen: true },
-    { id: 'AssemblyStation', sx: 1061.71, sy: 447.94, onScreen: true },
-    { id: 'RobotLine', sx: 412.81, sy: 59.08, onScreen: true },
-    { id: 'AutomatedCell', sx: -178.74, sy: 214.45, onScreen: false },
-    { id: 'AdvancedRoboticsComplex', sx: 263.2, sy: 656.15, onScreen: true },
+    { id: 'Fabricator', sx: 620, sy: 1150, onScreen: true },
+    { id: 'AssemblyStation', sx: 380, sy: 1000, onScreen: true },
+    { id: 'RobotLine', sx: 200, sy: 700, onScreen: true },
+    { id: 'AutomatedCell', sx: -120, sy: 900, onScreen: false },
+    { id: 'AdvancedRoboticsComplex', sx: 300, sy: 1600, onScreen: true },
 ];
 
 async function uiLayoutPayload() {
@@ -107,8 +108,8 @@ async function simulatedDevice(mode) {
             emit('selection_state', { requested: hit, prev, next: hit, changed: prev !== hit });
             emit('marker_state', { id: hit, exists: true, active: true, activeInHierarchy: true, hasMesh: true });
             emit('camera_focus', { phase: 'requested', source: 'selection', id: hit });
-            const distance = mode === 'zoom_on_select' ? 9.5 : 12.5;
-            emit('camera_focus', { phase: 'started', kind: 'selection', target: { x: -6, y: 0.2, z: -2.85 }, distance, fromDistance: 12.5, defaultDistance: 12.5, seconds: 0.45 });
+            const distance = mode === 'zoom_on_select' ? 9.5 : 14;
+            emit('camera_focus', { phase: 'started', kind: 'selection', target: { x: -6, y: 0.2, z: -2.85 }, distance, fromDistance: 14, defaultDistance: 14, seconds: 0.45 });
             emit('camera_focus', { phase: 'settled', focus: { x: -6, z: -2.85 }, distance });
         },
         async pidOf() { return 1234; },
@@ -184,12 +185,12 @@ test('AUT-R-031-02 scenario helpers: camera_state parsing, bounds checks and swi
     const { adbToCocos } = await imp('tools/device/classification.ts');
     assert.equal(S.parseCameraState({ v: 1, seq: 1, evt: 'zones_projected' }), null);
     assert.equal(S.parseCameraState({ v: 1, seq: 1, evt: 'camera_state', yaw: 1, pitch: 2, distance: 3, focus: { x: 0, z: 0 } }), null, 'bounds are required');
-    const state = S.parseCameraState({ v: 1, seq: 1, evt: 'camera_state', yaw: 135, pitch: 48, distance: 12.5, focus: { x: -2.5, z: -3 }, bounds: BOUNDS, zones: ZONES });
+    const state = S.parseCameraState({ v: 1, seq: 1, evt: 'camera_state', yaw: 135, pitch: 48, distance: 14, focus: { x: -2.5, z: -3 }, bounds: BOUNDS, zones: ZONES });
     assert.ok(state);
     assert.equal(S.focusInsideBounds(state), true);
     assert.deepEqual(S.boundsEdgesTouched(state), ['maxX']);
     assert.equal(S.focusInsideBounds({ ...state, focus: { x: -2.4, z: -3 } }), false);
-    assert.deepEqual(S.parseBaselinePose({ v: 1, seq: 1, evt: 'scene_ready', cameraState: BASELINE }), { yaw: 135, pitch: 48, distance: 12.5, focus: { x: -3.8, z: -1.8 } });
+    assert.deepEqual(S.parseBaselinePose({ v: 1, seq: 1, evt: 'scene_ready', cameraState: BASELINE }), { yaw: 135, pitch: 48, distance: 14, focus: { x: -2.5, z: 0 } });
 
     const layout = G.parseUiLayout({ v: 1, seq: 1, evt: 'ui_layout', ...(await uiLayoutPayload()) });
     const toCocos = (adb) => adbToCocos(adb, { w: W, h: H }, { width: W, height: H });

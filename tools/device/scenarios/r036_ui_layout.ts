@@ -1,9 +1,12 @@
 /**
- * AUT-R-036 scenario — the landscape HUD and Producer Panel are on screen, anchored, and own their touches.
+ * AUT-R-036 scenario — the HUD and Producer Panel are on screen, anchored, and own their touches.
+ * AUT-R-036-02: portrait bands (HUD top, panel bottom) and the default framing check below.
  *
  *   clear saves → launch → scene_ready + session_state ready + ui_layout
  *   geometry: every rect inside the screen and the safe area, HUD/panel disjoint, coverage ≤ 35%,
  *             Buttons inside the panel, no projected producer zone centre under the UI
+ *   default framing (AUT-R-036-02): Fabricator, Assembly, RobotLine and AdvancedRoboticsComplex centres
+ *             inside the factory band (between the bands), none under the UI; AutomatedCell may be off screen
  *   screenshot (kept for the readability gate deferred to AUT-UI-001)
  *   calibration self-check (a point clear of the UI) → tap the Fabricator → selection_state next=Fabricator
  *   post-selection ui_layout (real strings): the geometry again, plus each Button rect = UiLayout ±2 px,
@@ -29,7 +32,7 @@ import { buildResult, validateDeviceResult, type DeviceInfo, type DeviceResult }
 import { renderSummary, summarizeErrors } from './c3_producer_selection.ts';
 import { SAVE_FILE_NAMES } from './int001_session_persistence.ts';
 import {
-    evaluateUiGeometry, evaluateUiLayoutModel, evaluateUiTap, parseUiLayout, pickCalibrationPoint, rectCentre, uiRectsAt,
+    evaluateDefaultFraming, evaluateUiGeometry, evaluateUiLayoutModel, evaluateUiTap, parseUiLayout, pickCalibrationPoint, rectCentre, uiRectsAt,
     type ProjectedZone, type UiRectName,
 } from '../ui_geometry.ts';
 import { computeUiLayout, CORE_HUD_LAYOUT, PRODUCER_PANEL_LAYOUT } from '../../../assets/scripts/presentation/UiLayout.ts';
@@ -228,6 +231,7 @@ export async function runR036Scenario(driver: SessionDeviceDriver, partial: Part
         const screenOfZones = stream.allEvents().filter((e) => Array.isArray(e.zones)).pop()?.screen as { w?: number; h?: number } | undefined;
         check('ui_layout_same_frame_as_zones', 'geometry', screenOfZones?.w === layout!.screen.w && screenOfZones?.h === layout!.screen.h, 'ENVIRONMENT', layout!.screen, screenOfZones ?? null);
         record(evaluateUiGeometry({ step: 'geometry', layout: layout!, zones: zones!, evidenceLines: asLine(layoutRecord!.event) }));
+        record(evaluateDefaultFraming({ step: 'default_framing', layout: layout!, zones: zones!, evidenceLines: asLine(layoutRecord!.event) }));
 
         // ---- 3. Screenshot (kept for the readability gate deferred to AUT-UI-001) --------------
         await sleep(300);

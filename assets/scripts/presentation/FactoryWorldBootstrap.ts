@@ -94,6 +94,8 @@ export class FactoryWorldBootstrap extends Component {
         this.createUiRoot(site);
         const hud = this.createCoreHud();
         const panel = this.createProducerPanel();
+        // AUT-R-036-02: Manual Produce sits in the bottom band, inside the panel card (before the HUD's first layout).
+        hud.primaryActionHost = panel.node;
         selection.onSelectionChanged = (producerId) => {
             panel.replaceSelection(producerId);
             this.binding?.onSelectionChanged(producerId);
@@ -298,7 +300,11 @@ export class FactoryWorldBootstrap extends Component {
         cameraNode.parent = rig;
         const camera = cameraNode.getComponent(Camera) ?? cameraNode.addComponent(Camera);
         camera.projection = Camera.ProjectionType.PERSPECTIVE;
-        camera.fov = 45;
+        // AUT-R-036-02 portrait framing (Scene Presentation, owner Option A 2026-11-11): the FOV is held on the
+        // horizontal axis so the factory width stays framed on narrow portrait screens. 55 is provisional
+        // (camera-feel human gate).
+        camera.fovAxis = Camera.FOVAxis.HORIZONTAL;
+        camera.fov = 55;
         camera.near = 0.1;
         camera.far = 200;
         // UI_2D must not be visible to the world camera, so UI hit tests can't claim world touches.
@@ -312,11 +318,16 @@ export class FactoryWorldBootstrap extends Component {
         controller.focusMaxZ = 8;
         controller.defaultYawDeg = 135;
         controller.defaultPitchDeg = 48;
-        controller.defaultDistance = 12.5;
-        controller.defaultFocusX = -3.8;
-        controller.defaultFocusZ = -1.8;
-        // AUT-038 reveal pushes in from the 12.5 default so the feeder line reads.
+        // AUT-R-036-02 portrait framing: default distance 14 (provisional) and the default focus on the
+        // (-2.5, 0) corner of the Fabricator-only pan bounds; yaw/pitch and the global bounds are unchanged.
+        controller.defaultDistance = 14;
+        controller.defaultFocusX = -2.5;
+        controller.defaultFocusZ = 0;
+        // AUT-038 reveal pushes in from the default distance so the feeder line reads.
         controller.focusDistance = 9.5;
+        // AUT-R-036-02: touch deltas are device pixels (Touch.getLocation), so the pan speed per pixel drops
+        // with the portrait framing; 0.001 is provisional (camera-feel human gate).
+        controller.panUnitsPerPixelAtDistance = 0.001;
         // AUT-R-031-02 tap-first input: one-finger drag pans (clamped to the unlocked zones); no orbit,
         // no pinch zoom, no two-finger pan. Taps stay with ProducerSelectionController.
         controller.oneFingerMode = 'pan';
@@ -442,7 +453,10 @@ export class FactoryWorldBootstrap extends Component {
         widget.top = widget.bottom = widget.left = widget.right = 0;
     }
 
-    /** Anchors a card to its UiLayout corner of the safe area; ALWAYS so safe-area or size changes re-align it. */
+    /**
+     * Anchors a card to its UiLayout edge of the safe area (AUT-R-036-02: a full-width band, centred
+     * horizontally); ALWAYS so safe-area or size changes re-align it.
+     */
     private anchorCard(node: Node, card: UiCardSpec): void {
         node.getComponent(UITransform) ?? node.addComponent(UITransform);
         const widget = node.getComponent(Widget) ?? node.addComponent(Widget);
@@ -451,6 +465,8 @@ export class FactoryWorldBootstrap extends Component {
         widget.isAlignBottom = align.bottom;
         widget.isAlignLeft = align.left;
         widget.isAlignRight = align.right;
+        widget.isAlignHorizontalCenter = align.horizontalCenter;
+        widget.horizontalCenter = 0;
         widget.top = widget.bottom = widget.left = widget.right = UI_EDGE_MARGIN;
         widget.alignMode = Widget.AlignMode.ALWAYS;
     }
@@ -507,7 +523,7 @@ export class FactoryWorldBootstrap extends Component {
         const panel = container.getChildByName('ProducerPanel');
         const rects: Record<string, UiRect | null> = { CoreHUD: rectOf(hud), ProducerPanel: rectOf(panel) };
         for (const key of PANEL_ACTION_KEYS) rects[key] = rectOf(panel?.getChildByName(key));
-        for (const key of HUD_ACTION_KEYS) rects[key] = rectOf(hud?.getChildByName(key));
+        for (const key of HUD_ACTION_KEYS) rects[key] = rectOf(hud?.getChildByName(key) ?? panel?.getChildByName(key));
         const rowsOf = (card: Node | null, spec: UiCardSpec) => Object.fromEntries(spec.rows.map((row) => [row.key, rectOf(card?.getChildByName(row.key))]));
         const rows = { CoreHUD: rowsOf(hud, CORE_HUD_LAYOUT), ProducerPanel: rowsOf(panel, PRODUCER_PANEL_LAYOUT) };
         // AUT-UI-001: effective (post-SHRINK) font size of every non-empty label in design units; null while empty.
@@ -520,8 +536,8 @@ export class FactoryWorldBootstrap extends Component {
             return label.actualFontSize / Math.max(1, renderScale);
         };
         const fontSizes = {
-            CoreHUD: Object.fromEntries([...CORE_HUD_LAYOUT.rows.map((row) => row.key), ...HUD_ACTION_KEYS].map((key) => [key, fontOf(hud, key)])),
-            ProducerPanel: Object.fromEntries(PRODUCER_PANEL_LAYOUT.rows.map((row) => [row.key, fontOf(panel, row.key)])),
+            CoreHUD: Object.fromEntries([...CORE_HUD_LAYOUT.rows.map((row) => row.key), ...HUD_ACTION_KEYS].map((key) => [key, fontOf(hud?.getChildByName(key) ? hud : panel, key)])),
+            ProducerPanel: Object.fromEntries([...PRODUCER_PANEL_LAYOUT.rows.map((row) => row.key), ...PANEL_ACTION_KEYS].map((key) => [key, fontOf(panel, key)])),
         };
         const hudActions = this.sessionWiring?.hud.getActionStates() ?? null;
         const windowSize = screen.windowSize;
