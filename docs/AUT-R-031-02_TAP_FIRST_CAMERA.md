@@ -1,5 +1,7 @@
 # AUT-R-031-02 Tap-First Camera Input
 
+**Human gate result (2026-11-11): PASS.** The owner passed the combined portrait / tap-first gate on the NE2215 (gate APK `05f75b1a`): HUD and panel usable, producer selection, Manual Produce and tap-first camera behaviour correct. The provisional values are kept. The debug FPS overlay over the bottom panel is debug-only, not a product blocker. The PENDING notes below are historical.
+
 FactoryWorld camera input now follows the owner's tap-first model (decision 2026-11-10):
 
 - a tap selects a producer;

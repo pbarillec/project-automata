@@ -804,6 +804,8 @@ Also no regression in C3, INT-001, R-036 or UI-001. Multi-touch cannot be driven
 
 **Acceptance:** the automated checks pass. Camera feel is judged at the AUT-R-036-02 combined gate.
 
+**Status note:** camera feel passed at the AUT-R-036-02 combined gate on 2026-11-11; merged to `main` (ac61f32).
+
 ## AUT-R-036-02 — Portrait Orientation, Layout & Framing
 
 **Objective:** Make the game portrait-only and re-lay out the HUD, panel and default framing for portrait, reusing the AUT-R-036 UI infrastructure.
@@ -844,6 +846,8 @@ Also no regression in C3, INT-001, R-036 or UI-001. Multi-touch cannot be driven
 - the camera never fights the player, and the focus and reveal beats read well.
 
 **Acceptance:** the automated checks pass and the combined human gate passes.
+
+**Status note:** the combined portrait / tap-first human gate passed on 2026-11-11 (owner, OnePlus NE2215, gate APK `05f75b1a`), and both tasks were merged to `main` (b37644d). The provisional framing values (fov 55, distance 14, pan 0.001) are kept. The debug FPS overlay covering part of the bottom panel is debug-only and not a product blocker.
 
 ## AUT-VIS-002 — Fabricator High-Level Module Placement
 

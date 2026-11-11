@@ -1,5 +1,7 @@
 # AUT-R-036-02 Portrait Orientation, Layout & Framing
 
+**Human gate result (2026-11-11): PASS.** The owner passed the combined portrait / tap-first gate on the NE2215 (gate APK `05f75b1a`): HUD and panel usable, producer selection, Manual Produce and tap-first camera behaviour correct. The provisional values are kept. The debug FPS overlay over the bottom panel is debug-only, not a product blocker. The PENDING notes below are historical.
+
 The game is now portrait-only. The HUD and the Producer Panel are full-width bands (HUD at the
 top of the safe area, panel at the bottom, ×1/×10/×MAX side by side), and the FactoryWorld camera
 uses the portrait framing values from Scene Presentation. The AUT-R-036 UI camera, safe area,
