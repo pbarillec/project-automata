@@ -1,5 +1,6 @@
 import { _decorator, Component, Node } from 'cc';
 import { FirstAutomationPresentationController } from './FirstAutomationPresentationController';
+import { FirstRobotPresentationController } from './FirstRobotPresentationController';
 
 const { ccclass, property } = _decorator;
 
@@ -8,6 +9,10 @@ const { ccclass, property } = _decorator;
 export class PresentationController extends Component {
     @property(FirstAutomationPresentationController)
     public firstAutomationPresentation: FirstAutomationPresentationController | null = null;
+
+    /** AUT-039: first Worker Bot reveal / work loop (Assembly Station composition). */
+    @property(FirstRobotPresentationController)
+    public firstRobotPresentation: FirstRobotPresentationController | null = null;
 
     @property([Node])
     public focusAnchors: Node[] = [];
@@ -29,6 +34,7 @@ export class PresentationController extends Component {
         } | null;
 
         target?.sync(state);
+        this.firstRobotPresentation?.sync(state as Parameters<FirstRobotPresentationController['sync']>[0]);
     }
 
     public consumeDomainEvents(
@@ -36,6 +42,7 @@ export class PresentationController extends Component {
         events: Parameters<FirstAutomationPresentationController['consumeDomainEvents']>[1],
     ): void {
         this.firstAutomationPresentation?.consumeDomainEvents(state, events);
+        this.firstRobotPresentation?.consumeDomainEvents(state, events);
     }
 
     private findAnchor(anchors: Node[], producerId: string): Node | null {

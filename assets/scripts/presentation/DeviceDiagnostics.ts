@@ -34,6 +34,8 @@ export const DEVICE_EVENT_TYPES = [
     // AUT-GP-001: Assembly batch action: { phase: 'ui', state, visible, enabled, progress, remainingSeconds, payout, caption }
     // on each UI state change / 10% of progress, and { phase: 'launched' | 'completed', producerId, durationSeconds, payout? }.
     'assembly_batch',
+    // AUT-039: first Worker Bot presentation: { phase: 'synced' | 'reveal_started' | 'reveal_complete' | 'loop_started' | 'waypoint', ... }.
+    'robot_state',
     'error',
 ] as const;
 

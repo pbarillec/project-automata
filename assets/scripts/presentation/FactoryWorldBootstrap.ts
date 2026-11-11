@@ -33,6 +33,9 @@ import { CoreHudController } from './CoreHudController';
 import { ProducerPanelController } from './ProducerPanelController';
 import { AssemblyBatchActionController } from './AssemblyBatchActionController';
 import { FirstAutomationPresentationController } from './FirstAutomationPresentationController';
+import { AssemblyVisualController, ASSEMBLY_SLAB_NODE_NAME } from './AssemblyVisualController';
+import { FirstRobotPresentationController, ROBOT_BAY_LAMP_OFF_NODE_NAME, ROBOT_BAY_LAMP_ON_NODE_NAME } from './FirstRobotPresentationController';
+import { ASSEMBLY_FOUNDATION_SLAB, assemblyLocal, FIRST_ROBOT_REVEAL_TARGET, ROBOT_BAY_LAMP } from './AssemblySliceLayout.ts';
 import { CocosFileSystemPort } from '../app/CocosFileSystemPort';
 import { bootstrapGameSession } from '../lifecycle/GameSessionBootstrap.ts';
 import { FileSaveStorage } from '../persistence/FileSaveStorage.ts';
@@ -63,6 +66,14 @@ export class FactoryWorldBootstrap extends Component {
     @property([Prefab])
     public factoryPrefabs: Prefab[] = [];
 
+    /** AUT-039 Assembly slice prefabs (AUT-032 imports), index-aligned with ASSEMBLY_SERIALIZED_PREFAB_MODULES. */
+    @property([Prefab])
+    public assemblyPrefabs: Prefab[] = [];
+
+    /** AUT-039 first Worker Bot: the AUT-032 Robot.glb prefab. */
+    @property(Prefab)
+    public robotPrefab: Prefab | null = null;
+
     /** AUT-INT-001: the persistent session binding; null until the save has loaded (inputs stay inert). */
     private binding: FactoryWorldStateBinding | null = null;
     private pendingBinding: { binding: FactoryWorldStateBinding; status: string; displayNames: DisplayNameSource } | null = null;
@@ -88,8 +99,10 @@ export class FactoryWorldBootstrap extends Component {
         site.parent = this.node;
         if (!site.getChildByName('SiteBoundary')) this.createShell(site);
         this.createZones(site);
+        this.createAssemblySlice(site);
         this.createCameraRig(site);
         this.connectFirstAutomationPresentation(site);
+        this.connectFirstRobotPresentation(site);
         if (!site.getChildByName('NeutralFactoryKeyLight')) this.createLighting(site);
         this.createPresentationRegistry(site);
         const selection = this.createProducerSelection(site);
@@ -370,6 +383,9 @@ export class FactoryWorldBootstrap extends Component {
         controller.firstAutomationPresentation = parent.getChildByName('Zone_Fabricator')
             ?.getChildByName('Fabricator_CompositionAnchor')
             ?.getComponent(FirstAutomationPresentationController) ?? null;
+        controller.firstRobotPresentation = parent.getChildByName('Zone_AssemblyStation')
+            ?.getChildByName('AssemblyStation_CompositionAnchor')
+            ?.getComponent(FirstRobotPresentationController) ?? null;
         controller.focusAnchors = FACTORY_ZONE_IDS.map((id) => parent.getChildByName(`Zone_${id}`)?.getChildByName(`${id}_FocusAnchor`)).filter((node): node is Node => node !== null && node !== undefined);
         controller.compositionAnchors = FACTORY_ZONE_IDS.map((id) => parent.getChildByName(`Zone_${id}`)?.getChildByName(`${id}_CompositionAnchor`)).filter((node): node is Node => node !== null && node !== undefined);
     }
@@ -382,6 +398,50 @@ export class FactoryWorldBootstrap extends Component {
         presentation.fabricatorVisual = composition.getComponent(FabricatorVisualController);
         presentation.cameraController = parent.getChildByName('CameraRig')?.getComponent(MobileCameraController) ?? null;
         presentation.focusAnchor = zone?.getChildByName('Fabricator_FocusAnchor') ?? null;
+    }
+
+    /**
+     * AUT-039 Assembly Station + first Worker Bot slice: the Assembly composition anchor gets the visual and
+     * reveal controllers, the grey slab and the bay lamp primitives, and a reveal focus anchor on the bay ->
+     * station entry path. Presentation only (it never reads or writes state).
+     */
+    private createAssemblySlice(parent: Node): void {
+        const zone = parent.getChildByName('Zone_AssemblyStation');
+        const composition = zone?.getChildByName('AssemblyStation_CompositionAnchor');
+        if (!zone || !composition) return;
+        const visual = composition.getComponent(AssemblyVisualController) ?? composition.addComponent(AssemblyVisualController);
+        visual.assemblyPrefabs = this.assemblyPrefabs;
+        const robot = composition.getComponent(FirstRobotPresentationController) ?? composition.addComponent(FirstRobotPresentationController);
+        robot.robotPrefab = this.robotPrefab;
+        if (!composition.getChildByName(ASSEMBLY_SLAB_NODE_NAME)) {
+            const slab = ASSEMBLY_FOUNDATION_SLAB;
+            const slabNode = this.createBox(composition, ASSEMBLY_SLAB_NODE_NAME, new Vec3(slab.size.x, slab.size.y, slab.size.z), this.assemblyLocalVec3(slab.center), new Color(136, 140, 137, 255));
+            slabNode.setScale(0, 0, 0);
+        }
+        // Bay "light switching on": an unlit lamp state change (off = graphite shell, on = automation cyan).
+        for (const [name, color] of [[ROBOT_BAY_LAMP_OFF_NODE_NAME, new Color(43, 49, 52, 255)], [ROBOT_BAY_LAMP_ON_NODE_NAME, new Color(82, 206, 224, 255)]] as const) {
+            if (composition.getChildByName(name)) continue;
+            const lamp = this.createBox(composition, name, new Vec3(ROBOT_BAY_LAMP.size.x, ROBOT_BAY_LAMP.size.y, ROBOT_BAY_LAMP.size.z), this.assemblyLocalVec3(ROBOT_BAY_LAMP.center), color);
+            lamp.setScale(0, 0, 0);
+        }
+        const reveal = zone.getChildByName('FirstRobot_RevealAnchor') ?? new Node('FirstRobot_RevealAnchor');
+        reveal.parent = zone;
+        reveal.setPosition(this.assemblyLocalVec3(FIRST_ROBOT_REVEAL_TARGET));
+    }
+
+    private assemblyLocalVec3(world: { x: number; y: number; z: number }): Vec3 {
+        const local = assemblyLocal(world);
+        return new Vec3(local.x, local.y, local.z);
+    }
+
+    private connectFirstRobotPresentation(parent: Node): void {
+        const zone = parent.getChildByName('Zone_AssemblyStation');
+        const composition = zone?.getChildByName('AssemblyStation_CompositionAnchor');
+        const presentation = composition?.getComponent(FirstRobotPresentationController);
+        if (!composition || !presentation) return;
+        presentation.assemblyVisual = composition.getComponent(AssemblyVisualController);
+        presentation.cameraController = parent.getChildByName('CameraRig')?.getComponent(MobileCameraController) ?? null;
+        presentation.focusAnchor = zone?.getChildByName('FirstRobot_RevealAnchor') ?? null;
     }
 
     private createProducerSelection(parent: Node): ProducerSelectionController {
