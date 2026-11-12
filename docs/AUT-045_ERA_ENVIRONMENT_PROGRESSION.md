@@ -84,3 +84,13 @@ trigger a live era change; no HUD action was added and `REVEAL_SCENARIOS` is unc
 - Android instance budget: about 27 extra primitives + 10 `structure-high` instances (static); not benchmarked.
 - A Reboot snaps back to the Workshop (hall / vertical group / teaser disappear instantly); whether an instant disappearance feels right belongs to AUT-046 / AUT-048.
 - Source docs untouched (`CODEX_PLAN`, `ART_DIRECTION`, `ASSET_MANIFEST`, `TECHNICAL_DESIGN`).
+
+## Device evidence and visual QA (2026-11-12)
+
+DEBUG APK `ProjectAutomata-aut045-7577c4e-factoryworld.apk` (sha256 2d7248f8…e7b1), seeded Workshop / Era II / Era III, 1080x2412 portrait; screenshots under `temp/aut045/` (gitignored). Logcat: 0 error events, `era_environment_state` synced (Era II: hall, teaser 0; Era III: hall + vertical + teaser 1).
+
+Vision QA (`scene-presentation`, review-only): objective criteria PASS from stills — eras distinguishable, producers/cyan lamps readable, teaser only in Era III without Complex/HUD overlap (~290 px gap to HUD), nothing off-screen from the environment, no visible regression. Decision: HUMAN_REVIEW_REQUIRED only for subjective items.
+
+Non-blocking AUT-VIS polish (tracked): Era III teaser gate is low contrast (navy on near-black; only seam/core read); hall posts overlap the Complex west frame at upper left (busy, legible); left-edge robot slightly clipped in Era III (pre-existing).
+
+Not shown by stills / pending: Reboot return to Workshop look on device, 1.2 s fade/rise motion, no pop-in on load. Owner decision pending: warm-to-cool mood shift, teaser appeal, fade/Reboot feel.
