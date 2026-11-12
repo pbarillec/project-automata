@@ -11,6 +11,7 @@ import {
     Mesh,
     MeshRenderer,
     Node,
+    profiler,
     Prefab,
     primitives,
     SafeArea,
@@ -89,6 +90,8 @@ export class FactoryWorldBootstrap extends Component {
 
     /** AUT-INFRA-001: structured [AUT-DEVICE] diagnostics exist only in DEBUG builds; release builds never emit. */
     public onLoad(): void {
+        // AUT-UI-002: the engine FPS/debug overlay obstructs product and device gates; diagnostics stay on the [AUT-DEVICE] log channel.
+        profiler.hideStats();
         configureDeviceDiagnostics({ enabled: DEBUG === true });
         installDeviceErrorHook();
         emitDeviceEvent('scene_ready', { reason: 'bootstrap_loaded', scene: 'FactoryWorld' });
