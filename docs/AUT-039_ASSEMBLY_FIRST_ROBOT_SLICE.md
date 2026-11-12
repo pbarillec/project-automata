@@ -1,6 +1,6 @@
 # AUT-039 Assembly + First Worker Bot Vertical Slice
 
-**Product human gate: PENDING**, combined with the AUT-GP-001 batch feel (comprehension, automation
+**Product human gate: PASS (2026-11-12)**, combined with the AUT-GP-001 batch feel (comprehension, automation
 relief, Next Goal clarity, first visual growth, First Robot payoff). The automated checks below do not
 validate any of these, nor visual quality, readability, camera feel or felt pacing.
 
@@ -120,3 +120,12 @@ readability or feel verdict. The DEBUG FPS overlay covers the bottom panel (debu
   remains a SHOULD_CREATE gap. Robot.glb is assumed to face +Z.
 - Deferred by plan: the Civilization 2+ short acknowledgement, AUT-040 construction sequence, AUT-041
   population/pool, Assembly Lv25+ states.
+
+## Human gate result (2026-11-12): PASS
+
+Combined AUT-GP-001 / AUT-039 product gate: progression clear, Assembly batch feels fine, Worker Bot reveal
+works as a reward, automation relief clear, factory growth visible, relaunch behavior correct.
+
+Non-blocking UI follow-ups (do not block AUT-GP-001 or AUT-039):
+- hide the grey FPS/debug overlay in gate/product builds;
+- current actions are mostly text-only clickable labels; replace later with clearly styled buttons / stronger affordance.
