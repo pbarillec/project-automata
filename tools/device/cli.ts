@@ -24,6 +24,7 @@ import { runUi001Scenario } from './scenarios/ui001_core_loop.ts';
 import { runR031Scenario } from './scenarios/r031_tap_first_camera.ts';
 import { runGp001Scenario } from './scenarios/gp001_assembly_batch.ts';
 import { runAut039Scenario } from './scenarios/aut039_first_robot.ts';
+import { seedAut040 } from './seed_aut040.ts';
 
 function parseArgs(argv: string[]): { command: string; flags: Record<string, string | boolean> } {
     const [command = 'help', ...rest] = argv;
@@ -80,6 +81,16 @@ async function main(): Promise<number> {
         if (output.schemaErrors.length) { console.error(`result schema errors: ${output.schemaErrors.join('; ')}`); return 3; }
         return r.status === 'PASS' ? 0 : r.status === 'FAIL' ? 1 : 2;
     }
+    if (command === 'seed-aut040') {
+        // AUT-040 human gate: seed an unbuilt-Assembly save and launch (no install, no assertions).
+        const driver = new AdbDeviceDriver();
+        const selection = selectDevice(await driver.devices(), typeof flags.serial === 'string' ? flags.serial : undefined);
+        if (!selection.ok) { console.log(JSON.stringify(selection, null, 2)); return 2; }
+        if (typeof flags.serial === 'string') driver.useSerial(flags.serial);
+        const filesDir = await seedAut040(driver, 'com.projectautomata.androidbaseline', 'com.cocos.game.AppActivity');
+        console.log(`seeded ${filesDir}save_main.json and launched`);
+        return 0;
+    }
     if (command === 'gate-build') {
         const label = typeof flags.label === 'string' ? flags.label : 'gate';
         const result = runGateBuild(defaultGateBuildDeps(label));
@@ -91,7 +102,7 @@ async function main(): Promise<number> {
         console.log(restored ? 'restored tracked build config from temp/device/gate backup' : 'no backup found');
         return restored ? 0 : 1;
     }
-    console.log('usage: node tools/device/cli.ts devices | c3|int001|r036|ui001|r031|gp001|aut039 --apk <path> [--serial <id>] [--run-id <id>] [--skip-install] | gate-build [--label <l>] | restore-build-config');
+    console.log('usage: node tools/device/cli.ts devices | c3|int001|r036|ui001|r031|gp001|aut039 --apk <path> [--serial <id>] [--run-id <id>] [--skip-install] | seed-aut040 [--serial <id>] | gate-build [--label <l>] | restore-build-config');
     return command === 'help' ? 0 : 1;
 }
 
