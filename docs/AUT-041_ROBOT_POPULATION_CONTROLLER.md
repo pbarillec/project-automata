@@ -1,6 +1,6 @@
 # AUT-041 RobotPopulationController
 
-**Human gate: PENDING** (population readability, density and clutter on a real device) and the **device benchmark (1/8/14/20/30 robots) is NOT run yet**.
+**Human gate: PASS (2026-11-12)** (population readability, density and clutter on a real device) and the **device benchmark (1/8/14/20/30 robots) is NOT run yet**.
 Automated checks prove mapping, pooling and wiring only. Presentation only: no economy, runtime, save, camera, scene-file or HUD change.
 
 ## What was built
@@ -41,3 +41,8 @@ Frame time stays near the ~60 Hz cap up to 20 robots and drops to ~53 fps at 30 
 evidence only; it is not a performance verdict or a device-class guarantee. Observation from the 14-robot screenshot (not a verdict): robots cluster around the
 station/storage dwell points instead of spreading along the loop, because the loop spends most of its time dwelling there.
 **Visual/crowding human gate at 12-14 robots: PENDING.**
+
+## Human gate result (2026-11-12): PASS
+
+At 14 robots the population stays readable and the factory feels more alive. Non-blocking visual polish follow-up (tracked): robots are somewhat clustered around the
+station/storage stops (loop dwell points); acceptable for this stage.
