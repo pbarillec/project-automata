@@ -1,6 +1,6 @@
 # AUT-044 Advanced Robotics Complex Visual
 
-**Human gate: PENDING** (visual QA review of device screenshots at unbuilt / Lv1 / Lv10 and of the live reveal capture first; owner only for the subjective items below).
+**Human gate: ACCEPTED (2026-11-12)** (visual QA review of device screenshots at unbuilt / Lv1 / Lv10 and of the live reveal capture first; owner only for the subjective items below).
 Automated checks prove layout geometry, state resolution, wiring and determinism only. Presentation only: no economy, runtime, data, save, camera-API/framing, HUD-text or art-direction change;
 existing AUT-032 Kenney assets and primitives only (no new asset file; Modular Space is NOT imported). AUT-045 (era environment) and AUT-048 (era transition title/door/light sweep) are out of scope.
 
@@ -141,3 +141,8 @@ panel; tallest structure (~1.4x the Cell slab width, ~2x its silhouette); staged
 POLISH follow-ups (AUT-VIS, non-blocking): the post-cage massing is heavy and the hopper-topped core / Lv10 spire read small (Lv10 delta subtle at the default view); the product robot (0.12) is tiny (~12 px) next to the population robots;
 Cell population robots sit behind the panel text in the reveal framing (pre-existing). Open items: era goals have no HUD action (`advanced_robotics` is an era goal; the `unbuilt` seed pre-enters the robotics era so the capture can tap it) - product/UI decision;
 stale `DEFAULT_VIEW_OPTIONAL_ZONES` (AutomatedCell) - Technical Lead; Android instance budget not benchmarked. Not judged from stills: motion/pacing/feel, building-scale read (subjective, owner).
+
+## Owner decision (2026-11-12): ACCEPTED
+
+AUT-044 accepted; the current Complex silhouette is good enough for this stage. The massing / core / spire / product-robot scale issues stay tracked as non-blocking AUT-VIS polish. The Next Goal breakthrough flow is kept as is:
+no dedicated era-goal HUD action for now; revisit only if progression testing shows the trigger is unclear (the `unbuilt` seed still pre-enters the robotics era for capture).
