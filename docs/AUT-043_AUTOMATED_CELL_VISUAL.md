@@ -1,6 +1,6 @@
 # AUT-043 Automated Cell Visual
 
-**Human gate: PENDING** (device screenshots at unbuilt / Lv1 / Lv10, the live reveal, contrast with the Robot Line).
+**Human gate: ACCEPTED (2026-11-12)** (device screenshots at unbuilt / Lv1 / Lv10, the live reveal, contrast with the Robot Line).
 Automated checks prove layout geometry, state resolution, wiring and determinism only. Presentation only: no economy, runtime, data,
 save, camera-API/framing, HUD-text or art-direction change; existing AUT-032 Kenney assets only (no new asset file).
 
@@ -145,3 +145,9 @@ Evidence read: `temp/aut043/unbuilt.png`, `lv1.png`, `lv10.png` (+ `temp/aut042/
 - IMPORTANT (subjective, camera-directional): the cell is the smallest object at the left screen edge; arms, hopper and lamps are hard to tell apart at ~200 px and the Lv1 -> Lv10 delta is subtle.
   Possible follow-up (not AUT-043 scope): closer framing or larger scale via an `AUT-VIS` task (Orchestrator + Technical Lead for any default-framing change).
 - Not judgeable from stills (owner): the live build/reveal + focus beat, cycle motion, pan feel with the changed bounds, relaunch with no replay.
+
+## Human gate result (2026-11-12): ACCEPTED
+
+Owner accepted AUT-043 after the visual QA review (decision: accept, track the size/coherence issue). Non-blocking follow-up (AUT-VIS, tracked with the factory-coherence item): the Automated Cell is small at the left
+screen edge (~200 px vs ~500 px for the Robot Line) and the Lv1 -> Lv10 delta is subtle; closer framing or larger scale / stronger shared production-flow logic belongs to a Scene Presentation / Art Direction task
+(a default-framing change also needs Orchestrator + Technical Lead). The live build/reveal feel was not separately reviewed by the owner; it is accepted with the task.
