@@ -88,3 +88,14 @@ box-large 1.1 x 0.55 x 1.0; all pivots are bottom-centre. Robot.glb bind height 
 - The AUT-040 sparks are the six shared nodes under the Assembly composition (anchored on the line); the line's own `lightLevel` use is limited to lamp flicker.
 - Android: 4 extra Robot instances + 4 box instances + 1 belt/arm/machine set; the AUT-041 benchmark (30 robots ~53 fps on one DEBUG device) was not re-run with the line.
 - Source docs untouched (`CODEX_PLAN`, `ART_DIRECTION`, `ASSET_MANIFEST`). Out of scope by plan: Automated Cell, Era II title/door/light sweep (AUT-048).
+
+## Real-device gate prepared (2026-11-12, device 1100a155, portrait 1080x2412)
+
+Gate APK (FactoryWorld DEBUG, built from `5968288`, tracked build config restored): `temp/gate/ProjectAutomata-aut042-5968288-factoryworld.apk`,
+sha256 `8b52f1e0684da1d8ffcf7825c19c4cdbd59b106760fffb167812c4cce79b8100`; installed. Presence screenshots only (not a verdict): `temp/aut042/lv1.png`, `temp/aut042/lv10.png`
+(Robot Line visible south-west of the Assembly slice at both levels, Lv10 adds the second machine/arm and more belt items, robots walk the Line route, no errors in the
+seeded launches). Seeds: `npm run device:seed-aut042 -- --variant unbuilt|lv1|lv10`.
+
+Human gate checklist: (1) `unbuilt` seed: select the Robot Line and build it: ~2.2 s construction, one bounded camera focus, lamps/belt start, chassis -> robot items on the belt;
+(2) Lv1 and Lv10 read as a long, low line and a more convincing one at Lv10; (3) Workshop stays visible, no separate map; (4) robots on the Line -> Exit -> Storage route are
+readable and relieve the station clustering; (5) relaunch shows the built line instantly, no replay. Result: **PENDING**.
