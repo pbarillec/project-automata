@@ -38,6 +38,8 @@ import { AssemblyVisualController, ASSEMBLY_SLAB_NODE_NAME } from './AssemblyVis
 import { ConstructionPresentationController } from './ConstructionPresentationController';
 import { RobotPopulationController } from './RobotPopulationController';
 import { RobotLineVisualController, ROBOT_LINE_LAMP_OFF_NODE_PREFIX, ROBOT_LINE_LAMP_ON_NODE_PREFIX, ROBOT_LINE_LIP_NODE_NAME, ROBOT_LINE_SLAB_NODE_NAME } from './RobotLineVisualController';
+import { AutomatedCellVisualController, AUTOMATED_CELL_GUIDE_OFF_NODE_PREFIX, AUTOMATED_CELL_GUIDE_ON_NODE_PREFIX, AUTOMATED_CELL_LAMP_OFF_NODE_PREFIX, AUTOMATED_CELL_LAMP_ON_NODE_PREFIX, AUTOMATED_CELL_SLAB_NODE_NAME } from './AutomatedCellVisualController';
+import { AUTOMATED_CELL_FOUNDATION_SLAB, AUTOMATED_CELL_GUIDE, AUTOMATED_CELL_GUIDE_OFF_COLOR, AUTOMATED_CELL_GUIDE_ON_COLOR, AUTOMATED_CELL_GUIDE_PARTS, AUTOMATED_CELL_LAMP_IDS, AUTOMATED_CELL_LAMPS, AUTOMATED_CELL_REVEAL_TARGET, AUTOMATED_CELL_SPARK_ANCHOR, automatedCellLocal } from './AutomatedCellLayout.ts';
 import { ROBOT_LINE_FOUNDATION_SLAB, ROBOT_LINE_LAMP_IDS, ROBOT_LINE_LAMPS, ROBOT_LINE_OUTPUT_LIP, ROBOT_LINE_REVEAL_TARGET, ROBOT_LINE_SPARK_ANCHOR, robotLineLocal } from './RobotLineLayout.ts';
 import { FirstRobotPresentationController, ROBOT_BAY_LAMP_OFF_NODE_NAME, ROBOT_BAY_LAMP_ON_NODE_NAME } from './FirstRobotPresentationController';
 import { ASSEMBLY_FOUNDATION_SLAB, assemblyLocal, FIRST_ROBOT_REVEAL_TARGET, ROBOT_BAY_LAMP } from './AssemblySliceLayout.ts';
@@ -79,6 +81,10 @@ export class FactoryWorldBootstrap extends Component {
     @property([Prefab])
     public robotLinePrefabs: Prefab[] = [];
 
+    /** AUT-043 Automated Cell prefabs (AUT-032 imports), index-aligned with AUTOMATED_CELL_PREFAB_SLOTS. */
+    @property([Prefab])
+    public automatedCellPrefabs: Prefab[] = [];
+
     /** AUT-039 first Worker Bot: the AUT-032 Robot.glb prefab. */
     @property(Prefab)
     public robotPrefab: Prefab | null = null;
@@ -112,10 +118,12 @@ export class FactoryWorldBootstrap extends Component {
         this.createZones(site);
         this.createAssemblySlice(site);
         this.createRobotLineSlice(site);
+        this.createAutomatedCellSlice(site);
         this.createCameraRig(site);
         this.connectFirstAutomationPresentation(site);
         this.connectFirstRobotPresentation(site);
         this.connectRobotLinePresentation(site);
+        this.connectAutomatedCellPresentation(site);
         if (!site.getChildByName('NeutralFactoryKeyLight')) this.createLighting(site);
         this.createPresentationRegistry(site);
         const selection = this.createProducerSelection(site);
@@ -402,6 +410,9 @@ export class FactoryWorldBootstrap extends Component {
         controller.robotLineVisual = parent.getChildByName('Zone_RobotLine')
             ?.getChildByName('RobotLine_CompositionAnchor')
             ?.getComponent(RobotLineVisualController) ?? null;
+        controller.automatedCellVisual = parent.getChildByName('Zone_AutomatedCell')
+            ?.getChildByName('AutomatedCell_CompositionAnchor')
+            ?.getComponent(AutomatedCellVisualController) ?? null;
         controller.constructionPresentation = this.createConstructionPresentation(parent, registry);
         controller.robotPopulation = parent.getChildByName('Zone_AssemblyStation')
             ?.getChildByName('AssemblyStation_CompositionAnchor')
@@ -472,6 +483,12 @@ export class FactoryWorldBootstrap extends Component {
                 construction.registerTarget('robot_line', lineVisual);
                 construction.sparkAnchors.set('robot_line', this.assemblyLocalVec3(ROBOT_LINE_SPARK_ANCHOR));
             }
+            // AUT-043: the Automated Cell is the third target; the shared sparks re-anchor on the cell (assembly-local coordinates).
+            const cellVisual = parent.getChildByName('Zone_AutomatedCell')?.getChildByName('AutomatedCell_CompositionAnchor')?.getComponent(AutomatedCellVisualController);
+            if (cellVisual) {
+                construction.registerTarget('automated_cell', cellVisual);
+                construction.sparkAnchors.set('automated_cell', this.assemblyLocalVec3(AUTOMATED_CELL_SPARK_ANCHOR));
+            }
         }
         return construction;
     }
@@ -517,6 +534,56 @@ export class FactoryWorldBootstrap extends Component {
         if (!zone || !visual) return;
         visual.cameraController = parent.getChildByName('CameraRig')?.getComponent(MobileCameraController) ?? null;
         visual.focusAnchor = zone.getChildByName('RobotLine_RevealAnchor') ?? null;
+    }
+
+    /**
+     * AUT-043 Automated Cell (Producer #4): the AutomatedCell composition anchor gets the visual controller, the grey
+     * slab, the unlit status lamps and the one-flow floor guide (primitives), and a reveal focus anchor on the cell.
+     * Presentation only (it never reads or writes state).
+     */
+    private createAutomatedCellSlice(parent: Node): void {
+        const zone = parent.getChildByName('Zone_AutomatedCell');
+        const composition = zone?.getChildByName('AutomatedCell_CompositionAnchor');
+        if (!zone || !composition) return;
+        const visual = composition.getComponent(AutomatedCellVisualController) ?? composition.addComponent(AutomatedCellVisualController);
+        visual.automatedCellPrefabs = this.automatedCellPrefabs;
+        visual.robotPrefab = this.robotPrefab;
+        const local = (world: { x: number; y: number; z: number }): Vec3 => { const l = automatedCellLocal(world); return new Vec3(l.x, l.y, l.z); };
+        if (!composition.getChildByName(AUTOMATED_CELL_SLAB_NODE_NAME)) {
+            const slab = AUTOMATED_CELL_FOUNDATION_SLAB;
+            this.createBox(composition, AUTOMATED_CELL_SLAB_NODE_NAME, new Vec3(slab.size.x, slab.size.y, slab.size.z), local(slab.center), new Color(136, 140, 137, 255)).setScale(0, 0, 0);
+        }
+        // Status lamps: unlit graphite while idle, automation cyan when active (a colour state change, no dynamic light).
+        for (const lampId of AUTOMATED_CELL_LAMP_IDS) {
+            const lamp = AUTOMATED_CELL_LAMPS[lampId];
+            for (const [prefix, color] of [[AUTOMATED_CELL_LAMP_OFF_NODE_PREFIX, new Color(43, 49, 52, 255)], [AUTOMATED_CELL_LAMP_ON_NODE_PREFIX, new Color(82, 206, 224, 255)]] as const) {
+                const name = `${prefix}${lampId}`;
+                if (composition.getChildByName(name)) continue;
+                this.createBox(composition, name, new Vec3(lamp.size.x, lamp.size.y, lamp.size.z), local(lamp.center), color).setScale(0, 0, 0);
+            }
+        }
+        // One-flow floor guide: graphite until the cell is built, then ~40% cyan. Visible (graphite) from the start.
+        for (const part of AUTOMATED_CELL_GUIDE_PARTS) {
+            const guide = AUTOMATED_CELL_GUIDE[part];
+            const off = AUTOMATED_CELL_GUIDE_OFF_COLOR;
+            const on = AUTOMATED_CELL_GUIDE_ON_COLOR;
+            for (const [prefix, color, scale] of [[AUTOMATED_CELL_GUIDE_OFF_NODE_PREFIX, new Color(off.r, off.g, off.b, 255), 1], [AUTOMATED_CELL_GUIDE_ON_NODE_PREFIX, new Color(on.r, on.g, on.b, 255), 0]] as const) {
+                const name = `${prefix}${part}`;
+                if (composition.getChildByName(name)) continue;
+                this.createBox(composition, name, new Vec3(guide.size.x, guide.size.y, guide.size.z), local(guide.center), color).setScale(scale, scale, scale);
+            }
+        }
+        const reveal = zone.getChildByName('AutomatedCell_RevealAnchor') ?? new Node('AutomatedCell_RevealAnchor');
+        reveal.parent = zone;
+        reveal.setPosition(local(AUTOMATED_CELL_REVEAL_TARGET));
+    }
+
+    private connectAutomatedCellPresentation(parent: Node): void {
+        const zone = parent.getChildByName('Zone_AutomatedCell');
+        const visual = zone?.getChildByName('AutomatedCell_CompositionAnchor')?.getComponent(AutomatedCellVisualController);
+        if (!zone || !visual) return;
+        visual.cameraController = parent.getChildByName('CameraRig')?.getComponent(MobileCameraController) ?? null;
+        visual.focusAnchor = zone.getChildByName('AutomatedCell_RevealAnchor') ?? null;
     }
 
     private assemblyLocalVec3(world: { x: number; y: number; z: number }): Vec3 {

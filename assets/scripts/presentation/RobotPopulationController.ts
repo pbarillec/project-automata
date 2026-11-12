@@ -54,6 +54,7 @@ export class RobotPopulationController extends Component {
     private readonly robots: PooledRobot[] = [];
     private snapshotValue: RobotPopulationSnapshot | null = null;
     private robotLineBuilt = false;
+    private automatedCellBuilt = false;
     private clock = 0;
     private perf: FramePerfSampler | null = null;
 
@@ -97,7 +98,7 @@ export class RobotPopulationController extends Component {
         for (const robot of this.robots) {
             if (!robot.visible && robot.ramp <= 0) continue;
             robot.ramp = robot.visible ? Math.min(1, robot.ramp + (deltaSeconds / SCALE_IN_SECONDS)) : 0;
-            const route = resolvePoolRobotRoute(robot.variation.slot, this.robotLineBuilt);
+            const route = resolvePoolRobotRoute(robot.variation.slot, this.robotLineBuilt, this.automatedCellBuilt);
             if (route !== robot.route) {
                 robot.route = route;
                 if (robot.visible) robot.ramp = 0;
@@ -114,6 +115,7 @@ export class RobotPopulationController extends Component {
     private apply(snapshot: RobotPopulationSnapshot, phase: 'synced' | 'changed', source: string): RobotPopulationSnapshot {
         this.snapshotValue = snapshot;
         this.robotLineBuilt = snapshot.robotLineBuilt;
+        this.automatedCellBuilt = snapshot.automatedCellBuilt;
         if (snapshot.changed || phase === 'synced') {
             const plan = this.pool.resize(snapshot.pooled);
             this.ensureRobots(plan.instantiate);
@@ -139,6 +141,7 @@ export class RobotPopulationController extends Component {
                     visible: snapshot.visible,
                     pooled: snapshot.pooled,
                     robotLineBuilt: snapshot.robotLineBuilt,
+                    automatedCellBuilt: snapshot.automatedCellBuilt,
                     instantiated: this.pool.instantiated,
                 });
             }
@@ -158,7 +161,7 @@ export class RobotPopulationController extends Component {
             node.parent = this.node;
             node.active = true;
             node.setScale(0, 0, 0);
-            this.robots.push({ node, animations: node.getComponentsInChildren(Animation), variation: robotSlotVariation(slot), visible: false, ramp: 0, clip: null, route: resolvePoolRobotRoute(slot, this.robotLineBuilt) });
+            this.robots.push({ node, animations: node.getComponentsInChildren(Animation), variation: robotSlotVariation(slot), visible: false, ramp: 0, clip: null, route: resolvePoolRobotRoute(slot, this.robotLineBuilt, this.automatedCellBuilt) });
         }
     }
 

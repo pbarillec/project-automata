@@ -1,4 +1,5 @@
 import { ZONE_LAYOUT } from './FactoryZoneLayout.ts';
+import { AUTOMATED_CELL_FLOOR, AUTOMATED_CELL_FOUNDATION_SLAB } from './AutomatedCellLayout.ts';
 import { ROBOT_LINE_FLOOR, ROBOT_LINE_FOUNDATION_SLAB } from './RobotLineLayout.ts';
 
 /**
@@ -147,6 +148,14 @@ const FLOOR_RECTS: readonly FloorRect[] = Object.freeze([
         maxZ: ROBOT_LINE_FOUNDATION_SLAB.center.z + (ROBOT_LINE_FOUNDATION_SLAB.size.z / 2),
         top: ROBOT_LINE_FLOOR.slabTop,
     },
+    // AUT-043 Automated Cell grey slab (primitive box built by the bootstrap).
+    {
+        minX: AUTOMATED_CELL_FOUNDATION_SLAB.center.x - (AUTOMATED_CELL_FOUNDATION_SLAB.size.x / 2),
+        maxX: AUTOMATED_CELL_FOUNDATION_SLAB.center.x + (AUTOMATED_CELL_FOUNDATION_SLAB.size.x / 2),
+        minZ: AUTOMATED_CELL_FOUNDATION_SLAB.center.z - (AUTOMATED_CELL_FOUNDATION_SLAB.size.z / 2),
+        maxZ: AUTOMATED_CELL_FOUNDATION_SLAB.center.z + (AUTOMATED_CELL_FOUNDATION_SLAB.size.z / 2),
+        top: AUTOMATED_CELL_FLOOR.slabTop,
+    },
     // OpeningWorkshopFoundation: 6 x 0.18 x 4.8 at (-5.2, 0.05, -2.7).
     { minX: -8.2, maxX: -2.2, minZ: -5.1, maxZ: -0.3, top: SHELL_FLOOR.openingFoundationTop },
     // AssemblyStation_FutureFoundation: the zone footprint, 0.12 thick.
@@ -164,6 +173,14 @@ const FLOOR_RECTS: readonly FloorRect[] = Object.freeze([
         minZ: ZONE_LAYOUT.RobotLine.z - (ZONE_LAYOUT.RobotLine.depth / 2),
         maxZ: ZONE_LAYOUT.RobotLine.z + (ZONE_LAYOUT.RobotLine.depth / 2),
         top: ROBOT_LINE_FLOOR.foundationTop,
+    },
+    // AutomatedCell_FutureFoundation: the zone footprint, 0.12 thick (AUT-043 owner-moved zone).
+    {
+        minX: ZONE_LAYOUT.AutomatedCell.x - (ZONE_LAYOUT.AutomatedCell.width / 2),
+        maxX: ZONE_LAYOUT.AutomatedCell.x + (ZONE_LAYOUT.AutomatedCell.width / 2),
+        minZ: ZONE_LAYOUT.AutomatedCell.z - (ZONE_LAYOUT.AutomatedCell.depth / 2),
+        maxZ: ZONE_LAYOUT.AutomatedCell.z + (ZONE_LAYOUT.AutomatedCell.depth / 2),
+        top: AUTOMATED_CELL_FLOOR.foundationTop,
     },
 ]);
 

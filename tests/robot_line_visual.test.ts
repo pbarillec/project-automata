@@ -322,7 +322,7 @@ test('AUT-042 footprint: inside the RobotLine build area and clear of Assembly, 
     assert.equal(floorHeightAt(5.9, -1.9), 0.12);
     assert.equal(floorHeightAt(5.0, -0.3), 0.24);
     assert.equal(floorHeightAt(3.0, 0.3), 0.12);
-    assert.equal(floorHeightAt(3.0, 1.5), 0);
+    assert.equal(floorHeightAt(3.0, 0.9), 0, 'ground south of the Robot Line lane and the Automated Cell zone (AUT-043 moved the zone onto z 1.05..2.75)');
 });
 
 test('AUT-042 the whole composition is on screen at the default portrait view and in the reveal focus', () => {
@@ -531,9 +531,9 @@ test('AUT-042 population view model: the Robot Line flag follows the state; Robo
     assert.equal(fresh.sync(withBot(10, 1e12)).robotLineBuilt, true);
     assert.ok(fresh.sync(withBot(10, 1e12)).visible <= 14);
     const controller = read('assets/scripts/presentation/RobotPopulationController.ts');
-    assert.match(controller, /resolvePoolRobotRoute\(robot\.variation\.slot, this\.robotLineBuilt\)/);
+    assert.match(controller, /resolvePoolRobotRoute\(robot\.variation\.slot, this\.robotLineBuilt(, this\.automatedCellBuilt)?\)/);
     assert.match(controller, /sampleRobotPoolPose\(robot\.variation, this\.clock, route\)/);
-    assert.match(controller, /route: resolvePoolRobotRoute\(slot, this\.robotLineBuilt\)/, 'a loaded save starts on the right route (no re-scale)');
+    assert.match(controller, /route: resolvePoolRobotRoute\(slot, this\.robotLineBuilt(, this\.automatedCellBuilt)?\)/, 'a loaded save starts on the right route (no re-scale)');
     assert.doesNotMatch(controller, /instantiate\(this\.robotPrefab\);[\s\S]*instantiate\(this\.robotPrefab\)/, 'still one lazy instantiate site, no extra instances');
 });
 

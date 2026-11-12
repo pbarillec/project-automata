@@ -4,6 +4,7 @@ import { FirstRobotPresentationController } from './FirstRobotPresentationContro
 import { ConstructionPresentationController } from './ConstructionPresentationController';
 import { RobotPopulationController } from './RobotPopulationController';
 import { RobotLineVisualController } from './RobotLineVisualController';
+import { AutomatedCellVisualController } from './AutomatedCellVisualController';
 
 const { ccclass, property } = _decorator;
 
@@ -24,6 +25,10 @@ export class PresentationController extends Component {
     /** AUT-042: Robot Line composition (fake production, construction target, Era II reveal hook). */
     @property(RobotLineVisualController)
     public robotLineVisual: RobotLineVisualController | null = null;
+
+    /** AUT-043: Automated Cell composition (fake production, construction target, reveal focus beat). */
+    @property(AutomatedCellVisualController)
+    public automatedCellVisual: AutomatedCellVisualController | null = null;
 
     /** AUT-040: reusable construction/reveal sequence; fed before the other controllers so frame 0 is applied first. */
     @property(ConstructionPresentationController)
@@ -52,6 +57,7 @@ export class PresentationController extends Component {
         target?.sync(state);
         this.firstRobotPresentation?.sync(state as Parameters<FirstRobotPresentationController['sync']>[0]);
         this.robotLineVisual?.sync(state as Parameters<RobotLineVisualController['sync']>[0]);
+        this.automatedCellVisual?.sync(state as Parameters<AutomatedCellVisualController['sync']>[0]);
         this.robotPopulation?.sync(state as Parameters<RobotPopulationController['sync']>[0]);
     }
 
@@ -63,6 +69,7 @@ export class PresentationController extends Component {
         this.firstAutomationPresentation?.consumeDomainEvents(state, events);
         this.firstRobotPresentation?.consumeDomainEvents(state, events);
         this.robotLineVisual?.consumeDomainEvents(state, events);
+        this.automatedCellVisual?.consumeDomainEvents(state, events);
         this.robotPopulation?.consumeDomainEvents(state, events);
     }
 

@@ -26,6 +26,7 @@ import { runGp001Scenario } from './scenarios/gp001_assembly_batch.ts';
 import { runAut039Scenario } from './scenarios/aut039_first_robot.ts';
 import { seedAut040 } from './seed_aut040.ts';
 import { AUT042_SEED_VARIANTS, isAut042SeedVariant, seedAut042 } from './seed_aut042.ts';
+import { AUT043_SEED_VARIANTS, isAut043SeedVariant, seedAut043 } from './seed_aut043.ts';
 import { runAut041Benchmark } from './benchmark_aut041.ts';
 
 function parseArgs(argv: string[]): { command: string; flags: Record<string, string | boolean> } {
@@ -105,6 +106,18 @@ async function main(): Promise<number> {
         console.log(`seeded ${filesDir}save_main.json (${variant}) and launched`);
         return 0;
     }
+    if (command === 'seed-aut043') {
+        // AUT-043 human gate: seed an unbuilt (default) / Lv1 / Lv10 Automated Cell save and launch (no install, no assertions).
+        const variant = flags.variant === undefined || flags.variant === true ? 'unbuilt' : flags.variant;
+        if (!isAut043SeedVariant(variant)) { console.log(`unknown --variant; expected one of ${AUT043_SEED_VARIANTS.join(', ')}`); return 1; }
+        const driver = new AdbDeviceDriver();
+        const selection = selectDevice(await driver.devices(), typeof flags.serial === 'string' ? flags.serial : undefined);
+        if (!selection.ok) { console.log(JSON.stringify(selection, null, 2)); return 2; }
+        if (typeof flags.serial === 'string') driver.useSerial(flags.serial);
+        const filesDir = await seedAut043(driver, 'com.projectautomata.androidbaseline', 'com.cocos.game.AppActivity', variant);
+        console.log(`seeded ${filesDir}save_main.json (${variant}) and launched`);
+        return 0;
+    }
     if (command === 'bench-aut041') {
         // AUT-041 DEBUG-only robot population benchmark on the connected device (APK must already be installed).
         const driver = new AdbDeviceDriver();
@@ -126,7 +139,7 @@ async function main(): Promise<number> {
         console.log(restored ? 'restored tracked build config from temp/device/gate backup' : 'no backup found');
         return restored ? 0 : 1;
     }
-    console.log('usage: node tools/device/cli.ts devices | c3|int001|r036|ui001|r031|gp001|aut039 --apk <path> [--serial <id>] [--run-id <id>] [--skip-install] | seed-aut040 [--serial <id>] | seed-aut042 [--variant unbuilt|lv1|lv10] [--serial <id>] | gate-build [--label <l>] | restore-build-config');
+    console.log('usage: node tools/device/cli.ts devices | c3|int001|r036|ui001|r031|gp001|aut039 --apk <path> [--serial <id>] [--run-id <id>] [--skip-install] | seed-aut040 [--serial <id>] | seed-aut042 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut043 [--variant unbuilt|lv1|lv10] [--serial <id>] | gate-build [--label <l>] | restore-build-config');
     return command === 'help' ? 0 : 1;
 }
 

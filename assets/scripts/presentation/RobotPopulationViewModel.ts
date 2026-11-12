@@ -1,5 +1,6 @@
 import type { GameState } from '../state/GameState.ts';
 import { isFirstRobotPresent } from './AssemblyVisualStateResolver.ts';
+import { resolveAutomatedCellVisualState } from './AutomatedCellVisualStateResolver.ts';
 import { resolveRobotLineVisualState } from './RobotLineVisualStateResolver.ts';
 import { resolvePooledRobotCount, resolveVisibleRobotCount, type RobotPopulationOptions } from './RobotPopulation.ts';
 
@@ -10,7 +11,9 @@ export interface RobotPopulationSnapshot {
     readonly pooled: number;
     /** AUT-042: the Robot Line is built, so about a third of the pooled robots take the Line -> Exit -> Storage loop. */
     readonly robotLineBuilt: boolean;
-    /** The pooled count (or the Robot Line route allocation) changed since the previous snapshot. */
+    /** AUT-043: the Automated Cell is built, so a second third of the pooled robots take the Cell -> Storage loop. */
+    readonly automatedCellBuilt: boolean;
+    /** The pooled count (or a route allocation) changed since the previous snapshot. */
     readonly changed: boolean;
     /** The first snapshot (save load) applies instantly; only live growth may scale in. */
     readonly animateGrowth: boolean;
@@ -21,6 +24,7 @@ export class RobotPopulationViewModel {
     private options: RobotPopulationOptions;
     private previousPooled: number | null = null;
     private previousLineBuilt: boolean | null = null;
+    private previousCellBuilt: boolean | null = null;
 
     public constructor(options: RobotPopulationOptions = {}) {
         this.options = options;
@@ -39,8 +43,11 @@ export class RobotPopulationViewModel {
         const robotLineBuilt = resolveRobotLineVisualState(state).constructed;
         const previous = this.previousPooled;
         const previousLine = this.previousLineBuilt;
+        const previousCell = this.previousCellBuilt;
+        const automatedCellBuilt = resolveAutomatedCellVisualState(state).constructed;
         this.previousPooled = pooled;
         this.previousLineBuilt = robotLineBuilt;
-        return { robotsBuilt, visible, pooled, robotLineBuilt, changed: previous !== pooled || previousLine !== robotLineBuilt, animateGrowth: previous !== null && pooled > previous };
+        this.previousCellBuilt = automatedCellBuilt;
+        return { robotsBuilt, visible, pooled, robotLineBuilt, automatedCellBuilt, changed: previous !== pooled || previousLine !== robotLineBuilt || previousCell !== automatedCellBuilt, animateGrowth: previous !== null && pooled > previous };
     }
 }

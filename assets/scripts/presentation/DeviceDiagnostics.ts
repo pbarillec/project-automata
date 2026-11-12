@@ -45,6 +45,8 @@ export const DEVICE_EVENT_TYPES = [
     'robot_benchmark',
     // AUT-042: Robot Line / Era II reveal hook: { phase: 'synced' | 'construction_started' | 'activated' | 'focus_requested' | 'item_cycle', ... }.
     'robot_line_state',
+    // AUT-043: Automated Cell: { phase: 'synced' | 'construction_started' | 'activated' | 'focus_requested' | 'item_cycle', ... }.
+    'automated_cell_state',
     'error',
 ] as const;
 

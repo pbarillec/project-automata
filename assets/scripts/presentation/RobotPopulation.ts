@@ -1,3 +1,4 @@
+import { AUTOMATED_CELL_LOOP_SECONDS, sampleCellLoopPose } from './AutomatedCellExitRoute.ts';
 import { ROBOT_LINE_LOOP_SECONDS, sampleLineLoopPose } from './RobotLineExitRoute.ts';
 import { WORKER_BOT_LOOP_SECONDS, sampleLoopPose, type WorkerBotClip } from './WorkerBotRoute.ts';
 
@@ -106,21 +107,28 @@ export interface RobotPoolPose {
 }
 
 /** AUT-042: which predefined loop a pooled robot follows. */
-export type PoolRobotRoute = 'assembly_storage' | 'line_storage';
+export type PoolRobotRoute = 'assembly_storage' | 'line_storage' | 'cell_storage';
 
 /** About one third of the pooled robots (slots 1, 4, 7, ... = ranks 2, 5, 8, ...) take the Line -> Exit -> Storage loop once the Robot Line is built. */
 export const ROBOT_LINE_ROUTE_STRIDE = 3;
 export const ROBOT_LINE_ROUTE_FIRST_SLOT = 1;
 
-export function resolvePoolRobotRoute(slot: number, robotLineBuilt: boolean): PoolRobotRoute {
-    return robotLineBuilt && slot >= ROBOT_LINE_ROUTE_FIRST_SLOT && (slot - ROBOT_LINE_ROUTE_FIRST_SLOT) % ROBOT_LINE_ROUTE_STRIDE === 0 ? 'line_storage' : 'assembly_storage';
+/** AUT-043: a second third (slots 2, 5, 8, ... = ranks 3, 6, 9, ...) takes the Cell -> Storage loop once the Automated Cell is built. */
+export const AUTOMATED_CELL_ROUTE_FIRST_SLOT = 2;
+
+export function resolvePoolRobotRoute(slot: number, robotLineBuilt: boolean, automatedCellBuilt: boolean = false): PoolRobotRoute {
+    if (robotLineBuilt && slot >= ROBOT_LINE_ROUTE_FIRST_SLOT && (slot - ROBOT_LINE_ROUTE_FIRST_SLOT) % ROBOT_LINE_ROUTE_STRIDE === 0) return 'line_storage';
+    if (automatedCellBuilt && slot >= AUTOMATED_CELL_ROUTE_FIRST_SLOT && (slot - AUTOMATED_CELL_ROUTE_FIRST_SLOT) % ROBOT_LINE_ROUTE_STRIDE === 0) return 'cell_storage';
+    return 'assembly_storage';
 }
 
 /** Pose of a pooled robot `t` seconds after the population clock start (periodic, deterministic). */
 export function sampleRobotPoolPose(variation: RobotSlotVariation, t: number, route: PoolRobotRoute = 'assembly_storage'): RobotPoolPose {
     const pose = route === 'line_storage'
         ? sampleLineLoopPose((t * variation.speedFactor) + (variation.phaseFraction * ROBOT_LINE_LOOP_SECONDS))
-        : sampleLoopPose((t * variation.speedFactor) + variation.phaseSeconds);
+        : route === 'cell_storage'
+            ? sampleCellLoopPose((t * variation.speedFactor) + (variation.phaseFraction * AUTOMATED_CELL_LOOP_SECONDS))
+            : sampleLoopPose((t * variation.speedFactor) + variation.phaseSeconds);
     const radians = (pose.headingDeg * Math.PI) / 180;
     // Perpendicular to the heading (heading 0 faces +Z, so the right-hand side is +X).
     return {

@@ -114,7 +114,7 @@ test('AUT-R-031-02: zone layout is engine-free, moved unchanged, and maps zones 
         Fabricator: { x: -6, z: -3, width: 5, depth: 4 },
         AssemblyStation: { x: -2, z: -1.8, width: 4, depth: 3.5 },
         RobotLine: { x: 3.5, z: -1.2, width: 6, depth: 3.5 },
-        AutomatedCell: { x: 6.2, z: 3.2, width: 4.5, depth: 4 },
+        AutomatedCell: { x: 2.3, z: 1.9, width: 2.0, depth: 1.7 }, // AUT-043 owner decision 2026-11-12: moved onto the on-screen ground south of the spine
         AdvancedRoboticsComplex: { x: 2, z: 6, width: 6, depth: 5.5 },
     });
     for (const id of M.factoryZoneIds(M.ZONE_LAYOUT)) assert.equal(M.producerIdForZone(id), FACTORY_WORLD_SELECTION_PRODUCER_IDS[id]);
