@@ -127,3 +127,12 @@ Machine top is 1.29975 (not exactly 1.3): the hopper (y 0.81) floats 0.0001 abov
 - Android: 3 extra Robot instances + 3 box instances + 1 module set; the AUT-041 benchmark was not re-run with the cell.
 - Source docs untouched (`CODEX_PLAN`, `ART_DIRECTION`, `ASSET_MANIFEST`). The broader factory-coherence composition (one visual flow across Fabricator / Assembly / Line / Cell) is a separate follow-up; only the light connector strip is here.
   Out of scope by plan: Advanced Robotics Complex (AUT-044), Era II/III title/door/light sweeps (AUT-048).
+
+## Real-device gate prepared (2026-11-12, device 1100a155, portrait 1080x2412)
+
+Gate APK (FactoryWorld DEBUG, from `abfbd9f`, tracked build config restored): `temp/gate/ProjectAutomata-aut043-abfbd9f-factoryworld.apk`,
+sha256 `92a7cc1f3d74759462b7b0210b1742f6303a45c32eba7773bdeff437f35742d7`; installed. Presence screenshots only (not a verdict): `temp/aut043/lv1.png`, `temp/aut043/lv10.png`
+(compact walled cell on screen at the left edge, south of the spine, with the guide strip toward the storage crate; zero error events in the seeded launches).
+Seeds: `npm run device:seed-aut043 -- --variant unbuilt|lv1|lv10`. The `unbuilt` seed owns Robot Line Lv25 + 100 Robots Built + 50M Output; the live build is the Next Goal
+"Automated Cell Architecture" breakthrough (not the Producer Panel).
+Human gate: silhouette contrast vs the Robot Line, readability at the screen edge, the live reveal + focus beat, pan feel with the cell built. Result: **PENDING**.
