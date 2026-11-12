@@ -36,6 +36,8 @@ export const DEVICE_EVENT_TYPES = [
     'assembly_batch',
     // AUT-039: first Worker Bot presentation: { phase: 'synced' | 'reveal_started' | 'reveal_complete' | 'loop_started' | 'waypoint', ... }.
     'robot_state',
+    // AUT-040: reusable construction sequence: { phase: 'started' | 'activated', producerId, modules?, durationSeconds? }.
+    'construction_state',
     'error',
 ] as const;
 

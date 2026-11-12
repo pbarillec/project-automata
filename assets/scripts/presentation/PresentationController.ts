@@ -1,6 +1,7 @@
 import { _decorator, Component, Node } from 'cc';
 import { FirstAutomationPresentationController } from './FirstAutomationPresentationController';
 import { FirstRobotPresentationController } from './FirstRobotPresentationController';
+import { ConstructionPresentationController } from './ConstructionPresentationController';
 
 const { ccclass, property } = _decorator;
 
@@ -13,6 +14,10 @@ export class PresentationController extends Component {
     /** AUT-039: first Worker Bot reveal / work loop (Assembly Station composition). */
     @property(FirstRobotPresentationController)
     public firstRobotPresentation: FirstRobotPresentationController | null = null;
+
+    /** AUT-040: reusable construction/reveal sequence; fed before the other controllers so frame 0 is applied first. */
+    @property(ConstructionPresentationController)
+    public constructionPresentation: ConstructionPresentationController | null = null;
 
     @property([Node])
     public focusAnchors: Node[] = [];
@@ -33,6 +38,7 @@ export class PresentationController extends Component {
             sync: (value: unknown) => unknown;
         } | null;
 
+        this.constructionPresentation?.sync(state as Parameters<ConstructionPresentationController['sync']>[0]);
         target?.sync(state);
         this.firstRobotPresentation?.sync(state as Parameters<FirstRobotPresentationController['sync']>[0]);
     }
@@ -41,6 +47,7 @@ export class PresentationController extends Component {
         state: Parameters<FirstAutomationPresentationController['consumeDomainEvents']>[0],
         events: Parameters<FirstAutomationPresentationController['consumeDomainEvents']>[1],
     ): void {
+        this.constructionPresentation?.consumeDomainEvents(state, events);
         this.firstAutomationPresentation?.consumeDomainEvents(state, events);
         this.firstRobotPresentation?.consumeDomainEvents(state, events);
     }

@@ -35,6 +35,7 @@ import { ProducerPanelController } from './ProducerPanelController';
 import { AssemblyBatchActionController } from './AssemblyBatchActionController';
 import { FirstAutomationPresentationController } from './FirstAutomationPresentationController';
 import { AssemblyVisualController, ASSEMBLY_SLAB_NODE_NAME } from './AssemblyVisualController';
+import { ConstructionPresentationController } from './ConstructionPresentationController';
 import { FirstRobotPresentationController, ROBOT_BAY_LAMP_OFF_NODE_NAME, ROBOT_BAY_LAMP_ON_NODE_NAME } from './FirstRobotPresentationController';
 import { ASSEMBLY_FOUNDATION_SLAB, assemblyLocal, FIRST_ROBOT_REVEAL_TARGET, ROBOT_BAY_LAMP } from './AssemblySliceLayout.ts';
 import { CocosFileSystemPort } from '../app/CocosFileSystemPort';
@@ -389,6 +390,7 @@ export class FactoryWorldBootstrap extends Component {
         controller.firstRobotPresentation = parent.getChildByName('Zone_AssemblyStation')
             ?.getChildByName('AssemblyStation_CompositionAnchor')
             ?.getComponent(FirstRobotPresentationController) ?? null;
+        controller.constructionPresentation = this.createConstructionPresentation(parent, registry);
         controller.focusAnchors = FACTORY_ZONE_IDS.map((id) => parent.getChildByName(`Zone_${id}`)?.getChildByName(`${id}_FocusAnchor`)).filter((node): node is Node => node !== null && node !== undefined);
         controller.compositionAnchors = FACTORY_ZONE_IDS.map((id) => parent.getChildByName(`Zone_${id}`)?.getChildByName(`${id}_CompositionAnchor`)).filter((node): node is Node => node !== null && node !== undefined);
     }
@@ -430,6 +432,25 @@ export class FactoryWorldBootstrap extends Component {
         const reveal = zone.getChildByName('FirstRobot_RevealAnchor') ?? new Node('FirstRobot_RevealAnchor');
         reveal.parent = zone;
         reveal.setPosition(this.assemblyLocalVec3(FIRST_ROBOT_REVEAL_TARGET));
+    }
+
+    /** AUT-040: one reusable construction controller; the Assembly composition is its first registered target. */
+    private createConstructionPresentation(parent: Node, registry: Node): ConstructionPresentationController {
+        const construction = registry.getComponent(ConstructionPresentationController) ?? registry.addComponent(ConstructionPresentationController);
+        const composition = parent.getChildByName('Zone_AssemblyStation')?.getChildByName('AssemblyStation_CompositionAnchor');
+        const visual = composition?.getComponent(AssemblyVisualController);
+        if (composition && visual) {
+            construction.registerTarget('assembly_station', visual);
+            if (construction.sparkNodes.length === 0) {
+                for (let index = 0; index < 6; index += 1) {
+                    const spark = this.createBox(composition, `ConstructionSpark_${index}`, new Vec3(1, 1, 1), new Vec3(0, 0, 0), index % 2 === 0 ? new Color(82, 206, 224, 255) : new Color(255, 190, 80, 255));
+                    spark.setScale(0, 0, 0);
+                    construction.sparkNodes.push(spark);
+                }
+            }
+            construction.sparkAnchors.set('assembly_station', this.assemblyLocalVec3({ x: -2.9, y: 0.16, z: -1.45 }));
+        }
+        return construction;
     }
 
     private assemblyLocalVec3(world: { x: number; y: number; z: number }): Vec3 {

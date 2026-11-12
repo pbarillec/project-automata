@@ -10,6 +10,8 @@ import {
     type AssemblyPrefabModuleId,
 } from './AssemblySliceLayout.ts';
 import { resolveAssemblyVisualState, type AssemblyVisualDescriptor } from './AssemblyVisualStateResolver.ts';
+import type { ConstructionSample } from './ConstructionSequence.ts';
+import type { ConstructionTarget } from './ConstructionPresentationController';
 
 const { ccclass } = _decorator;
 
@@ -27,13 +29,15 @@ const PANEL_PULSE_AMOUNT = 0.03;
  * Android native never deactivates imported 3D nodes (AUT-038 rule). It never writes GameState.
  */
 @ccclass('AssemblyVisualController')
-export class AssemblyVisualController extends Component {
+export class AssemblyVisualController extends Component implements ConstructionTarget {
     /** Supplied by FactoryWorldBootstrap at runtime. */
     public assemblyPrefabs: Prefab[] = [];
 
     private readonly moduleNodes = new Map<AssemblyModuleId, Node>();
     private descriptorValue: AssemblyVisualDescriptor | null = null;
     private panelTime = 0;
+    /** AUT-040: while a construction sequence runs, module scales follow it instead of snapping to the built state. */
+    private construction: ConstructionSample | null = null;
 
     public start(): void {
         this.ensureModuleNodes();
@@ -52,6 +56,18 @@ export class AssemblyVisualController extends Component {
         this.applyModules(new Set(descriptor.modules), descriptor.placeholderVisible);
     }
 
+    /** AUT-040: the modules the construction sequence reveals when the station is first built. */
+    public getConstructionModuleIds(state: GameState): readonly string[] {
+        return resolveAssemblyVisualState(state).modules;
+    }
+
+    public setConstructionSample(sample: ConstructionSample | null): void {
+        this.construction = sample;
+        if (!this.descriptorValue) return;
+        this.ensureModuleNodes();
+        this.applyModules(new Set(this.descriptorValue.modules), this.descriptorValue.placeholderVisible);
+    }
+
     public getDescriptor(): AssemblyVisualDescriptor | null {
         return this.descriptorValue;
     }
@@ -64,7 +80,7 @@ export class AssemblyVisualController extends Component {
     public update(deltaSeconds: number): void {
         const descriptor = this.descriptorValue;
         const panel = this.moduleNodes.get('status_panel');
-        if (!descriptor || !panel || !descriptor.panelLit || !descriptor.modules.includes('status_panel')) return;
+        if (this.construction || !descriptor || !panel || !descriptor.panelLit || !descriptor.modules.includes('status_panel')) return;
         this.panelTime += deltaSeconds;
         const scale = ASSEMBLY_MODULE_TRANSFORMS.status_panel.scale * (1 + (Math.sin(this.panelTime * 5) * PANEL_PULSE_AMOUNT));
         panel.setScale(scale, scale, scale);
@@ -96,7 +112,8 @@ export class AssemblyVisualController extends Component {
             if (!node) continue;
             node.active = true;
             const scale = moduleId === 'foundation_slab' ? 1 : ASSEMBLY_MODULE_TRANSFORMS[moduleId as AssemblyPrefabModuleId].scale;
-            const applied = visible.has(moduleId) ? scale : 0;
+            const factor = this.construction?.modules.find((module) => module.id === moduleId)?.scaleFactor ?? 1;
+            const applied = visible.has(moduleId) ? scale * factor : 0;
             node.setScale(applied, applied, applied);
         }
         const zone = this.node.parent;
@@ -104,7 +121,8 @@ export class AssemblyVisualController extends Component {
             const placeholder = zone?.getChildByName(name);
             if (!placeholder) continue;
             placeholder.active = true;
-            const applied = placeholderVisible ? 1 : 0;
+            // During construction the inactive shell holds, then gives way while the first modules appear.
+            const applied = this.construction ? Math.max(0, 1 - (this.construction.progress * 4)) : placeholderVisible ? 1 : 0;
             placeholder.setScale(applied, applied, applied);
         }
     }
