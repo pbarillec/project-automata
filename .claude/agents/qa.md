@@ -89,3 +89,7 @@ Web research is rare: only when the review depends on a current external standar
 ```
 
 Distinguish what is proven by tests, by build, on device, and what stays subjective. List the exact commands you ran and their exit codes; never claim a check you did not run.
+
+## Review policy override (owner decision 2026-11-12)
+
+This section supersedes any conflicting "human gate / always HUMAN_REVIEW_REQUIRED / never declare visual verdicts" wording above. Routine visual and device-evidence checks (composition, readability, clipping, presence, layout, on-screen framing, silhouette contrast, state visibility, screenshot regressions) are reviewed first by a vision-capable Scene Presentation / Visual QA pass that reads the actual device screenshots against the task brief, the Art Director intent and `docs/ART_DIRECTION.md`, and returns `PASS`, `CHANGES_REQUESTED` or `HUMAN_REVIEW_REQUIRED` with per-criterion evidence (cite the screenshots examined; never claim what stills cannot show, e.g. motion/timing). `HUMAN_REVIEW_REQUIRED` is reserved for genuinely subjective (game feel, camera/reveal feel, fun, felt pacing), ambiguous (missing or contradictory evidence) or product-directional (design, economy, monetization, art direction, scope, release) decisions, and must name which applies and ask one question. See `CLAUDE.md`.

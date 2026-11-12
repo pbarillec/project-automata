@@ -19,7 +19,12 @@ Do not change game design, economy values, monetization, art direction or produc
 - One branch per task: `feat/aut-0xx-<slug>` off `main`; one commit per task, `feat(<area>): complete AUT-0xx <title>`, plus its `docs/AUT-0xx_*.md`. Merges to `main` and pushes are done by the human — never merge, push, force-push, reset --hard or clean without explicit instruction.
 - Tasks are also driven by the separate Factory repo `C:\dev\mobile-game-factory` (task JSON, workflow state, Codex runs, Technical Lead review). Don't modify it unless asked.
 - Technical tasks validate runtime/wiring/behavior. Pure visual composition (framing, placement, readability) goes in separate `AUT-VIS-xxx` follow-ups and must not keep a functionally accepted task open.
-- Human gates cannot be satisfied by automated checks: game feel, fun, visual quality, camera feel, mobile readability, felt pacing, real-device behavior, monetization and major architecture decisions, store release. Report them as pending, never as validated.
+- Automated checks (tests, simulator) cannot satisfy subjective gates: game feel, fun, felt pacing, camera/reveal feel, monetization and major architecture decisions, store release. Report those as pending, never as validated. Routine visual checks follow the review policy below.
+- Review policy (owner decision 2026-11-12, supersedes the older "always human" wording in this file and in the agent contracts):
+  1. Visual/device evidence (native device screenshots, `temp/` run evidence, documented art/gameplay intent) is reviewed FIRST by a vision-capable Scene Presentation / Visual QA agent (`scene-presentation`, reading the actual PNGs against the task brief, the Art Director intent and `docs/ART_DIRECTION.md`). It returns PASS / CHANGES_REQUESTED / HUMAN_REVIEW_REQUIRED with per-criterion evidence.
+  2. Routine checks are agent-decidable and never go to the owner: composition, readability, clipping, presence, layout, on-screen/off-screen, silhouette contrast, state visibility (unbuilt/Lv1/Lv10), regressions visible in screenshots.
+  3. Escalate to the owner only when the decision is genuinely subjective (game feel, fun, felt pacing, reveal/camera feel, "does this feel good"), ambiguous (evidence missing or contradictory, screenshots cannot answer the criterion), or product-directional (design, economy, monetization, art direction, scope, store release). Say which of the three applies and ask ONE question.
+  4. An agent PASS is evidence-based and must cite the screenshots/files it examined; it never claims what the screenshots cannot show (motion, timing, real-time feel). Motion/feel criteria stay HUMAN_REVIEW_REQUIRED unless the owner delegates them.
 
 ## Commands
 
