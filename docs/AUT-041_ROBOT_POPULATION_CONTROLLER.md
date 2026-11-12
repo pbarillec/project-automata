@@ -22,3 +22,23 @@ Automated checks prove mapping, pooling and wiring only. Presentation only: no e
   The benchmark cap is available as `RobotPopulationViewModel({ maxVisible })` but is not wired to a DEBUG switch yet.
 - Pooled robots reuse the Assembly <-> Storage loop only. Robot Line / Cell / Complex routes, background fakes and the Founder Robot come with later tasks (AUT-042+).
 - Spacing/clutter, loop crowding at 12-14 robots and the lateral offsets are implementer values for Scene Presentation / the human gate.
+
+## Device benchmark (2026-11-12, device 1100a155, portrait 1080x2412, DEBUG APK `ProjectAutomata-aut041-0694d57-factoryworld.apk`)
+
+DEBUG-only switch: the override file `population_benchmark.json` (`{ "maxVisible": N }`) is read only when `DEBUG` (`RobotPopulationController.onLoad`);
+the app samples frame time (`FramePerfSampler`, 6 s warm-up then 3 x 5 s windows) and emits `robot_perf` / `robot_benchmark`. Run: `npm run device:bench-aut041`
+(seeded save: Worker Bot owned, Assembly Lv10, Robots Built 1,000,000 so the cap decides). Evidence: `temp/aut041/benchmark-2026-11-12T1122/`
+(summary.md, results.json, per-size logcat, meminfo, screenshot).
+
+| robots | fps | avg ms | worst p95 ms | max ms | PSS MB | errors |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 57.8 | 17.30 | 21.47 | 34.55 | 250 | 0 |
+| 8 | 57.5 | 17.39 | 21.18 | 29.13 | 278 | 0 |
+| 14 | 56.5 | 17.70 | 22.31 | 32.09 | 302 | 0 |
+| 20 | 56.0 | 17.86 | 22.75 | 28.36 | 313 | 0 |
+| 30 | 52.8 | 18.95 | 24.94 | 29.86 | 346 | 0 |
+
+Frame time stays near the ~60 Hz cap up to 20 robots and drops to ~53 fps at 30 (above the 14 baseline). Memory grows ~3-4 MB per robot. This is one DEBUG device and
+evidence only; it is not a performance verdict or a device-class guarantee. Observation from the 14-robot screenshot (not a verdict): robots cluster around the
+station/storage dwell points instead of spreading along the loop, because the loop spends most of its time dwelling there.
+**Visual/crowding human gate at 12-14 robots: PENDING.**
