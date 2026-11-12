@@ -1,6 +1,6 @@
 # AUT-040 Reusable Construction Presentation
 
-**Human gate: PENDING** (feel, readability and timing of the sequence on a real device). Automated checks only prove
+**Human gate: PASS (2026-11-12)** (feel, readability and timing of the sequence on a real device). Automated checks only prove
 wiring and determinism. Presentation only: no economy, runtime, save, camera or scene-file change.
 
 ## What was built
@@ -43,4 +43,4 @@ Checklist for the human (build the Assembly Station live, then judge):
 
 Tracing: `adb logcat -d | grep AUT-DEVICE | grep construction_state` should show `started` (modules, durationSeconds) then `activated`.
 Not covered by an automated scenario (the build tap is a human step); automated checks remain `npm run check`.
-Human gate result: PENDING. AUT-041 must not start before it.
+Human gate result: PASS (2026-11-12). AUT-041 may start.
