@@ -42,6 +42,8 @@ import { AutomatedCellVisualController, AUTOMATED_CELL_GUIDE_OFF_NODE_PREFIX, AU
 import { AUTOMATED_CELL_FOUNDATION_SLAB, AUTOMATED_CELL_GUIDE, AUTOMATED_CELL_GUIDE_OFF_COLOR, AUTOMATED_CELL_GUIDE_ON_COLOR, AUTOMATED_CELL_GUIDE_PARTS, AUTOMATED_CELL_LAMP_IDS, AUTOMATED_CELL_LAMPS, AUTOMATED_CELL_REVEAL_TARGET, AUTOMATED_CELL_SPARK_ANCHOR, automatedCellLocal } from './AutomatedCellLayout.ts';
 import { AdvancedRoboticsComplexVisualController, ARC_GUIDE_OFF_NODE_PREFIX, ARC_GUIDE_ON_NODE_PREFIX, ARC_LAMP_OFF_NODE_PREFIX, ARC_LAMP_ON_NODE_PREFIX, ARC_SLAB_NODE_NAME } from './AdvancedRoboticsComplexVisualController';
 import { ARC_BEAM_GRAPHITE_COLOR, ARC_BEAMS, ARC_FOUNDATION_SLAB, ARC_GUIDE, ARC_GUIDE_OFF_COLOR, ARC_GUIDE_ON_COLOR, ARC_GUIDE_PARTS, ARC_LAMP_IDS, ARC_LAMPS, ARC_REVEAL_TARGET, ARC_SPARK_ANCHOR, arcLocal } from './AdvancedRoboticsComplexLayout.ts';
+import { EraEnvironmentVisualController } from './EraEnvironmentVisualController';
+import { ERA_ENV_BOXES, ERA_ENV_GROUP_IDS, ERA_ENV_GROUP_NODE_NAMES, ERA_ENV_ROOT_NODE_NAME } from './EraEnvironmentLayout.ts';
 import { ROBOT_LINE_FOUNDATION_SLAB, ROBOT_LINE_LAMP_IDS, ROBOT_LINE_LAMPS, ROBOT_LINE_OUTPUT_LIP, ROBOT_LINE_REVEAL_TARGET, ROBOT_LINE_SPARK_ANCHOR, robotLineLocal } from './RobotLineLayout.ts';
 import { FirstRobotPresentationController, ROBOT_BAY_LAMP_OFF_NODE_NAME, ROBOT_BAY_LAMP_ON_NODE_NAME } from './FirstRobotPresentationController';
 import { ASSEMBLY_FOUNDATION_SLAB, assemblyLocal, FIRST_ROBOT_REVEAL_TARGET, ROBOT_BAY_LAMP } from './AssemblySliceLayout.ts';
@@ -91,6 +93,10 @@ export class FactoryWorldBootstrap extends Component {
     @property([Prefab])
     public advancedRoboticsComplexPrefabs: Prefab[] = [];
 
+    /** AUT-045 era environment prefabs (AUT-032 structure-high), index-aligned with ERA_ENV_PREFAB_SLOTS. */
+    @property([Prefab])
+    public environmentPrefabs: Prefab[] = [];
+
     /** AUT-039 first Worker Bot: the AUT-032 Robot.glb prefab. */
     @property(Prefab)
     public robotPrefab: Prefab | null = null;
@@ -133,6 +139,7 @@ export class FactoryWorldBootstrap extends Component {
         this.connectAutomatedCellPresentation(site);
         this.connectAdvancedRoboticsComplexPresentation(site);
         if (!site.getChildByName('NeutralFactoryKeyLight')) this.createLighting(site);
+        this.createEraEnvironment(site);
         this.createPresentationRegistry(site);
         const selection = this.createProducerSelection(site);
         this.createUiRoot(site);
@@ -405,6 +412,33 @@ export class FactoryWorldBootstrap extends Component {
         light.illuminance = 45000;
     }
 
+    /**
+     * AUT-045 era environment: a root per group (hall / vertical / teaser) under `EraEnvironment`, hidden by scale until the era
+     * shows them, holding the unlit primitive boxes; the controller adds the structure-high instances from `environmentPrefabs`
+     * and recolours the three shell boxes, the camera clear colour and the key light. Presentation only.
+     */
+    private createEraEnvironment(parent: Node): void {
+        const root = parent.getChildByName(ERA_ENV_ROOT_NODE_NAME) ?? new Node(ERA_ENV_ROOT_NODE_NAME);
+        root.layer = Layers.Enum.DEFAULT;
+        root.parent = parent;
+        const visual = root.getComponent(EraEnvironmentVisualController) ?? root.addComponent(EraEnvironmentVisualController);
+        visual.environmentPrefabs = this.environmentPrefabs;
+        visual.worldCamera = parent.getChildByName('CameraRig')?.getChildByName('WorldCamera')?.getComponent(Camera) ?? null;
+        visual.keyLight = parent.getChildByName('NeutralFactoryKeyLight')?.getComponent(DirectionalLight) ?? null;
+        for (const group of ERA_ENV_GROUP_IDS) {
+            const name = ERA_ENV_GROUP_NODE_NAMES[group];
+            const groupNode = root.getChildByName(name) ?? new Node(name);
+            groupNode.layer = Layers.Enum.DEFAULT;
+            groupNode.parent = root;
+            groupNode.setScale(0, 0, 0);
+            for (const box of ERA_ENV_BOXES) {
+                if (box.group !== group || groupNode.getChildByName(box.id)) continue;
+                const color = box.color ?? { r: 128, g: 128, b: 128 };
+                this.createBox(groupNode, box.id, new Vec3(box.size.x, box.size.y, box.size.z), new Vec3(box.center.x, box.center.y, box.center.z), new Color(color.r, color.g, color.b, 255));
+            }
+        }
+    }
+
     private createPresentationRegistry(parent: Node): void {
         const registry = parent.getChildByName('PresentationAnchors') ?? new Node('PresentationAnchors');
         registry.parent = parent;
@@ -424,6 +458,7 @@ export class FactoryWorldBootstrap extends Component {
         controller.advancedRoboticsComplexVisual = parent.getChildByName('Zone_AdvancedRoboticsComplex')
             ?.getChildByName('AdvancedRoboticsComplex_CompositionAnchor')
             ?.getComponent(AdvancedRoboticsComplexVisualController) ?? null;
+        controller.eraEnvironmentVisual = parent.getChildByName(ERA_ENV_ROOT_NODE_NAME)?.getComponent(EraEnvironmentVisualController) ?? null;
         controller.constructionPresentation = this.createConstructionPresentation(parent, registry);
         controller.robotPopulation = parent.getChildByName('Zone_AssemblyStation')
             ?.getChildByName('AssemblyStation_CompositionAnchor')

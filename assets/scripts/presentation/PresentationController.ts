@@ -6,6 +6,7 @@ import { RobotPopulationController } from './RobotPopulationController';
 import { RobotLineVisualController } from './RobotLineVisualController';
 import { AutomatedCellVisualController } from './AutomatedCellVisualController';
 import { AdvancedRoboticsComplexVisualController } from './AdvancedRoboticsComplexVisualController';
+import { EraEnvironmentVisualController } from './EraEnvironmentVisualController';
 
 const { ccclass, property } = _decorator;
 
@@ -34,6 +35,10 @@ export class PresentationController extends Component {
     /** AUT-044: Advanced Robotics Complex composition (fake production, construction target, reveal focus beat). */
     @property(AdvancedRoboticsComplexVisualController)
     public advancedRoboticsComplexVisual: AdvancedRoboticsComplexVisualController | null = null;
+
+    /** AUT-045: era environment (palette / light / clear colour, hall, vertical group, AI Megafactory teaser); presentation only. */
+    @property(EraEnvironmentVisualController)
+    public eraEnvironmentVisual: EraEnvironmentVisualController | null = null;
 
     /** AUT-040: reusable construction/reveal sequence; fed before the other controllers so frame 0 is applied first. */
     @property(ConstructionPresentationController)
@@ -65,6 +70,7 @@ export class PresentationController extends Component {
         this.automatedCellVisual?.sync(state as Parameters<AutomatedCellVisualController['sync']>[0]);
         this.advancedRoboticsComplexVisual?.sync(state as Parameters<AdvancedRoboticsComplexVisualController['sync']>[0]);
         this.robotPopulation?.sync(state as Parameters<RobotPopulationController['sync']>[0]);
+        this.eraEnvironmentVisual?.sync(state as Parameters<EraEnvironmentVisualController['sync']>[0]);
     }
 
     public consumeDomainEvents(
@@ -78,6 +84,7 @@ export class PresentationController extends Component {
         this.automatedCellVisual?.consumeDomainEvents(state, events);
         this.advancedRoboticsComplexVisual?.consumeDomainEvents(state, events);
         this.robotPopulation?.consumeDomainEvents(state, events);
+        this.eraEnvironmentVisual?.consumeDomainEvents(state, events);
     }
 
     private findAnchor(anchors: Node[], producerId: string): Node | null {
