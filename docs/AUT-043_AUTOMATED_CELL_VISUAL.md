@@ -151,3 +151,10 @@ Evidence read: `temp/aut043/unbuilt.png`, `lv1.png`, `lv10.png` (+ `temp/aut042/
 Owner accepted AUT-043 after the visual QA review (decision: accept, track the size/coherence issue). Non-blocking follow-up (AUT-VIS, tracked with the factory-coherence item): the Automated Cell is small at the left
 screen edge (~200 px vs ~500 px for the Robot Line) and the Lv1 -> Lv10 delta is subtle; closer framing or larger scale / stronger shared production-flow logic belongs to a Scene Presentation / Art Direction task
 (a default-framing change also needs Orchestrator + Technical Lead). The live build/reveal feel was not separately reviewed by the owner; it is accepted with the task.
+
+## Live reveal visual QA (2026-11-12, scene-presentation agent, evidence `temp/reveal/aut043-cell-2026-11-12T1242/`, AUT-INFRA-002): PASS
+
+9/9 objective capture checks PASS (construction started 578 ms after the tap, activated 2397 ms, camera focus settled, 0 errors, 16 frames). Frame review: unbuilt baseline vs built end state clearly different; staged build visible across
+frames (ghost shell + sparks -> slab and pylons -> core, conveyor, arm -> flow strip at activation -> items riding), no pop-in and no built-state flash; cell centred and fully on screen after the focus beat with no HUD overlap;
+end state matches the Lv1 screenshot; Robot Line unchanged. Not judged from stills: motion smoothness, pacing and feel (covered by the owner acceptance of AUT-043).
+POLISH follow-ups (AUT-VIS, non-blocking): pooled robots walk over the cell's front slab edge/conveyor end (offset the Cell/Line robot lane); sparks are only a few px; walls/hopper/second arm indistinguishable at this size (already tracked: cell size).
