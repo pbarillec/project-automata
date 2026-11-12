@@ -1,6 +1,6 @@
 # AUT-042 Robot Line Visual & Era II Reveal
 
-**Human gate: PENDING** (device screenshots at Lv1 and Lv10, reveal feel, line readability, population on the Line route).
+**Human gate: PASS (2026-11-12)** (device screenshots at Lv1 and Lv10, reveal feel, line readability, population on the Line route).
 Automated checks prove layout geometry, state resolution, wiring and determinism only. Presentation only: no economy, runtime, data,
 save, camera-API/framing, HUD-text or art-direction change; existing AUT-032 Kenney assets only (no new asset file).
 
@@ -98,4 +98,9 @@ seeded launches). Seeds: `npm run device:seed-aut042 -- --variant unbuilt|lv1|lv
 
 Human gate checklist: (1) `unbuilt` seed: select the Robot Line and build it: ~2.2 s construction, one bounded camera focus, lamps/belt start, chassis -> robot items on the belt;
 (2) Lv1 and Lv10 read as a long, low line and a more convincing one at Lv10; (3) Workshop stays visible, no separate map; (4) robots on the Line -> Exit -> Storage route are
-readable and relieve the station clustering; (5) relaunch shows the built line instantly, no replay. Result: **PENDING**.
+readable and relieve the station clustering; (5) relaunch shows the built line instantly, no replay. Result: **PASS (2026-11-12)**.
+
+## Human gate result (2026-11-12): PASS
+
+Fabricator, Assembly Station and Robot Line all work and are readable individually. Non-blocking follow-up (Scene Presentation / Art Direction, tracked separately): overall factory
+coherence, i.e. a stronger shared visual and production-flow logic so the three read as one evolving factory rather than separate machines.
