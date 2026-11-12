@@ -37,6 +37,8 @@ import { FirstAutomationPresentationController } from './FirstAutomationPresenta
 import { AssemblyVisualController, ASSEMBLY_SLAB_NODE_NAME } from './AssemblyVisualController';
 import { ConstructionPresentationController } from './ConstructionPresentationController';
 import { RobotPopulationController } from './RobotPopulationController';
+import { RobotLineVisualController, ROBOT_LINE_LAMP_OFF_NODE_PREFIX, ROBOT_LINE_LAMP_ON_NODE_PREFIX, ROBOT_LINE_LIP_NODE_NAME, ROBOT_LINE_SLAB_NODE_NAME } from './RobotLineVisualController';
+import { ROBOT_LINE_FOUNDATION_SLAB, ROBOT_LINE_LAMP_IDS, ROBOT_LINE_LAMPS, ROBOT_LINE_OUTPUT_LIP, ROBOT_LINE_REVEAL_TARGET, ROBOT_LINE_SPARK_ANCHOR, robotLineLocal } from './RobotLineLayout.ts';
 import { FirstRobotPresentationController, ROBOT_BAY_LAMP_OFF_NODE_NAME, ROBOT_BAY_LAMP_ON_NODE_NAME } from './FirstRobotPresentationController';
 import { ASSEMBLY_FOUNDATION_SLAB, assemblyLocal, FIRST_ROBOT_REVEAL_TARGET, ROBOT_BAY_LAMP } from './AssemblySliceLayout.ts';
 import { CocosFileSystemPort } from '../app/CocosFileSystemPort';
@@ -73,6 +75,10 @@ export class FactoryWorldBootstrap extends Component {
     @property([Prefab])
     public assemblyPrefabs: Prefab[] = [];
 
+    /** AUT-042 Robot Line prefabs (AUT-032 imports), index-aligned with ROBOT_LINE_PREFAB_SLOTS. */
+    @property([Prefab])
+    public robotLinePrefabs: Prefab[] = [];
+
     /** AUT-039 first Worker Bot: the AUT-032 Robot.glb prefab. */
     @property(Prefab)
     public robotPrefab: Prefab | null = null;
@@ -105,9 +111,11 @@ export class FactoryWorldBootstrap extends Component {
         if (!site.getChildByName('SiteBoundary')) this.createShell(site);
         this.createZones(site);
         this.createAssemblySlice(site);
+        this.createRobotLineSlice(site);
         this.createCameraRig(site);
         this.connectFirstAutomationPresentation(site);
         this.connectFirstRobotPresentation(site);
+        this.connectRobotLinePresentation(site);
         if (!site.getChildByName('NeutralFactoryKeyLight')) this.createLighting(site);
         this.createPresentationRegistry(site);
         const selection = this.createProducerSelection(site);
@@ -391,6 +399,9 @@ export class FactoryWorldBootstrap extends Component {
         controller.firstRobotPresentation = parent.getChildByName('Zone_AssemblyStation')
             ?.getChildByName('AssemblyStation_CompositionAnchor')
             ?.getComponent(FirstRobotPresentationController) ?? null;
+        controller.robotLineVisual = parent.getChildByName('Zone_RobotLine')
+            ?.getChildByName('RobotLine_CompositionAnchor')
+            ?.getComponent(RobotLineVisualController) ?? null;
         controller.constructionPresentation = this.createConstructionPresentation(parent, registry);
         controller.robotPopulation = parent.getChildByName('Zone_AssemblyStation')
             ?.getChildByName('AssemblyStation_CompositionAnchor')
@@ -455,8 +466,57 @@ export class FactoryWorldBootstrap extends Component {
                 }
             }
             construction.sparkAnchors.set('assembly_station', this.assemblyLocalVec3({ x: -2.9, y: 0.16, z: -1.45 }));
+            // AUT-042: the Robot Line is the second target; the shared sparks anchor on the line (assembly-local coordinates).
+            const lineVisual = parent.getChildByName('Zone_RobotLine')?.getChildByName('RobotLine_CompositionAnchor')?.getComponent(RobotLineVisualController);
+            if (lineVisual) {
+                construction.registerTarget('robot_line', lineVisual);
+                construction.sparkAnchors.set('robot_line', this.assemblyLocalVec3(ROBOT_LINE_SPARK_ANCHOR));
+            }
         }
         return construction;
+    }
+
+    /**
+     * AUT-042 Robot Line (Producer #3): the RobotLine composition anchor gets the visual controller, the grey slab,
+     * the output lip plate and the unlit status lamps (primitives), and a reveal focus anchor on the line.
+     * Presentation only (it never reads or writes state).
+     */
+    private createRobotLineSlice(parent: Node): void {
+        const zone = parent.getChildByName('Zone_RobotLine');
+        const composition = zone?.getChildByName('RobotLine_CompositionAnchor');
+        if (!zone || !composition) return;
+        const visual = composition.getComponent(RobotLineVisualController) ?? composition.addComponent(RobotLineVisualController);
+        visual.robotLinePrefabs = this.robotLinePrefabs;
+        visual.robotPrefab = this.robotPrefab;
+        const local = (world: { x: number; y: number; z: number }): Vec3 => { const l = robotLineLocal(world); return new Vec3(l.x, l.y, l.z); };
+        if (!composition.getChildByName(ROBOT_LINE_SLAB_NODE_NAME)) {
+            const slab = ROBOT_LINE_FOUNDATION_SLAB;
+            this.createBox(composition, ROBOT_LINE_SLAB_NODE_NAME, new Vec3(slab.size.x, slab.size.y, slab.size.z), local(slab.center), new Color(136, 140, 137, 255)).setScale(0, 0, 0);
+        }
+        if (!composition.getChildByName(ROBOT_LINE_LIP_NODE_NAME)) {
+            const lip = ROBOT_LINE_OUTPUT_LIP;
+            this.createBox(composition, ROBOT_LINE_LIP_NODE_NAME, new Vec3(lip.size.x, lip.size.y, lip.size.z), local(lip.center), new Color(74, 85, 88, 255)).setScale(0, 0, 0);
+        }
+        // Status lamps: unlit graphite while idle, automation cyan when active (a colour state change, no dynamic light).
+        for (const lampId of ROBOT_LINE_LAMP_IDS) {
+            const lamp = ROBOT_LINE_LAMPS[lampId];
+            for (const [prefix, color] of [[ROBOT_LINE_LAMP_OFF_NODE_PREFIX, new Color(43, 49, 52, 255)], [ROBOT_LINE_LAMP_ON_NODE_PREFIX, new Color(82, 206, 224, 255)]] as const) {
+                const name = `${prefix}${lampId}`;
+                if (composition.getChildByName(name)) continue;
+                this.createBox(composition, name, new Vec3(lamp.size.x, lamp.size.y, lamp.size.z), local(lamp.center), color).setScale(0, 0, 0);
+            }
+        }
+        const reveal = zone.getChildByName('RobotLine_RevealAnchor') ?? new Node('RobotLine_RevealAnchor');
+        reveal.parent = zone;
+        reveal.setPosition(local(ROBOT_LINE_REVEAL_TARGET));
+    }
+
+    private connectRobotLinePresentation(parent: Node): void {
+        const zone = parent.getChildByName('Zone_RobotLine');
+        const visual = zone?.getChildByName('RobotLine_CompositionAnchor')?.getComponent(RobotLineVisualController);
+        if (!zone || !visual) return;
+        visual.cameraController = parent.getChildByName('CameraRig')?.getComponent(MobileCameraController) ?? null;
+        visual.focusAnchor = zone.getChildByName('RobotLine_RevealAnchor') ?? null;
     }
 
     private assemblyLocalVec3(world: { x: number; y: number; z: number }): Vec3 {

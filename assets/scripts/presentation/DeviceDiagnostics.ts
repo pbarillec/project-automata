@@ -43,6 +43,8 @@ export const DEVICE_EVENT_TYPES = [
     // AUT-041 DEBUG benchmark: { visible, window, frames, seconds, avgMs, p95Ms, maxMs, fps } per sampled window; `robot_benchmark` once when the override is read.
     'robot_perf',
     'robot_benchmark',
+    // AUT-042: Robot Line / Era II reveal hook: { phase: 'synced' | 'construction_started' | 'activated' | 'focus_requested' | 'item_cycle', ... }.
+    'robot_line_state',
     'error',
 ] as const;
 

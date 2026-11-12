@@ -1,3 +1,4 @@
+import { ROBOT_LINE_LOOP_SECONDS, sampleLineLoopPose } from './RobotLineExitRoute.ts';
 import { WORKER_BOT_LOOP_SECONDS, sampleLoopPose, type WorkerBotClip } from './WorkerBotRoute.ts';
 
 /**
@@ -61,8 +62,10 @@ export function resolvePooledRobotCount(visible: number, firstRobotPresent: bool
 export interface RobotSlotVariation {
     /** Pool slot, 0-based (overall rank = slot + 1). */
     readonly slot: number;
-    /** Start phase inside the loop, in seconds. */
+    /** Start phase inside the Assembly <-> Storage loop, in seconds. */
     readonly phaseSeconds: number;
+    /** Start phase as a fraction (0..1) of any loop; the Line -> Exit -> Storage loop scales it by its own period. */
+    readonly phaseFraction: number;
     /** Walk/idle time scale (0.92..1.08). */
     readonly speedFactor: number;
     /** Sideways offset from the loop, world units (at most 0.12). */
@@ -87,6 +90,7 @@ export function robotSlotVariation(slot: number): RobotSlotVariation {
     return Object.freeze({
         slot,
         phaseSeconds: phase * WORKER_BOT_LOOP_SECONDS,
+        phaseFraction: phase,
         speedFactor: 0.92 + (hash01(slot, 1) * 0.16),
         lateralOffset: (hash01(slot, 2) * 2 - 1) * ROBOT_LATERAL_MAX,
         scaleFactor: 0.96 + (hash01(slot, 3) * 0.08),
@@ -101,9 +105,22 @@ export interface RobotPoolPose {
     readonly clip: WorkerBotClip;
 }
 
+/** AUT-042: which predefined loop a pooled robot follows. */
+export type PoolRobotRoute = 'assembly_storage' | 'line_storage';
+
+/** About one third of the pooled robots (slots 1, 4, 7, ... = ranks 2, 5, 8, ...) take the Line -> Exit -> Storage loop once the Robot Line is built. */
+export const ROBOT_LINE_ROUTE_STRIDE = 3;
+export const ROBOT_LINE_ROUTE_FIRST_SLOT = 1;
+
+export function resolvePoolRobotRoute(slot: number, robotLineBuilt: boolean): PoolRobotRoute {
+    return robotLineBuilt && slot >= ROBOT_LINE_ROUTE_FIRST_SLOT && (slot - ROBOT_LINE_ROUTE_FIRST_SLOT) % ROBOT_LINE_ROUTE_STRIDE === 0 ? 'line_storage' : 'assembly_storage';
+}
+
 /** Pose of a pooled robot `t` seconds after the population clock start (periodic, deterministic). */
-export function sampleRobotPoolPose(variation: RobotSlotVariation, t: number): RobotPoolPose {
-    const pose = sampleLoopPose((t * variation.speedFactor) + variation.phaseSeconds);
+export function sampleRobotPoolPose(variation: RobotSlotVariation, t: number, route: PoolRobotRoute = 'assembly_storage'): RobotPoolPose {
+    const pose = route === 'line_storage'
+        ? sampleLineLoopPose((t * variation.speedFactor) + (variation.phaseFraction * ROBOT_LINE_LOOP_SECONDS))
+        : sampleLoopPose((t * variation.speedFactor) + variation.phaseSeconds);
     const radians = (pose.headingDeg * Math.PI) / 180;
     // Perpendicular to the heading (heading 0 faces +Z, so the right-hand side is +X).
     return {

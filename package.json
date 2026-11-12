@@ -14,6 +14,7 @@
     "device:gp001": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts gp001",
     "device:aut039": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts aut039",
     "device:seed-aut040": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-aut040",
+    "device:seed-aut042": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-aut042",
     "device:bench-aut041": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts bench-aut041",
     "device:gate-build": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts gate-build",
     "device:restore-build-config": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts restore-build-config"

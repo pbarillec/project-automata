@@ -11,7 +11,9 @@ import {
     POPULATION_BENCHMARK_FILE,
     robotSlotVariation,
     RobotPopulationPool,
+    resolvePoolRobotRoute,
     sampleRobotPoolPose,
+    type PoolRobotRoute,
     type RobotSlotVariation,
 } from './RobotPopulation.ts';
 import { RobotPopulationViewModel, type RobotPopulationSnapshot } from './RobotPopulationViewModel.ts';
@@ -31,6 +33,8 @@ interface PooledRobot {
     /** 0..1 appearance ramp (1 = full size). */
     ramp: number;
     clip: WorkerBotClip | null;
+    /** AUT-042: the loop this robot currently follows (a change re-scales it in). */
+    route: PoolRobotRoute;
 }
 
 /**
@@ -49,6 +53,7 @@ export class RobotPopulationController extends Component {
     private readonly pool = new RobotPopulationPool();
     private readonly robots: PooledRobot[] = [];
     private snapshotValue: RobotPopulationSnapshot | null = null;
+    private robotLineBuilt = false;
     private clock = 0;
     private perf: FramePerfSampler | null = null;
 
@@ -92,7 +97,12 @@ export class RobotPopulationController extends Component {
         for (const robot of this.robots) {
             if (!robot.visible && robot.ramp <= 0) continue;
             robot.ramp = robot.visible ? Math.min(1, robot.ramp + (deltaSeconds / SCALE_IN_SECONDS)) : 0;
-            const pose = sampleRobotPoolPose(robot.variation, this.clock);
+            const route = resolvePoolRobotRoute(robot.variation.slot, this.robotLineBuilt);
+            if (route !== robot.route) {
+                robot.route = route;
+                if (robot.visible) robot.ramp = 0;
+            }
+            const pose = sampleRobotPoolPose(robot.variation, this.clock, route);
             const local = assemblyLocal({ x: pose.x, y: pose.y, z: pose.z });
             robot.node.setPosition(local.x, local.y, local.z);
             robot.node.setRotationFromEuler(0, pose.headingDeg, 0);
@@ -103,6 +113,7 @@ export class RobotPopulationController extends Component {
 
     private apply(snapshot: RobotPopulationSnapshot, phase: 'synced' | 'changed', source: string): RobotPopulationSnapshot {
         this.snapshotValue = snapshot;
+        this.robotLineBuilt = snapshot.robotLineBuilt;
         if (snapshot.changed || phase === 'synced') {
             const plan = this.pool.resize(snapshot.pooled);
             this.ensureRobots(plan.instantiate);
@@ -127,6 +138,7 @@ export class RobotPopulationController extends Component {
                     robotsBuilt: snapshot.robotsBuilt,
                     visible: snapshot.visible,
                     pooled: snapshot.pooled,
+                    robotLineBuilt: snapshot.robotLineBuilt,
                     instantiated: this.pool.instantiated,
                 });
             }
@@ -146,7 +158,7 @@ export class RobotPopulationController extends Component {
             node.parent = this.node;
             node.active = true;
             node.setScale(0, 0, 0);
-            this.robots.push({ node, animations: node.getComponentsInChildren(Animation), variation: robotSlotVariation(slot), visible: false, ramp: 0, clip: null });
+            this.robots.push({ node, animations: node.getComponentsInChildren(Animation), variation: robotSlotVariation(slot), visible: false, ramp: 0, clip: null, route: resolvePoolRobotRoute(slot, this.robotLineBuilt) });
         }
     }
 

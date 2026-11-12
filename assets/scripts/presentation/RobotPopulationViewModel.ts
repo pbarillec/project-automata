@@ -1,5 +1,6 @@
 import type { GameState } from '../state/GameState.ts';
 import { isFirstRobotPresent } from './AssemblyVisualStateResolver.ts';
+import { resolveRobotLineVisualState } from './RobotLineVisualStateResolver.ts';
 import { resolvePooledRobotCount, resolveVisibleRobotCount, type RobotPopulationOptions } from './RobotPopulation.ts';
 
 export interface RobotPopulationSnapshot {
@@ -7,7 +8,9 @@ export interface RobotPopulationSnapshot {
     readonly visible: number;
     /** Pooled robots shown besides the first Worker Bot. */
     readonly pooled: number;
-    /** The pooled count changed since the previous snapshot. */
+    /** AUT-042: the Robot Line is built, so about a third of the pooled robots take the Line -> Exit -> Storage loop. */
+    readonly robotLineBuilt: boolean;
+    /** The pooled count (or the Robot Line route allocation) changed since the previous snapshot. */
     readonly changed: boolean;
     /** The first snapshot (save load) applies instantly; only live growth may scale in. */
     readonly animateGrowth: boolean;
@@ -17,6 +20,7 @@ export interface RobotPopulationSnapshot {
 export class RobotPopulationViewModel {
     private options: RobotPopulationOptions;
     private previousPooled: number | null = null;
+    private previousLineBuilt: boolean | null = null;
 
     public constructor(options: RobotPopulationOptions = {}) {
         this.options = options;
@@ -32,8 +36,11 @@ export class RobotPopulationViewModel {
         const present = isFirstRobotPresent(state);
         const visible = present ? Math.max(1, resolveVisibleRobotCount(robotsBuilt, this.options)) : 0;
         const pooled = resolvePooledRobotCount(visible, present);
+        const robotLineBuilt = resolveRobotLineVisualState(state).constructed;
         const previous = this.previousPooled;
+        const previousLine = this.previousLineBuilt;
         this.previousPooled = pooled;
-        return { robotsBuilt, visible, pooled, changed: previous !== pooled, animateGrowth: previous !== null && pooled > previous };
+        this.previousLineBuilt = robotLineBuilt;
+        return { robotsBuilt, visible, pooled, robotLineBuilt, changed: previous !== pooled || previousLine !== robotLineBuilt, animateGrowth: previous !== null && pooled > previous };
     }
 }
