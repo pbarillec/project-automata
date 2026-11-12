@@ -1,8 +1,8 @@
 # AUT-GP-001 — Assisted Assembly production batch
 
-**Economy sign-off (2026-11-12): APPROVED.** `floorFraction` 0.5 and `batchDurationSeconds` 15 are kept. Simulator re-run by Economy: all 4 profiles PASS, 0 dead zones, worker_bot 13:21 active/optimized (inside 6:00–15:00). Offline single in-flight payout at the durable rate is accepted. Human gate (batch feel, felt pacing) is pending, combined with the AUT-039 product gate.
+**Economy sign-off (2026-11-12): APPROVED.** `floorFraction` 0.5 and `batchDurationSeconds` 15 are kept. Simulator re-run by Economy: all 4 profiles PASS, 0 dead zones, worker_bot 13:21 active/optimized (inside 6:00–15:00). Offline single in-flight payout at the durable rate is accepted. Human gate (batch feel, felt pacing): PASS (2026-11-12), combined with the AUT-039 product gate.
 
-Status: implemented, `npm run check` green, device scenarios PASS on NE2215 (2026-11-11). **Human gate PASS (2026-11-12)**, combined with the AUT-039 product gate. **Economy sign-off pending** on the starting values. **Game Designer approval pending** on the wording.
+Status: implemented, `npm run check` green, device scenarios PASS on NE2215 (2026-11-11). **Human gate PASS (2026-11-12)**, combined with the AUT-039 product gate. Economy sign-off: approved (see above). **Game Designer approval pending** on the wording.
 
 ## Owner decision implemented (2026-11-11)
 
