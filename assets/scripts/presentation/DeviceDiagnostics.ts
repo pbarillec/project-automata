@@ -38,6 +38,8 @@ export const DEVICE_EVENT_TYPES = [
     'robot_state',
     // AUT-040: reusable construction sequence: { phase: 'started' | 'activated', producerId, modules?, durationSeconds? }.
     'construction_state',
+    // AUT-041: capped robot population: { phase: 'synced' | 'changed', source, robotsBuilt, visible, pooled, instantiated }.
+    'robot_population',
     'error',
 ] as const;
 

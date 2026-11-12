@@ -29,5 +29,5 @@ test('FactoryWorld presentation sources stay outside gameplay and expose stable 
     assert.match(bootstrap, /Zone_\$\{zoneId\}/);
     assert.match(controller, /getFocusAnchor/);
     assert.match(controller, /getCompositionAnchor/);
-    assert.doesNotMatch(`${bootstrap}\n${controller}`, /GameState|scripts[\\/]economy|scripts[\\/]gameplay|scripts[\\/]persistence|scripts[\\/]progression|RobotPopulationController/);
+    assert.doesNotMatch(`${bootstrap}\n${controller}`, /GameState|scripts[\\/]economy|scripts[\\/]gameplay|scripts[\\/]persistence|scripts[\\/]progression/);
 });

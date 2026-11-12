@@ -36,6 +36,7 @@ import { AssemblyBatchActionController } from './AssemblyBatchActionController';
 import { FirstAutomationPresentationController } from './FirstAutomationPresentationController';
 import { AssemblyVisualController, ASSEMBLY_SLAB_NODE_NAME } from './AssemblyVisualController';
 import { ConstructionPresentationController } from './ConstructionPresentationController';
+import { RobotPopulationController } from './RobotPopulationController';
 import { FirstRobotPresentationController, ROBOT_BAY_LAMP_OFF_NODE_NAME, ROBOT_BAY_LAMP_ON_NODE_NAME } from './FirstRobotPresentationController';
 import { ASSEMBLY_FOUNDATION_SLAB, assemblyLocal, FIRST_ROBOT_REVEAL_TARGET, ROBOT_BAY_LAMP } from './AssemblySliceLayout.ts';
 import { CocosFileSystemPort } from '../app/CocosFileSystemPort';
@@ -391,6 +392,9 @@ export class FactoryWorldBootstrap extends Component {
             ?.getChildByName('AssemblyStation_CompositionAnchor')
             ?.getComponent(FirstRobotPresentationController) ?? null;
         controller.constructionPresentation = this.createConstructionPresentation(parent, registry);
+        controller.robotPopulation = parent.getChildByName('Zone_AssemblyStation')
+            ?.getChildByName('AssemblyStation_CompositionAnchor')
+            ?.getComponent(RobotPopulationController) ?? null;
         controller.focusAnchors = FACTORY_ZONE_IDS.map((id) => parent.getChildByName(`Zone_${id}`)?.getChildByName(`${id}_FocusAnchor`)).filter((node): node is Node => node !== null && node !== undefined);
         controller.compositionAnchors = FACTORY_ZONE_IDS.map((id) => parent.getChildByName(`Zone_${id}`)?.getChildByName(`${id}_CompositionAnchor`)).filter((node): node is Node => node !== null && node !== undefined);
     }
@@ -418,6 +422,8 @@ export class FactoryWorldBootstrap extends Component {
         visual.assemblyPrefabs = this.assemblyPrefabs;
         const robot = composition.getComponent(FirstRobotPresentationController) ?? composition.addComponent(FirstRobotPresentationController);
         robot.robotPrefab = this.robotPrefab;
+        const population = composition.getComponent(RobotPopulationController) ?? composition.addComponent(RobotPopulationController);
+        population.robotPrefab = this.robotPrefab;
         if (!composition.getChildByName(ASSEMBLY_SLAB_NODE_NAME)) {
             const slab = ASSEMBLY_FOUNDATION_SLAB;
             const slabNode = this.createBox(composition, ASSEMBLY_SLAB_NODE_NAME, new Vec3(slab.size.x, slab.size.y, slab.size.z), this.assemblyLocalVec3(slab.center), new Color(136, 140, 137, 255));
