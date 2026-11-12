@@ -25,6 +25,7 @@ import { runR031Scenario } from './scenarios/r031_tap_first_camera.ts';
 import { runGp001Scenario } from './scenarios/gp001_assembly_batch.ts';
 import { runAut039Scenario } from './scenarios/aut039_first_robot.ts';
 import { seedAut040 } from './seed_aut040.ts';
+import { runAut041Benchmark } from './benchmark_aut041.ts';
 
 function parseArgs(argv: string[]): { command: string; flags: Record<string, string | boolean> } {
     const [command = 'help', ...rest] = argv;
@@ -90,6 +91,16 @@ async function main(): Promise<number> {
         const filesDir = await seedAut040(driver, 'com.projectautomata.androidbaseline', 'com.cocos.game.AppActivity');
         console.log(`seeded ${filesDir}save_main.json and launched`);
         return 0;
+    }
+    if (command === 'bench-aut041') {
+        // AUT-041 DEBUG-only robot population benchmark on the connected device (APK must already be installed).
+        const driver = new AdbDeviceDriver();
+        const selection = selectDevice(await driver.devices(), typeof flags.serial === 'string' ? flags.serial : undefined);
+        if (!selection.ok) { console.log(JSON.stringify(selection, null, 2)); return 2; }
+        if (typeof flags.serial === 'string') driver.useSerial(flags.serial);
+        const { results, summaryPath } = await runAut041Benchmark(driver);
+        console.log(`summary: ${summaryPath}`);
+        return results.every((r) => r.ok) ? 0 : 1;
     }
     if (command === 'gate-build') {
         const label = typeof flags.label === 'string' ? flags.label : 'gate';

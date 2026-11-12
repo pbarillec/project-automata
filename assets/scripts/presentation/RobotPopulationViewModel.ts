@@ -15,10 +15,15 @@ export interface RobotPopulationSnapshot {
 
 /** AUT-041: read-only projection of Robots Built into the visible population. Never writes state or submits commands. */
 export class RobotPopulationViewModel {
-    private readonly options: RobotPopulationOptions;
+    private options: RobotPopulationOptions;
     private previousPooled: number | null = null;
 
     public constructor(options: RobotPopulationOptions = {}) {
+        this.options = options;
+    }
+
+    /** DEBUG benchmark only: changes the visible-robot cap (the next sync re-evaluates). */
+    public setOptions(options: RobotPopulationOptions): void {
         this.options = options;
     }
 

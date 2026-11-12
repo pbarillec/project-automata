@@ -23,6 +23,9 @@ export const ROBOT_POPULATION_POOL_LIMIT = 30;
 /** Device benchmark sizes (TECHNICAL_DESIGN 14.1 / CODEX_PLAN AUT-041). */
 export const ROBOT_POPULATION_BENCHMARK_SIZES: readonly number[] = Object.freeze([1, 8, 14, 20, 30]);
 
+/** DEBUG-only benchmark override file in the app writable path: `{ "maxVisible": 1 | 8 | 14 | 20 | 30 }`. Never read in release builds. */
+export const POPULATION_BENCHMARK_FILE = 'population_benchmark.json';
+
 export interface RobotPopulationOptions {
     /** Cap on visible robots (default 14, hard limit 30). */
     readonly maxVisible?: number;

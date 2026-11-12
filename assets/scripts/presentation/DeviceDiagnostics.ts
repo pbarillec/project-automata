@@ -40,6 +40,9 @@ export const DEVICE_EVENT_TYPES = [
     'construction_state',
     // AUT-041: capped robot population: { phase: 'synced' | 'changed', source, robotsBuilt, visible, pooled, instantiated }.
     'robot_population',
+    // AUT-041 DEBUG benchmark: { visible, window, frames, seconds, avgMs, p95Ms, maxMs, fps } per sampled window; `robot_benchmark` once when the override is read.
+    'robot_perf',
+    'robot_benchmark',
     'error',
 ] as const;
 

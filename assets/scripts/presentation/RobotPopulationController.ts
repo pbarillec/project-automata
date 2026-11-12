@@ -1,10 +1,14 @@
 import { _decorator, Animation, Component, instantiate, Node } from 'cc';
+import { DEBUG } from 'cc/env';
 import type { Prefab } from 'cc';
+import { CocosFileSystemPort } from '../app/CocosFileSystemPort';
+import { FramePerfSampler } from './FramePerfSampler.ts';
 import type { DomainEvent } from '../domain/Events.ts';
 import type { GameState } from '../state/GameState.ts';
 import { assemblyLocal, WORKER_BOT_SCALE } from './AssemblySliceLayout.ts';
 import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
 import {
+    POPULATION_BENCHMARK_FILE,
     robotSlotVariation,
     RobotPopulationPool,
     sampleRobotPoolPose,
@@ -46,6 +50,23 @@ export class RobotPopulationController extends Component {
     private readonly robots: PooledRobot[] = [];
     private snapshotValue: RobotPopulationSnapshot | null = null;
     private clock = 0;
+    private perf: FramePerfSampler | null = null;
+
+    /** AUT-041 benchmark (DEBUG builds only): reads the override file and starts frame-time sampling. */
+    public onLoad(): void {
+        if (DEBUG !== true) return;
+        try {
+            const text = new CocosFileSystemPort().readText(POPULATION_BENCHMARK_FILE);
+            if (text === undefined) return;
+            const maxVisible = (JSON.parse(text) as { maxVisible?: unknown }).maxVisible;
+            if (typeof maxVisible !== 'number' || !Number.isFinite(maxVisible)) return;
+            this.viewModel.setOptions({ maxVisible });
+            this.perf = new FramePerfSampler();
+            emitDeviceEvent('robot_benchmark', { maxVisible });
+        } catch (error) {
+            console.warn(`[AUT-041] benchmark override ignored: ${String(error)}`);
+        }
+    }
 
     public sync(state: GameState): RobotPopulationSnapshot {
         return this.apply(this.viewModel.sync(state), 'synced', 'session');
@@ -64,6 +85,8 @@ export class RobotPopulationController extends Component {
     }
 
     public update(deltaSeconds: number): void {
+        const window = this.perf?.add(deltaSeconds) ?? null;
+        if (window) emitDeviceEvent('robot_perf', { visible: (this.snapshotValue?.visible ?? 0), pooled: this.pool.visible, ...window });
         if (this.pool.visible === 0 && this.robots.every((robot) => !robot.visible)) return;
         this.clock += deltaSeconds;
         for (const robot of this.robots) {
