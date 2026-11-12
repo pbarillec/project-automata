@@ -131,3 +131,13 @@ but not an era transition, which is AUT-048). Asserted by test: natural era -> n
 - Arms and lamps are conservative axis-aligned bounds (3 deg nod ignored); a Lv9 -> Lv10 transition changes the cycle mid-run (a one-frame phase jump); pooled slots re-stagger when the pool grows 3 -> 4.
 - `DEFAULT_VIEW_OPTIONAL_ZONES` still lists the Cell (stale since AUT-043) - Technical Lead call.
 - Source docs untouched (`CODEX_PLAN`, `ART_DIRECTION`, `ASSET_MANIFEST`, `TECHNICAL_DESIGN`). The broader factory-coherence composition is a separate follow-up; only the light connector strip is here.
+
+## Device evidence and visual QA (2026-11-12, scene-presentation agent, review policy 2026-11-12): PASS
+
+Gate APK (DEBUG FactoryWorld from `d817d08`, build config restored): `temp/gate/ProjectAutomata-aut044-d817d08-factoryworld.apk`, sha256 `8a21709b8cb8ed644387e3558225f0534a17eacb4a4d7510ae3d6e90cdab2851`.
+Evidence: `temp/aut044/{unbuilt,lv1,lv10}.png` and the live reveal capture `temp/reveal/aut044-complex-2026-11-12T131055/` (`npm run device:reveal-capture -- --scenario aut044`: 9/9 objective checks PASS, construction
+started 617 ms after the tap, activated 2519 ms, camera focus settled, 0 errors, 16 frames). Visual QA: states distinguishable; complex on screen at default (x ~65-375, y ~885-1180) and after the focus beat (x ~290-790, y ~880-1450), clear of HUD and
+panel; tallest structure (~1.4x the Cell slab width, ~2x its silhouette); staged build with no pop-in or built-state flash; end state matches Lv1; no overlap or regression of Fabricator/Assembly/Line/Cell.
+POLISH follow-ups (AUT-VIS, non-blocking): the post-cage massing is heavy and the hopper-topped core / Lv10 spire read small (Lv10 delta subtle at the default view); the product robot (0.12) is tiny (~12 px) next to the population robots;
+Cell population robots sit behind the panel text in the reveal framing (pre-existing). Open items: era goals have no HUD action (`advanced_robotics` is an era goal; the `unbuilt` seed pre-enters the robotics era so the capture can tap it) - product/UI decision;
+stale `DEFAULT_VIEW_OPTIONAL_ZONES` (AutomatedCell) - Technical Lead; Android instance budget not benchmarked. Not judged from stills: motion/pacing/feel, building-scale read (subjective, owner).
