@@ -136,3 +136,12 @@ sha256 `92a7cc1f3d74759462b7b0210b1742f6303a45c32eba7773bdeff437f35742d7`; insta
 Seeds: `npm run device:seed-aut043 -- --variant unbuilt|lv1|lv10`. The `unbuilt` seed owns Robot Line Lv25 + 100 Robots Built + 50M Output; the live build is the Next Goal
 "Automated Cell Architecture" breakthrough (not the Producer Panel).
 Human gate: silhouette contrast vs the Robot Line, readability at the screen edge, the live reveal + focus beat, pan feel with the cell built. Result: **PENDING**.
+
+## Visual QA review of the native device screenshots (2026-11-12, scene-presentation agent, review policy 2026-11-12)
+
+Evidence read: `temp/aut043/unbuilt.png`, `lv1.png`, `lv10.png` (+ `temp/aut042/lv10.png` for regression comparison). Decision: **HUMAN_REVIEW_REQUIRED** (no blocker, objective criteria pass).
+- PASS: state visibility (unbuilt shell / Lv1 / Lv10 distinguishable), framing and clipping (cell fully on screen, x ~40..245, y ~1200..1400, clear of HUD and panel), silhouette contrast vs Robot Line
+  (compact ~200 px block with vertical posts vs the long open ~500 px line), no visible overlap with spine/storage/line/robots, no regression of Fabricator / Assembly / Robot Line.
+- IMPORTANT (subjective, camera-directional): the cell is the smallest object at the left screen edge; arms, hopper and lamps are hard to tell apart at ~200 px and the Lv1 -> Lv10 delta is subtle.
+  Possible follow-up (not AUT-043 scope): closer framing or larger scale via an `AUT-VIS` task (Orchestrator + Technical Lead for any default-framing change).
+- Not judgeable from stills (owner): the live build/reveal + focus beat, cycle motion, pan feel with the changed bounds, relaunch with no replay.
