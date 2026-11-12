@@ -17,6 +17,7 @@ import { cocosToAdb } from './classification.ts';
 import type { SessionDeviceDriver } from './driver.ts';
 import { pngSize } from './adb.ts';
 import { seedAut043, type Aut043SeedVariant } from './seed_aut043.ts';
+import { seedAut044 } from './seed_aut044.ts';
 import { parseHudActions } from './scenarios/ui001_core_loop.ts';
 import { parseUiLayout, rectCentre } from './ui_geometry.ts';
 
@@ -55,8 +56,30 @@ export interface RevealCaptureResult {
 
 export const DEFAULT_REVEAL_EVENT_TYPES: readonly string[] = Object.freeze([
     'scene_ready', 'session_state', 'ui_layout', 'command_result', 'construction_state', 'camera_focus', 'reveal_state',
-    'robot_state', 'robot_line_state', 'automated_cell_state', 'robot_population', 'error',
+    'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'robot_population', 'error',
 ]);
+
+/** A named live-reveal scenario: the seed (unbuilt variant), the producer whose construction must be observed and whether a camera focus is expected. */
+export interface RevealScenario {
+    readonly id: string;
+    readonly label: string;
+    readonly seed: (driver: SessionDeviceDriver, packageName: string, activity: string) => Promise<unknown>;
+    readonly expectConstruction: string;
+    readonly expectFocus: boolean;
+}
+
+export const DEFAULT_REVEAL_SCENARIO_ID = 'aut043';
+
+/** Scenario table (pure data, unit-tested): `--scenario aut043|aut044`; aut043 stays the default. */
+export const REVEAL_SCENARIOS: Readonly<Record<string, RevealScenario>> = Object.freeze({
+    aut043: { id: 'aut043', label: 'aut043-cell', seed: (d, pkg, act) => seedAut043(d, pkg, act, 'unbuilt'), expectConstruction: 'automated_cell', expectFocus: true },
+    aut044: { id: 'aut044', label: 'aut044-arc', seed: (d, pkg, act) => seedAut044(d, pkg, act, 'unbuilt'), expectConstruction: 'advanced_robotics_complex', expectFocus: true },
+});
+
+export function resolveRevealScenario(id: unknown): RevealScenario | null {
+    const key = id === undefined || id === true ? DEFAULT_REVEAL_SCENARIO_ID : id;
+    return typeof key === 'string' && Object.prototype.hasOwnProperty.call(REVEAL_SCENARIOS, key) ? REVEAL_SCENARIOS[key] : null;
+}
 
 /** Objective checks over a timeline (pure, unit-tested). `tMs` is relative to the trigger (negative = before). */
 export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number }): RevealCheck[] {

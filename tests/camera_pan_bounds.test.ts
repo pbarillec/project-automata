@@ -115,7 +115,7 @@ test('AUT-R-031-02: zone layout is engine-free, moved unchanged, and maps zones 
         AssemblyStation: { x: -2, z: -1.8, width: 4, depth: 3.5 },
         RobotLine: { x: 3.5, z: -1.2, width: 6, depth: 3.5 },
         AutomatedCell: { x: 2.3, z: 1.9, width: 2.0, depth: 1.7 }, // AUT-043 owner decision 2026-11-12: moved onto the on-screen ground south of the spine
-        AdvancedRoboticsComplex: { x: 2, z: 6, width: 6, depth: 5.5 },
+        AdvancedRoboticsComplex: { x: -1.0, z: 5.125, width: 3.5, depth: 3.75 }, // AUT-044 owner-approved presentation-only shift: onto the on-screen ground (same reason as the AUT-043 cell)
     });
     for (const id of M.factoryZoneIds(M.ZONE_LAYOUT)) assert.equal(M.producerIdForZone(id), FACTORY_WORLD_SELECTION_PRODUCER_IDS[id]);
     for (const rel of ['assets/scripts/presentation/FactoryZoneLayout.ts', 'assets/scripts/presentation/CameraPanBounds.ts']) {

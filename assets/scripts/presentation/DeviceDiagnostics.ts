@@ -47,6 +47,8 @@ export const DEVICE_EVENT_TYPES = [
     'robot_line_state',
     // AUT-043: Automated Cell: { phase: 'synced' | 'construction_started' | 'activated' | 'focus_requested' | 'item_cycle', ... }.
     'automated_cell_state',
+    // AUT-044: Advanced Robotics Complex: { phase: 'synced' | 'construction_started' | 'activated' | 'focus_requested' | 'item_cycle', ... }.
+    'advanced_robotics_complex_state',
     'error',
 ] as const;
 

@@ -31,7 +31,7 @@ const ZONES = [
     { id: 'AssemblyStation', position: { x: -2, y: 0.2, z: -1.8 }, scale: { x: 4, y: 1, z: 3.5 } },
     { id: 'RobotLine', position: { x: 3.5, y: 0.2, z: -1.2 }, scale: { x: 6, y: 1, z: 3.5 } },
     { id: 'AutomatedCell', position: { x: 2.3, y: 0.2, z: 1.9 }, scale: { x: 2.0, y: 1, z: 1.7 } }, // AUT-043 owner-moved zone
-    { id: 'AdvancedRoboticsComplex', position: { x: 2, y: 0.2, z: 6 }, scale: { x: 6, y: 1, z: 5.5 } },
+    { id: 'AdvancedRoboticsComplex', position: { x: -1.0, y: 0.2, z: 5.125 }, scale: { x: 3.5, y: 1, z: 3.75 } }, // AUT-044 owner-approved shifted zone
 ];
 
 function rayTo(origin, point) {

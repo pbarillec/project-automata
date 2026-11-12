@@ -19,7 +19,7 @@ export const ZONE_LAYOUT: Readonly<Record<FactoryZoneId, FactoryZoneRect>> = Obj
     AssemblyStation: { x: -2, z: -1.8, width: 4, depth: 3.5 },
     RobotLine: { x: 3.5, z: -1.2, width: 6, depth: 3.5 },
     AutomatedCell: { x: 2.3, z: 1.9, width: 2.0, depth: 1.7 },
-    AdvancedRoboticsComplex: { x: 2, z: 6, width: 6, depth: 5.5 },
+    AdvancedRoboticsComplex: { x: -1.0, z: 5.125, width: 3.5, depth: 3.75 },
 });
 
 export type FactoryZoneLayout = Readonly<Partial<Record<FactoryZoneId, FactoryZoneRect>>>;

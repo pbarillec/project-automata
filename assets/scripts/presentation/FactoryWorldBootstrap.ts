@@ -40,6 +40,8 @@ import { RobotPopulationController } from './RobotPopulationController';
 import { RobotLineVisualController, ROBOT_LINE_LAMP_OFF_NODE_PREFIX, ROBOT_LINE_LAMP_ON_NODE_PREFIX, ROBOT_LINE_LIP_NODE_NAME, ROBOT_LINE_SLAB_NODE_NAME } from './RobotLineVisualController';
 import { AutomatedCellVisualController, AUTOMATED_CELL_GUIDE_OFF_NODE_PREFIX, AUTOMATED_CELL_GUIDE_ON_NODE_PREFIX, AUTOMATED_CELL_LAMP_OFF_NODE_PREFIX, AUTOMATED_CELL_LAMP_ON_NODE_PREFIX, AUTOMATED_CELL_SLAB_NODE_NAME } from './AutomatedCellVisualController';
 import { AUTOMATED_CELL_FOUNDATION_SLAB, AUTOMATED_CELL_GUIDE, AUTOMATED_CELL_GUIDE_OFF_COLOR, AUTOMATED_CELL_GUIDE_ON_COLOR, AUTOMATED_CELL_GUIDE_PARTS, AUTOMATED_CELL_LAMP_IDS, AUTOMATED_CELL_LAMPS, AUTOMATED_CELL_REVEAL_TARGET, AUTOMATED_CELL_SPARK_ANCHOR, automatedCellLocal } from './AutomatedCellLayout.ts';
+import { AdvancedRoboticsComplexVisualController, ARC_GUIDE_OFF_NODE_PREFIX, ARC_GUIDE_ON_NODE_PREFIX, ARC_LAMP_OFF_NODE_PREFIX, ARC_LAMP_ON_NODE_PREFIX, ARC_SLAB_NODE_NAME } from './AdvancedRoboticsComplexVisualController';
+import { ARC_BEAM_GRAPHITE_COLOR, ARC_BEAMS, ARC_FOUNDATION_SLAB, ARC_GUIDE, ARC_GUIDE_OFF_COLOR, ARC_GUIDE_ON_COLOR, ARC_GUIDE_PARTS, ARC_LAMP_IDS, ARC_LAMPS, ARC_REVEAL_TARGET, ARC_SPARK_ANCHOR, arcLocal } from './AdvancedRoboticsComplexLayout.ts';
 import { ROBOT_LINE_FOUNDATION_SLAB, ROBOT_LINE_LAMP_IDS, ROBOT_LINE_LAMPS, ROBOT_LINE_OUTPUT_LIP, ROBOT_LINE_REVEAL_TARGET, ROBOT_LINE_SPARK_ANCHOR, robotLineLocal } from './RobotLineLayout.ts';
 import { FirstRobotPresentationController, ROBOT_BAY_LAMP_OFF_NODE_NAME, ROBOT_BAY_LAMP_ON_NODE_NAME } from './FirstRobotPresentationController';
 import { ASSEMBLY_FOUNDATION_SLAB, assemblyLocal, FIRST_ROBOT_REVEAL_TARGET, ROBOT_BAY_LAMP } from './AssemblySliceLayout.ts';
@@ -85,6 +87,10 @@ export class FactoryWorldBootstrap extends Component {
     @property([Prefab])
     public automatedCellPrefabs: Prefab[] = [];
 
+    /** AUT-044 Advanced Robotics Complex prefabs (AUT-032 imports), index-aligned with ARC_PREFAB_SLOTS. */
+    @property([Prefab])
+    public advancedRoboticsComplexPrefabs: Prefab[] = [];
+
     /** AUT-039 first Worker Bot: the AUT-032 Robot.glb prefab. */
     @property(Prefab)
     public robotPrefab: Prefab | null = null;
@@ -119,11 +125,13 @@ export class FactoryWorldBootstrap extends Component {
         this.createAssemblySlice(site);
         this.createRobotLineSlice(site);
         this.createAutomatedCellSlice(site);
+        this.createAdvancedRoboticsComplexSlice(site);
         this.createCameraRig(site);
         this.connectFirstAutomationPresentation(site);
         this.connectFirstRobotPresentation(site);
         this.connectRobotLinePresentation(site);
         this.connectAutomatedCellPresentation(site);
+        this.connectAdvancedRoboticsComplexPresentation(site);
         if (!site.getChildByName('NeutralFactoryKeyLight')) this.createLighting(site);
         this.createPresentationRegistry(site);
         const selection = this.createProducerSelection(site);
@@ -413,6 +421,9 @@ export class FactoryWorldBootstrap extends Component {
         controller.automatedCellVisual = parent.getChildByName('Zone_AutomatedCell')
             ?.getChildByName('AutomatedCell_CompositionAnchor')
             ?.getComponent(AutomatedCellVisualController) ?? null;
+        controller.advancedRoboticsComplexVisual = parent.getChildByName('Zone_AdvancedRoboticsComplex')
+            ?.getChildByName('AdvancedRoboticsComplex_CompositionAnchor')
+            ?.getComponent(AdvancedRoboticsComplexVisualController) ?? null;
         controller.constructionPresentation = this.createConstructionPresentation(parent, registry);
         controller.robotPopulation = parent.getChildByName('Zone_AssemblyStation')
             ?.getChildByName('AssemblyStation_CompositionAnchor')
@@ -488,6 +499,12 @@ export class FactoryWorldBootstrap extends Component {
             if (cellVisual) {
                 construction.registerTarget('automated_cell', cellVisual);
                 construction.sparkAnchors.set('automated_cell', this.assemblyLocalVec3(AUTOMATED_CELL_SPARK_ANCHOR));
+            }
+            // AUT-044: the Advanced Robotics Complex is the fourth target; the shared sparks re-anchor on the complex (assembly-local coordinates).
+            const arcVisual = parent.getChildByName('Zone_AdvancedRoboticsComplex')?.getChildByName('AdvancedRoboticsComplex_CompositionAnchor')?.getComponent(AdvancedRoboticsComplexVisualController);
+            if (arcVisual) {
+                construction.registerTarget('advanced_robotics_complex', arcVisual);
+                construction.sparkAnchors.set('advanced_robotics_complex', this.assemblyLocalVec3(ARC_SPARK_ANCHOR));
             }
         }
         return construction;
@@ -584,6 +601,63 @@ export class FactoryWorldBootstrap extends Component {
         if (!zone || !visual) return;
         visual.cameraController = parent.getChildByName('CameraRig')?.getComponent(MobileCameraController) ?? null;
         visual.focusAnchor = zone.getChildByName('AutomatedCell_RevealAnchor') ?? null;
+    }
+
+    /**
+     * AUT-044 Advanced Robotics Complex (Producer #5): the AdvancedRoboticsComplex composition anchor gets the visual controller,
+     * the grey slab, the graphite gantry beams, the unlit status lamps and the connector guide (primitives), and a reveal
+     * focus anchor on the complex. Presentation only (it never reads or writes state).
+     */
+    private createAdvancedRoboticsComplexSlice(parent: Node): void {
+        const zone = parent.getChildByName('Zone_AdvancedRoboticsComplex');
+        const composition = zone?.getChildByName('AdvancedRoboticsComplex_CompositionAnchor');
+        if (!zone || !composition) return;
+        const visual = composition.getComponent(AdvancedRoboticsComplexVisualController) ?? composition.addComponent(AdvancedRoboticsComplexVisualController);
+        visual.advancedRoboticsComplexPrefabs = this.advancedRoboticsComplexPrefabs;
+        visual.robotPrefab = this.robotPrefab;
+        const local = (world: { x: number; y: number; z: number }): Vec3 => { const l = arcLocal(world); return new Vec3(l.x, l.y, l.z); };
+        if (!composition.getChildByName(ARC_SLAB_NODE_NAME)) {
+            const slab = ARC_FOUNDATION_SLAB;
+            this.createBox(composition, ARC_SLAB_NODE_NAME, new Vec3(slab.size.x, slab.size.y, slab.size.z), local(slab.center), new Color(136, 140, 137, 255)).setScale(0, 0, 0);
+        }
+        // Gantry beams: graphite primitives resting on the west frame tops (Lv10).
+        for (const beamId of ['beam_1', 'beam_2'] as const) {
+            if (composition.getChildByName(beamId)) continue;
+            const beam = ARC_BEAMS[beamId];
+            const graphite = ARC_BEAM_GRAPHITE_COLOR;
+            this.createBox(composition, beamId, new Vec3(beam.size.x, beam.size.y, beam.size.z), local(beam.center), new Color(graphite.r, graphite.g, graphite.b, 255)).setScale(0, 0, 0);
+        }
+        // Status lamps: unlit graphite while idle, automation cyan when active (a colour state change, no dynamic light).
+        for (const lampId of ARC_LAMP_IDS) {
+            const lamp = ARC_LAMPS[lampId];
+            for (const [prefix, color] of [[ARC_LAMP_OFF_NODE_PREFIX, new Color(43, 49, 52, 255)], [ARC_LAMP_ON_NODE_PREFIX, new Color(82, 206, 224, 255)]] as const) {
+                const name = `${prefix}${lampId}`;
+                if (composition.getChildByName(name)) continue;
+                this.createBox(composition, name, new Vec3(lamp.size.x, lamp.size.y, lamp.size.z), local(lamp.center), color).setScale(0, 0, 0);
+            }
+        }
+        // Connector guide (crate -> complex): graphite until the complex is built, then ~40% cyan. Visible (graphite) from the start.
+        for (const part of ARC_GUIDE_PARTS) {
+            const guide = ARC_GUIDE[part];
+            const off = ARC_GUIDE_OFF_COLOR;
+            const on = ARC_GUIDE_ON_COLOR;
+            for (const [prefix, color, scale] of [[ARC_GUIDE_OFF_NODE_PREFIX, new Color(off.r, off.g, off.b, 255), 1], [ARC_GUIDE_ON_NODE_PREFIX, new Color(on.r, on.g, on.b, 255), 0]] as const) {
+                const name = `${prefix}${part}`;
+                if (composition.getChildByName(name)) continue;
+                this.createBox(composition, name, new Vec3(guide.size.x, guide.size.y, guide.size.z), local(guide.center), color).setScale(scale, scale, scale);
+            }
+        }
+        const reveal = zone.getChildByName('AdvancedRoboticsComplex_RevealAnchor') ?? new Node('AdvancedRoboticsComplex_RevealAnchor');
+        reveal.parent = zone;
+        reveal.setPosition(local(ARC_REVEAL_TARGET));
+    }
+
+    private connectAdvancedRoboticsComplexPresentation(parent: Node): void {
+        const zone = parent.getChildByName('Zone_AdvancedRoboticsComplex');
+        const visual = zone?.getChildByName('AdvancedRoboticsComplex_CompositionAnchor')?.getComponent(AdvancedRoboticsComplexVisualController);
+        if (!zone || !visual) return;
+        visual.cameraController = parent.getChildByName('CameraRig')?.getComponent(MobileCameraController) ?? null;
+        visual.focusAnchor = zone.getChildByName('AdvancedRoboticsComplex_RevealAnchor') ?? null;
     }
 
     private assemblyLocalVec3(world: { x: number; y: number; z: number }): Vec3 {

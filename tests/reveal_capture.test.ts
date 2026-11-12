@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { ParsedDeviceEvent } from '../assets/scripts/presentation/DeviceDiagnostics.ts';
-import { evaluateRevealTimeline, renderRevealSummary, type TimelineEvent, type TimelineFrame } from '../tools/device/reveal_capture.ts';
+import { DEFAULT_REVEAL_EVENT_TYPES, DEFAULT_REVEAL_SCENARIO_ID, REVEAL_SCENARIOS, evaluateRevealTimeline, renderRevealSummary, resolveRevealScenario, type TimelineEvent, type TimelineFrame } from '../tools/device/reveal_capture.ts';
 
 const ev = (tMs: number, evt: string, extra: Record<string, unknown> = {}): TimelineEvent => ({ tMs, event: { v: 1, seq: tMs, evt, ...extra } as unknown as ParsedDeviceEvent });
 const base = { expectConstruction: 'automated_cell', expectFocus: true, triggered: true, frameCount: 20 };
@@ -38,4 +38,28 @@ test('too few frames fail and the summary lists frames, checks and relative even
     const md = renderRevealSummary('x', frames, [ev(5, 'construction_state', { phase: 'started' })], checks);
     assert.match(md, /frames\/000-baseline\.png/);
     assert.match(md, /t=5 ms construction_state:started/);
+});
+
+test('reveal scenarios: aut043 stays the default, aut044 selects the Advanced Robotics Complex seed and expectations', () => {
+    assert.deepEqual(Object.keys(REVEAL_SCENARIOS).sort(), ['aut043', 'aut044']);
+    assert.equal(DEFAULT_REVEAL_SCENARIO_ID, 'aut043');
+    assert.equal(resolveRevealScenario(undefined)?.id, 'aut043', 'no --scenario = the AUT-043 default');
+    assert.equal(resolveRevealScenario(true)?.id, 'aut043', 'a bare --scenario flag falls back to the default');
+    const cell = resolveRevealScenario('aut043')!;
+    assert.deepEqual([cell.label, cell.expectConstruction, cell.expectFocus], ['aut043-cell', 'automated_cell', true]);
+    const arc = resolveRevealScenario('aut044')!;
+    assert.deepEqual([arc.label, arc.expectConstruction, arc.expectFocus], ['aut044-arc', 'advanced_robotics_complex', true]);
+    assert.notEqual(arc.seed, cell.seed);
+    assert.equal(resolveRevealScenario('aut045'), null, 'unknown scenarios are rejected');
+    assert.equal(resolveRevealScenario('__proto__'), null);
+    assert.ok(DEFAULT_REVEAL_EVENT_TYPES.includes('advanced_robotics_complex_state'), 'the AUT-044 DEBUG event is recorded in the timeline');
+    const arcChain = [
+        ev(100, 'construction_state', { phase: 'started', producerId: 'advanced_robotics_complex' }),
+        ev(150, 'camera_focus', { phase: 'started', kind: 'reveal' }),
+        ev(2500, 'construction_state', { phase: 'activated', producerId: 'advanced_robotics_complex' }),
+        ev(3200, 'camera_focus', { phase: 'settled' }),
+    ];
+    const options = { expectConstruction: arc.expectConstruction, expectFocus: arc.expectFocus, triggered: true, frameCount: 20 };
+    assert.ok(evaluateRevealTimeline(arcChain, options).every((c) => c.ok));
+    assert.equal(evaluateRevealTimeline(arcChain, { ...options, expectConstruction: cell.expectConstruction }).find((c) => c.id === 'construction_started')?.ok, false);
 });
