@@ -18,8 +18,7 @@ Automated checks prove mapping, pooling and wiring only. Presentation only: no e
   predated this task). `npm run check`: PASS (621 tests, pacing 4/4).
 
 ## Pending / limits
-- Device benchmark 1/8/14/20/30 (frame time, memory) and the visual check are not done; they need a gate build and a seeded save with the matching Robots Built.
-  The benchmark cap is available as `RobotPopulationViewModel({ maxVisible })` but is not wired to a DEBUG switch yet.
+- Visual/crowding check at 12-14 robots is the pending human gate; the 1/8/14/20/30 benchmark evidence is below.
 - Pooled robots reuse the Assembly <-> Storage loop only. Robot Line / Cell / Complex routes, background fakes and the Founder Robot come with later tasks (AUT-042+).
 - Spacing/clutter, loop crowding at 12-14 robots and the lateral offsets are implementer values for Scene Presentation / the human gate.
 
