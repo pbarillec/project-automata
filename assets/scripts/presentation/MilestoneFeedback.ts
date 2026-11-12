@@ -9,8 +9,8 @@ export const MILESTONE_SPARK_COUNT_RANGE = Object.freeze({ min: 4, max: 6 });
 
 /** Accent colours (RGB). Cyan is dimmer than the producer lamps (82,206,224); amber is the construction / breakthrough colour. Never red. */
 export const MILESTONE_ACCENT_RGB: Readonly<Record<MilestoneAccent, { readonly r: number; readonly g: number; readonly b: number }>> = Object.freeze({
-    amber: Object.freeze({ r: 224, g: 168, b: 72 }),
-    cyan: Object.freeze({ r: 59, g: 112, b: 121 }),
+    amber: Object.freeze({ r: 255, g: 190, b: 80 }),
+    cyan: Object.freeze({ r: 80, g: 190, b: 205 }),
 });
 
 export interface MilestoneEffectSample {
@@ -27,7 +27,8 @@ export function sampleMilestoneEffect(trigger: MilestoneTrigger, elapsed: number
     const pulseSeconds = MILESTONE_PULSE_SECONDS[trigger.tier];
     const pulseDone = !trigger.pulse || t >= pulseSeconds;
     const sparkDone = !trigger.sparks || t >= MILESTONE_SPARK_SECONDS;
-    const pulse = trigger.pulse && t < pulseSeconds ? Math.sin(Math.PI * (t / pulseSeconds)) : 0;
+    // Wide plateau (clamped) so the pulse is clearly visible for most of its length.
+    const pulse = trigger.pulse && t < pulseSeconds ? Math.min(1, 1.6 * Math.sin(Math.PI * (t / pulseSeconds))) : 0;
     const sparkIntensity = trigger.sparks && t < MILESTONE_SPARK_SECONDS ? Math.sin(Math.PI * (t / MILESTONE_SPARK_SECONDS)) : 0;
     return { pulse, sparkIntensity, complete: pulseDone && sparkDone };
 }

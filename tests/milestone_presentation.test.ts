@@ -324,6 +324,14 @@ test('AUT-046 effects: Minor = short pulse, no sparks; Major = 4-6 sparks + abou
     assert.deepEqual(F.sampleMilestoneEffect(trigger(constructedEvent('robot_line')), 0.3), { pulse: 0, sparkIntensity: 0, complete: true }, 'construction toast: no effect');
     for (const rgb of Object.values(F.MILESTONE_ACCENT_RGB)) assert.ok(!(rgb.r > rgb.g + 60 && rgb.r > rgb.b + 60 && rgb.g < 90), 'never red');
     assert.ok(F.MILESTONE_ACCENT_RGB.cyan.b < 224 && F.MILESTONE_ACCENT_RGB.cyan.g < 206, 'cyan accent is dimmer than the producer lamps (82,206,224)');
+    assert.ok(F.sampleMilestoneEffect(major, 0.3).pulse === 1 && F.sampleMilestoneEffect(major, 0.5).pulse === 1, 'the Major pulse plateaus at full strength (clearly visible)');
+    assert.ok(L.MILESTONE_TOAST_COLORS.pill.a >= 240, 'the pill is nearly opaque');
+    for (const accent of ['amber', 'cyan'] as const) {
+        const title = L.MILESTONE_TOAST_COLORS.titleAccent[accent];
+        const plain = L.MILESTONE_TOAST_COLORS.text;
+        assert.notDeepEqual([title.r, title.g, title.b], [plain.r, plain.g, plain.b], 'the title carries the accent colour');
+    }
+    assert.ok(L.MILESTONE_TOAST_COLORS.accent.cyan.g < 206 && L.MILESTONE_TOAST_COLORS.titleAccent.cyan.g < 206, 'toast cyan stays dimmer than the lamps');
 });
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -402,6 +410,10 @@ test('AUT-046 controller: thin cc wrapper, no touch listener, no new camera API,
     assert.doesNotMatch(controller, /focusOnWorldTarget|snapToWorldTarget|applyConfiguredInitialView|setFocusBounds/, 'only the existing reveal focus API');
     assert.doesNotMatch(controller, /commandEmitter|submit\(|execute\(|state\.run\.\w+\s*=[^=]|\.node\.active|\.active\s*=/, 'never writes state, never submits a command, no node.active');
     assert.match(controller, /setScale\(0, 0, 0\)/);
+    assert.match(controller, /addComponent\(Graphics\)/, 'solid fills through Graphics (a spriteFrame-less Sprite renders nothing)');
+    assert.doesNotMatch(controller, /addComponent\(Sprite\)/);
+    assert.match(controller, /'pulse_started'/);
+    assert.match(controller, /'sparks_started'/);
     const files = ['MilestoneTier', 'MilestoneToastQueue', 'MilestoneFeedback', 'MilestoneToastText', 'MilestoneToastLayout', 'MilestonePresentationViewModel', 'MilestonePresentationController'];
     for (const file of files) {
         assert.doesNotMatch(code(`${file}.ts`), /constructor\s*\(\s*(public|private|protected|readonly)\s/, `${file}: no constructor parameter properties`);

@@ -31,7 +31,7 @@ export const MILESTONE_TOAST_LAYOUT: Readonly<Record<PresentedMilestoneTier, Mil
         width: 440, height: 44,
         titleFontSize: 24, titleLineHeight: 36, titleCenterY: -22,
         subtitleFontSize: 0, subtitleLineHeight: 0, subtitleCenterY: 0,
-        underlineHeight: 0, underlineCenterY: 0, underlineInset: 0,
+        underlineHeight: 3, underlineCenterY: -41, underlineInset: 12,
     }),
     major: Object.freeze({
         width: 620, height: 96,
@@ -43,13 +43,18 @@ export const MILESTONE_TOAST_LAYOUT: Readonly<Record<PresentedMilestoneTier, Mil
 
 /** Pill / text / accent colours (RGBA). Cyan is dimmer than the producer lamps (82,206,224). */
 export const MILESTONE_TOAST_COLORS = Object.freeze({
-    pill: Object.freeze({ r: 24, g: 29, b: 32, a: 225 }),
+    pill: Object.freeze({ r: 24, g: 29, b: 32, a: 245 }),
     text: Object.freeze({ r: 238, g: 241, b: 233, a: 255 }),
     subtitle: Object.freeze({ r: 200, g: 206, b: 198, a: 255 }),
     accent: Object.freeze({
-        amber: Object.freeze({ r: 224, g: 168, b: 72, a: 255 }),
-        cyan: Object.freeze({ r: 59, g: 112, b: 121, a: 255 }),
+        amber: Object.freeze({ r: 240, g: 176, b: 64, a: 255 }),
+        cyan: Object.freeze({ r: 88, g: 170, b: 184, a: 255 }),
     }) as Readonly<Record<MilestoneAccent, { readonly r: number; readonly g: number; readonly b: number; readonly a: number }>>,
+    /** Title text carries the accent colour (cyan stays dimmer than the producer lamps 82,206,224). */
+    titleAccent: Object.freeze({
+        amber: Object.freeze({ r: 255, g: 200, b: 96 }),
+        cyan: Object.freeze({ r: 120, g: 205, b: 218 }),
+    }) as Readonly<Record<MilestoneAccent, { readonly r: number; readonly g: number; readonly b: number }>>,
 });
 
 /** Distance (design units) from the top edge of the safe area to the top of the toast band. */

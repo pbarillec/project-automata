@@ -1,4 +1,4 @@
-import { _decorator, Color, Component, Label, Layers, Node, Sprite, UITransform, Vec3 } from 'cc';
+import { _decorator, Color, Component, Graphics, Label, Layers, Node, UITransform, Vec3 } from 'cc';
 import type { DomainEvent } from '../domain/Events.ts';
 import type { GameState } from '../state/GameState.ts';
 import type { MobileCameraController } from '../camera/MobileCameraController';
@@ -14,11 +14,11 @@ import type { DisplayNameSource } from './PresentationText.ts';
 
 const { ccclass } = _decorator;
 
-const PULSE_PLATE_SCALE = 1.6;
-const SPARK_SIZE = 0.09;
-const SPARK_RING_RADIUS = 0.5;
-const PULSE_HEIGHT = 0.06;
-const SPARK_HEIGHT = 0.9;
+const PULSE_PLATE_SCALE = 3.4;
+const SPARK_SIZE = 0.2;
+const SPARK_RING_RADIUS = 0.8;
+const PULSE_HEIGHT = 0.4;
+const SPARK_HEIGHT = 1.2;
 
 interface RunningEffect {
     readonly trigger: MilestoneTrigger;
@@ -52,8 +52,8 @@ export class MilestonePresentationController extends Component {
     private titleLabel: Label | null = null;
     private subtitleLabel: Label | null = null;
     private underline: Node | null = null;
-    private pillSprite: Sprite | null = null;
-    private underlineSprite: Sprite | null = null;
+    private pillGraphics: Graphics | null = null;
+    private underlineGraphics: Graphics | null = null;
     private builtLayoutTier: string | null = null;
     private shownText = '';
     private effect: RunningEffect | null = null;
@@ -105,6 +105,8 @@ export class MilestonePresentationController extends Component {
             this.stopEffect();
             this.effect = { trigger, elapsed: 0 };
         }
+        if (trigger.pulse) this.emit('pulse_started', { id: item.id, key: trigger.key, tier: trigger.tier, accent: trigger.accent, producerId: trigger.producerId });
+        if (trigger.sparks) this.emit('sparks_started', { id: item.id, key: trigger.key, tier: trigger.tier, count: MILESTONE_SPARK_COUNT, producerId: trigger.producerId });
         this.requestFocus(trigger);
     }
 
@@ -143,12 +145,12 @@ export class MilestonePresentationController extends Component {
         // No touch listener on purpose: the band is touch-transparent (it never swallows a touch).
         this.pill = this.makeChild('MilestonePill');
         this.pill.getComponent(UITransform)?.setAnchorPoint(0.5, 1);
-        this.pillSprite = this.pill.addComponent(Sprite);
+        this.pillGraphics = this.pill.addComponent(Graphics);
         this.titleLabel = this.makeLabel('MilestoneTitle');
         this.subtitleLabel = this.makeLabel('MilestoneSubtitle');
         this.underline = this.makeChild('MilestoneUnderline');
         this.underline.getComponent(UITransform)?.setAnchorPoint(0, 0.5);
-        this.underlineSprite = this.underline.addComponent(Sprite);
+        this.underlineGraphics = this.underline.addComponent(Graphics);
     }
 
     private makeChild(name: string): Node {
@@ -194,12 +196,21 @@ export class MilestonePresentationController extends Component {
             this.underline!.setPosition(new Vec3(-layout.width / 2 + layout.underlineInset, layout.underlineCenterY, 0));
         }
         const accent = colors.accent[trigger.accent];
-        this.pillSprite!.color = new Color(colors.pill.r, colors.pill.g, colors.pill.b, Math.round(colors.pill.a * alpha));
-        this.titleLabel!.color = new Color(colors.text.r, colors.text.g, colors.text.b, Math.round(255 * alpha));
+        // Graphics fills render a solid colour on Android (a spriteFrame-less Sprite renders nothing).
+        const pillGraphics = this.pillGraphics!;
+        pillGraphics.clear();
+        pillGraphics.fillColor = new Color(colors.pill.r, colors.pill.g, colors.pill.b, Math.round(colors.pill.a * alpha));
+        pillGraphics.fillRect(-layout.width / 2, -layout.height, layout.width, layout.height);
+        const titleColor = colors.titleAccent[trigger.accent];
+        this.titleLabel!.color = new Color(titleColor.r, titleColor.g, titleColor.b, Math.round(255 * alpha));
         this.subtitleLabel!.color = new Color(colors.subtitle.r, colors.subtitle.g, colors.subtitle.b, Math.round(255 * alpha));
         if (layout.underlineHeight > 0) {
-            this.underline!.getComponent(UITransform)!.setContentSize(Math.max(0.01, (layout.width - layout.underlineInset * 2) * wipe), layout.underlineHeight);
-            this.underlineSprite!.color = new Color(accent.r, accent.g, accent.b, Math.round(accent.a * alpha));
+            const underlineWidth = Math.max(0.01, (layout.width - layout.underlineInset * 2) * (trigger.tier === 'minor' ? 1 : wipe));
+            this.underline!.getComponent(UITransform)!.setContentSize(underlineWidth, layout.underlineHeight);
+            const underlineGraphics = this.underlineGraphics!;
+            underlineGraphics.clear();
+            underlineGraphics.fillColor = new Color(accent.r, accent.g, accent.b, Math.round(accent.a * alpha));
+            underlineGraphics.fillRect(0, -layout.underlineHeight / 2, underlineWidth, layout.underlineHeight);
         }
         this.node.setScale(1, 1, 1);
     }

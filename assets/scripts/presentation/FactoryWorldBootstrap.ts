@@ -500,7 +500,7 @@ export class FactoryWorldBootstrap extends Component {
         for (const accent of ['amber', 'cyan'] as const) {
             const rgb = MILESTONE_ACCENT_RGB[accent];
             const plateName = `MilestonePulse_${accent}`;
-            const plate = site.getChildByName(plateName) ?? this.createBox(site, plateName, new Vec3(1, 0.04, 1), new Vec3(0, 0.06, 0), new Color(rgb.r, rgb.g, rgb.b, 255));
+            const plate = site.getChildByName(plateName) ?? this.createBox(site, plateName, new Vec3(1, 0.08, 1), new Vec3(0, 0.4, 0), new Color(rgb.r, rgb.g, rgb.b, 255));
             plate.setScale(0, 0, 0);
             controller.pulsePlates[accent] = plate;
         }
