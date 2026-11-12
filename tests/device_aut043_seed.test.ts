@@ -5,6 +5,7 @@ import { deserializeGameStateFromSaveJson } from '../assets/scripts/persistence/
 import { loadGameConfigFromSources } from '../assets/scripts/config/ConfigLoader.ts';
 import { getEmbeddedEconomyConfigSources } from '../assets/scripts/config/EmbeddedEconomyConfig.ts';
 import { evaluateBreakthroughEligibility } from '../assets/scripts/progression/index.ts';
+import { resolveNextGoal } from '../assets/scripts/progression/NextGoal.ts';
 import { resolveAutomatedCellVisualState } from '../assets/scripts/presentation/AutomatedCellVisualStateResolver.ts';
 import { resolveRobotLineVisualState } from '../assets/scripts/presentation/RobotLineVisualStateResolver.ts';
 import { isFirstRobotPresent } from '../assets/scripts/presentation/AssemblyVisualStateResolver.ts';
@@ -24,6 +25,8 @@ test('AUT-043 gate seed: unbuilt (affordable, buildable), Lv1 and Lv10 variants 
     assert.equal(breakthrough.isAffordable, true);
     assert.equal(breakthrough.cost, AUTOMATED_CELL_CONSTRUCTION_COST, 'the seed constant matches the economy data');
     assert.equal(resolveRobotLineVisualState(unbuilt).constructed, true, 'the Robot Line prerequisite is built');
+    const goal = resolveNextGoal(repository, unbuilt);
+    assert.match(JSON.stringify(goal), /automated_cell_architecture/, 'Next Goal (the HUD action the reveal capture taps) is the Automated Cell Architecture breakthrough');
     assert.equal(isFirstRobotPresent(unbuilt), true, 'the population exists so the Line / Cell -> Storage robots show');
 
     for (const [variant, level] of [['lv1', 1], ['lv10', 10]] as const) {

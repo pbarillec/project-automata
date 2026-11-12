@@ -34,6 +34,7 @@ npm scripts wrap PowerShell scripts in `tools/ci/`. Node **24.x** is required: t
 - `npm test` — all `tests/**/*.test.ts` via `node --test`.
 - Single test: `node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/game_runtime.test.ts`
 - `npm run validate:config`, `npm run simulate:reference`, `npm run simulate:pacing`.
+- `npm run device:reveal-capture` — DEBUG-APK live reveal evidence: native frame sequence + event timeline + objective checks under `temp/reveal/` (see `docs/AUT-INFRA-002_REVEAL_EVIDENCE_CAPTURE.md`); feed it to the vision-capable visual QA first, escalate only subjective feel.
 - `npm run android:build` — Cocos CLI build + Gradle debug APK (Cocos Creator 3.8.8 at the default path or `COCOS_CREATOR_EXE`; uses `temp/ci/android-sdk` when present, else `%LOCALAPPDATA%\Android\Sdk`). APK: `build/android/proj/build/ProjectAutomata/outputs/apk/debug/ProjectAutomata-debug.apk`; package `com.projectautomata.androidbaseline`; `adb` is in `%LOCALAPPDATA%\Android\Sdk\platform-tools`.
 - **Build start scene:** `tools/ci/cocos_android_debug_build.json` (tracked) still launches `CameraSpike.scene`. Device runs of FactoryWorld temporarily switch `startScene`/`scenes` to `FactoryWorld.scene` (uuid `b0330000-0000-4000-8000-000000000010`); restore the file afterwards and keep any backups/APKs/logs under the gitignored `temp/`, not in the repo.
 

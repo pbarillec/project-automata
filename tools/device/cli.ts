@@ -28,6 +28,7 @@ import { seedAut040 } from './seed_aut040.ts';
 import { AUT042_SEED_VARIANTS, isAut042SeedVariant, seedAut042 } from './seed_aut042.ts';
 import { AUT043_SEED_VARIANTS, isAut043SeedVariant, seedAut043 } from './seed_aut043.ts';
 import { runAut041Benchmark } from './benchmark_aut041.ts';
+import { runRevealCapture, type RevealTrigger } from './reveal_capture.ts';
 
 function parseArgs(argv: string[]): { command: string; flags: Record<string, string | boolean> } {
     const [command = 'help', ...rest] = argv;
@@ -127,6 +128,22 @@ async function main(): Promise<number> {
         const { results, summaryPath } = await runAut041Benchmark(driver);
         console.log(`summary: ${summaryPath}`);
         return results.every((r) => r.ok) ? 0 : 1;
+    }
+    if (command === 'reveal-capture') {
+        // AUT-INFRA-002: live reveal evidence (frame sequence + event timeline) for the AUT-043 Automated Cell build.
+        const driver = new AdbDeviceDriver();
+        const selection = selectDevice(await driver.devices(), typeof flags.serial === 'string' ? flags.serial : undefined);
+        if (!selection.ok) { console.log(JSON.stringify(selection, null, 2)); return 2; }
+        if (typeof flags.serial === 'string') driver.useSerial(flags.serial);
+        const result = await runRevealCapture(driver, {
+            label: typeof flags.label === 'string' ? flags.label : 'aut043-cell',
+            trigger: (typeof flags.trigger === 'string' ? flags.trigger : 'next-goal') as RevealTrigger,
+            expectConstruction: 'automated_cell',
+            expectFocus: true,
+        });
+        console.log(`reveal capture ${result.ok ? 'PASS' : 'FAIL'}: ${result.outDir}`);
+        for (const check of result.checks) console.log(`  ${check.ok ? 'PASS' : 'FAIL'} ${check.id}: ${check.detail}`);
+        return result.ok ? 0 : 1;
     }
     if (command === 'gate-build') {
         const label = typeof flags.label === 'string' ? flags.label : 'gate';

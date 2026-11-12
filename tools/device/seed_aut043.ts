@@ -32,7 +32,7 @@ export function isAut043SeedVariant(value: unknown): value is Aut043SeedVariant 
 
 export function buildAut043SeededState(variant: Aut043SeedVariant): GameState {
     const state = createFreshGameState();
-    state.run.purchasedBreakthroughIds = ['auto_feeder', 'worker_bot', 'robotic_logistics'];
+    state.run.purchasedBreakthroughIds = ['auto_feeder', 'worker_bot', 'robotic_logistics', 'factory_control_system'];
     state.run.progressionFlags['first_robot'] = true;
     state.run.currentEraId = 'automated_factory';
     state.run.producers.fabricator = { level: 50, isUnlocked: true, isBuilt: true };
