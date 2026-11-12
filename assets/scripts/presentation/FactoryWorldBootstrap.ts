@@ -43,6 +43,9 @@ import { AUTOMATED_CELL_FOUNDATION_SLAB, AUTOMATED_CELL_GUIDE, AUTOMATED_CELL_GU
 import { AdvancedRoboticsComplexVisualController, ARC_GUIDE_OFF_NODE_PREFIX, ARC_GUIDE_ON_NODE_PREFIX, ARC_LAMP_OFF_NODE_PREFIX, ARC_LAMP_ON_NODE_PREFIX, ARC_SLAB_NODE_NAME } from './AdvancedRoboticsComplexVisualController';
 import { ARC_BEAM_GRAPHITE_COLOR, ARC_BEAMS, ARC_FOUNDATION_SLAB, ARC_GUIDE, ARC_GUIDE_OFF_COLOR, ARC_GUIDE_ON_COLOR, ARC_GUIDE_PARTS, ARC_LAMP_IDS, ARC_LAMPS, ARC_REVEAL_TARGET, ARC_SPARK_ANCHOR, arcLocal } from './AdvancedRoboticsComplexLayout.ts';
 import { EraEnvironmentVisualController } from './EraEnvironmentVisualController';
+import { MilestonePresentationController } from './MilestonePresentationController';
+import { milestoneToastTopOffset } from './MilestoneToastLayout.ts';
+import { MILESTONE_ACCENT_RGB } from './MilestoneFeedback.ts';
 import { ERA_ENV_BOXES, ERA_ENV_GROUP_IDS, ERA_ENV_GROUP_NODE_NAMES, ERA_ENV_ROOT_NODE_NAME } from './EraEnvironmentLayout.ts';
 import { ROBOT_LINE_FOUNDATION_SLAB, ROBOT_LINE_LAMP_IDS, ROBOT_LINE_LAMPS, ROBOT_LINE_OUTPUT_LIP, ROBOT_LINE_REVEAL_TARGET, ROBOT_LINE_SPARK_ANCHOR, robotLineLocal } from './RobotLineLayout.ts';
 import { FirstRobotPresentationController, ROBOT_BAY_LAMP_OFF_NODE_NAME, ROBOT_BAY_LAMP_ON_NODE_NAME } from './FirstRobotPresentationController';
@@ -148,6 +151,7 @@ export class FactoryWorldBootstrap extends Component {
         // AUT-R-036-02: Manual Produce sits in the bottom band, inside the panel card (before the HUD's first layout).
         hud.primaryActionHost = panel.node;
         const batch = this.createAssemblyBatchAction(panel.node);
+        this.createMilestonePresentation(site);
         selection.onSelectionChanged = (producerId) => {
             panel.replaceSelection(producerId);
             this.binding?.onSelectionChanged(producerId);
@@ -238,6 +242,7 @@ export class FactoryWorldBootstrap extends Component {
         wiring.hud.commandEmitter = (command) => { void binding.submit(command); };
         wiring.panel.commandEmitter = (command) => { void binding.submit(command); };
         wiring.batch.commandEmitter = (command) => { void binding.submit(command); };
+        if (wiring.presentation?.milestonePresentation) wiring.presentation.milestonePresentation.setNameSource(displayNames);
         if (!this.lifecycleHooksRegistered) {
             game.on(Game.EVENT_HIDE, this.onGameHide, this);
             game.on(Game.EVENT_SHOW, this.onGameShow, this);
@@ -465,6 +470,41 @@ export class FactoryWorldBootstrap extends Component {
             ?.getComponent(RobotPopulationController) ?? null;
         controller.focusAnchors = FACTORY_ZONE_IDS.map((id) => parent.getChildByName(`Zone_${id}`)?.getChildByName(`${id}_FocusAnchor`)).filter((node): node is Node => node !== null && node !== undefined);
         controller.compositionAnchors = FACTORY_ZONE_IDS.map((id) => parent.getChildByName(`Zone_${id}`)?.getChildByName(`${id}_CompositionAnchor`)).filter((node): node is Node => node !== null && node !== undefined);
+    }
+
+    /**
+     * AUT-046 milestone presentation: a touch-transparent toast band under the HUD (UiSafeArea child, top-anchored below the HUD card),
+     * one flat pulse plate per accent (scale 0 at rest) and the wiring to the AUT-040 spark pool, the focus anchors and the camera.
+     * Runs after createUiRoot(). Presentation only.
+     */
+    private createMilestonePresentation(site: Node): void {
+        const registry = site.getChildByName('PresentationAnchors');
+        const presentation = registry?.getComponent(PresentationController) ?? null;
+        if (!registry || !presentation) return;
+        const container = this.uiSafeArea();
+        const toast = container.getChildByName('MilestoneToast') ?? new Node('MilestoneToast');
+        toast.parent = container;
+        toast.layer = Layers.Enum.UI_2D;
+        toast.getComponent(UITransform) ?? toast.addComponent(UITransform);
+        const widget = toast.getComponent(Widget) ?? toast.addComponent(Widget);
+        widget.isAlignTop = true;
+        widget.isAlignBottom = widget.isAlignLeft = widget.isAlignRight = false;
+        widget.isAlignHorizontalCenter = true;
+        widget.horizontalCenter = 0;
+        widget.top = milestoneToastTopOffset();
+        widget.alignMode = Widget.AlignMode.ALWAYS;
+        const controller = toast.getComponent(MilestonePresentationController) ?? toast.addComponent(MilestonePresentationController);
+        controller.cameraController = this.cameraController();
+        controller.construction = presentation.constructionPresentation;
+        controller.resolveProducerAnchor = (producerId) => presentation.getFocusAnchor(producerId);
+        for (const accent of ['amber', 'cyan'] as const) {
+            const rgb = MILESTONE_ACCENT_RGB[accent];
+            const plateName = `MilestonePulse_${accent}`;
+            const plate = site.getChildByName(plateName) ?? this.createBox(site, plateName, new Vec3(1, 0.04, 1), new Vec3(0, 0.06, 0), new Color(rgb.r, rgb.g, rgb.b, 255));
+            plate.setScale(0, 0, 0);
+            controller.pulsePlates[accent] = plate;
+        }
+        presentation.milestonePresentation = controller;
     }
 
     private connectFirstAutomationPresentation(parent: Node): void {

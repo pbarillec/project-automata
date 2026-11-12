@@ -50,6 +50,12 @@ export class ConstructionPresentationController extends Component {
         this.report(this.viewModel.consumeEvents(state, events));
     }
 
+    /** AUT-046: true while any registered producer's construction sequence runs (the spark pool and the camera are then owned by it). */
+    public isAnyConstructing(): boolean {
+        for (const producerId of this.targets.keys()) if (this.viewModel.isActive(producerId)) return true;
+        return false;
+    }
+
     public isConstructing(producerId: string): boolean {
         return this.viewModel.isActive(producerId);
     }

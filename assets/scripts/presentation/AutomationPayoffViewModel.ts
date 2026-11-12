@@ -14,7 +14,7 @@ export interface AutomationPayoffSnapshot {
 
 function eventKey(event: DomainEvent): string { return JSON.stringify(event); }
 
-function isFirstAutomationEvidence(event: DomainEvent): boolean {
+export function isFirstAutomationEvidence(event: DomainEvent): boolean {
     if (event.type === 'automationStateChanged') {
         return event.producerId === 'fabricator' && event.isAutomated
             && (event.unlockedByBreakthroughId === 'auto_feeder' || event.unlockedByBreakthroughId === null);
