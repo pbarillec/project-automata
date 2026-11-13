@@ -20,6 +20,7 @@
     "device:seed-aut045": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-aut045",
     "device:seed-aut046": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-aut046",
     "device:seed-aut047": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-aut047",
+    "device:seed-aut048": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-aut048",
     "device:seed-ui003": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-ui003",
     "device:bench-aut041": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts bench-aut041",
     "device:reveal-capture": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts reveal-capture",

@@ -39,6 +39,13 @@ export const MILESTONE_TOAST_LAYOUT: Readonly<Record<PresentedMilestoneTier, Mil
         subtitleFontSize: 22, subtitleLineHeight: 28, subtitleCenterY: -66,
         underlineHeight: 4, underlineCenterY: -90, underlineInset: 20,
     }),
+    // AUT-048 era title card: larger than Major, ONE all-caps line, no subtitle.
+    exceptional: Object.freeze({
+        width: 680, height: 112,
+        titleFontSize: 32, titleLineHeight: 44, titleCenterY: -52,
+        subtitleFontSize: 0, subtitleLineHeight: 0, subtitleCenterY: 0,
+        underlineHeight: 5, underlineCenterY: -100, underlineInset: 28,
+    }),
 });
 
 /** Pill / text / accent colours (RGBA). Cyan is dimmer than the producer lamps (82,206,224). */
@@ -49,6 +56,14 @@ export const MILESTONE_TOAST_COLORS = Object.freeze({
     accent: Object.freeze({
         amber: Object.freeze({ r: 240, g: 176, b: 64, a: 255 }),
         cyan: Object.freeze({ r: 88, g: 170, b: 184, a: 255 }),
+    }) as Readonly<Record<MilestoneAccent, { readonly r: number; readonly g: number; readonly b: number; readonly a: number }>>,
+    /**
+     * AUT-048 era title underline: amber, or the AUT-045 environment cyan (59,112,121; never brighter than the lamps 82,206,224).
+     * The era title text stays off-white (`text`) so the cyan never exceeds the lamps.
+     */
+    eraUnderline: Object.freeze({
+        amber: Object.freeze({ r: 240, g: 176, b: 64, a: 255 }),
+        cyan: Object.freeze({ r: 59, g: 112, b: 121, a: 255 }),
     }) as Readonly<Record<MilestoneAccent, { readonly r: number; readonly g: number; readonly b: number; readonly a: number }>>,
     /** Title text carries the accent colour (cyan stays dimmer than the producer lamps 82,206,224). */
     titleAccent: Object.freeze({
@@ -78,15 +93,15 @@ export function computeMilestoneToastRect(
 
 /** True when every toast font is at least the project's minimum body size. */
 export function milestoneToastFontsReadable(): boolean {
-    return (['minor', 'major'] as const).every((tier) => {
+    return (['minor', 'major', 'exceptional'] as const).every((tier) => {
         const layout = MILESTONE_TOAST_LAYOUT[tier];
         return layout.titleFontSize >= UI_MIN_BODY_FONT_SIZE && (layout.subtitleFontSize === 0 || layout.subtitleFontSize >= UI_MIN_BODY_FONT_SIZE);
     });
 }
 
 /** The band stays inside the factory band (between the HUD and the panel) for the given screen. */
-export function milestoneToastFitsFactoryBand(screenPx: { w: number; h: number }, safeAreaPx?: UiRect): boolean {
+export function milestoneToastFitsFactoryBand(screenPx: { w: number; h: number }, safeAreaPx?: UiRect, tier: PresentedMilestoneTier = 'major'): boolean {
     const ui = computeUiLayout(screenPx, safeAreaPx);
-    const rect = computeMilestoneToastRect(screenPx, safeAreaPx, 'major');
+    const rect = computeMilestoneToastRect(screenPx, safeAreaPx, tier);
     return rect.y >= ui.factoryBand.y && rect.y + rect.h <= ui.hud.y;
 }

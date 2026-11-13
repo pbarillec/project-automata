@@ -4,6 +4,8 @@ import type { MilestoneTrigger, PresentedMilestoneTier } from './MilestoneTier.t
 export const MILESTONE_TOAST_TIMING: Readonly<Record<PresentedMilestoneTier, { readonly fadeIn: number; readonly hold: number; readonly fadeOut: number }>> = Object.freeze({
     minor: Object.freeze({ fadeIn: 0.15, hold: 0.5, fadeOut: 0.2 }),
     major: Object.freeze({ fadeIn: 0.25, hold: 1.9, fadeOut: 0.35 }),
+    // AUT-048 era title card: 0.3 s in / 2.2 s hold / 0.5 s out = 3.0 s hard cap.
+    exceptional: Object.freeze({ fadeIn: 0.3, hold: 2.2, fadeOut: 0.5 }),
 });
 /** The accent underline wipes across the Major toast over this many seconds, starting when the fade-in ends. */
 export const MILESTONE_UNDERLINE_WIPE_SECONDS = 0.6;
@@ -23,7 +25,7 @@ export interface MilestoneToastTimingSample {
     readonly phase: MilestoneToastPhase;
     /** 0..1 */
     readonly alpha: number;
-    /** 0..1 accent underline wipe (always 0 for Minor). */
+    /** 0..1 accent underline wipe (always 0 for Minor; Major and the era title card wipe). */
     readonly wipe: number;
     readonly complete: boolean;
 }
@@ -33,7 +35,7 @@ export function sampleMilestoneToast(tier: PresentedMilestoneTier, elapsed: numb
     const t = Math.max(0, elapsed);
     const timing = MILESTONE_TOAST_TIMING[tier];
     const total = milestoneToastDuration(tier);
-    const wipe = tier === 'major' ? clamp01((t - timing.fadeIn) / MILESTONE_UNDERLINE_WIPE_SECONDS) : 0;
+    const wipe = tier !== 'minor' ? clamp01((t - timing.fadeIn) / MILESTONE_UNDERLINE_WIPE_SECONDS) : 0;
     if (t >= total) return { phase: 'out', alpha: 0, wipe, complete: true };
     if (t < timing.fadeIn) return { phase: 'in', alpha: clamp01(t / timing.fadeIn), wipe, complete: false };
     if (t < timing.fadeIn + timing.hold) return { phase: 'hold', alpha: 1, wipe, complete: false };
@@ -48,7 +50,7 @@ export interface MilestoneToastItem {
     elapsed: number;
 }
 
-export type MilestoneDropReason = 'preempted' | 'major_active' | 'merged' | 'burst_limit';
+export type MilestoneDropReason = 'preempted' | 'major_active' | 'exceptional_active' | 'merged' | 'burst_limit';
 
 export interface MilestoneDrop {
     readonly key: string;
@@ -97,12 +99,17 @@ export class MilestoneToastQueue {
         const queued: string[] = [];
         const dropped: MilestoneDrop[] = [];
         const collapsed: string[] = [];
-        // Majors first so a Minor of the same burst never flashes before the Major pre-empts it.
-        const ordered = [...triggers.filter((t) => t.tier === 'major'), ...triggers.filter((t) => t.tier === 'minor')];
+        // Exceptional (era title) first, then Majors, so a lower tier of the same burst never flashes before the higher one pre-empts it.
+        const ordered = [...triggers.filter((t) => t.tier === 'exceptional'), ...triggers.filter((t) => t.tier === 'major'), ...triggers.filter((t) => t.tier === 'minor')];
         let majorOffered: MilestoneTrigger | null = null;
+        let exceptionalOffered: MilestoneTrigger | null = null;
         let minorOffered = false;
         for (const item of ordered) {
-            if (item.tier === 'major') {
+            if (item.tier === 'exceptional') {
+                if (exceptionalOffered) { this.collapseInto(item, collapsed); continue; }
+                exceptionalOffered = item;
+                this.offerExceptional(item, started, queued, dropped, collapsed);
+            } else if (item.tier === 'major') {
                 if (majorOffered) { this.collapseInto(item, collapsed); continue; }
                 majorOffered = item;
                 this.offerMajor(item, started, queued, dropped, collapsed);
@@ -145,6 +152,23 @@ export class MilestoneToastQueue {
         this.lastMinorAt.clear();
     }
 
+    /** The era title card pre-empts every visible and waiting Minor / Major; a second card waits (FIFO). */
+    private offerExceptional(trigger: MilestoneTrigger, started: MilestoneToastItem[], queued: string[], dropped: MilestoneDrop[], collapsed: string[]): void {
+        if (this.active && this.active.trigger.tier !== 'exceptional') {
+            dropped.push({ key: this.active.trigger.key, reason: 'preempted' });
+            this.active = null;
+        }
+        for (const waitingItem of this.waiting.filter((w) => w.trigger.tier !== 'exceptional')) dropped.push({ key: waitingItem.trigger.key, reason: 'preempted' });
+        this.waiting = this.waiting.filter((w) => w.trigger.tier === 'exceptional');
+        if (!this.active) {
+            const item = this.create(trigger);
+            this.active = item;
+            started.push(item);
+            return;
+        }
+        this.waitOrCollapse(trigger, 'exceptional', queued, collapsed);
+    }
+
     private offerMajor(trigger: MilestoneTrigger, started: MilestoneToastItem[], queued: string[], dropped: MilestoneDrop[], collapsed: string[]): void {
         // Pre-emption: visible and waiting Minors are dropped.
         if (this.active && this.active.trigger.tier === 'minor') {
@@ -163,6 +187,7 @@ export class MilestoneToastQueue {
     }
 
     private offerMinor(trigger: MilestoneTrigger, started: MilestoneToastItem[], queued: string[], dropped: MilestoneDrop[], collapsed: string[]): void {
+        if (this.active?.trigger.tier === 'exceptional') { dropped.push({ key: trigger.key, reason: 'exceptional_active' }); return; }
         if (this.active?.trigger.tier === 'major') { dropped.push({ key: trigger.key, reason: 'major_active' }); return; }
         const producerKey = trigger.producerId ?? trigger.key;
         const last = this.lastMinorAt.get(producerKey);
@@ -198,8 +223,9 @@ export class MilestoneToastQueue {
     }
 
     private takeNextWaiting(): MilestoneToastItem | null {
+        const exceptionalIndex = this.waiting.findIndex((w) => w.trigger.tier === 'exceptional');
         const majorIndex = this.waiting.findIndex((w) => w.trigger.tier === 'major');
-        const index = majorIndex >= 0 ? majorIndex : 0;
+        const index = exceptionalIndex >= 0 ? exceptionalIndex : majorIndex >= 0 ? majorIndex : 0;
         if (this.waiting.length === 0) return null;
         return this.waiting.splice(index, 1)[0];
     }

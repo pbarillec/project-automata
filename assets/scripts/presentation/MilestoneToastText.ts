@@ -1,6 +1,7 @@
 import { getDefaultTextCatalogue, type TextCatalogue } from '../localization/index.ts';
 import type { DisplayNameSource } from './PresentationText.ts';
 import type { MilestoneTrigger } from './MilestoneTier.ts';
+import { eraTransitionSpec } from './EraTransition.ts';
 
 /**
  * English toast templates. They live here rather than in localization/en.json on purpose: the AUT-LOC-001 tests pin the shared
@@ -55,6 +56,9 @@ function compose(trigger: MilestoneTrigger, names: DisplayNameSource | null, cat
             const title = key !== null && catalogue.has(key) ? catalogue.resolveText(key) : fill('breakthrough_generic');
             return { title, subtitle: fill('breakthrough_subtitle') };
         }
+        case 'era_title':
+            // AUT-048: one all-caps line from the era table (English until the AUT-052 catalogue move), never a subtitle.
+            return { title: eraTransitionSpec(trigger.eraId)?.title ?? fill('breakthrough_generic'), subtitle: null };
         case 'robots_built':
             return { title: fill('robots_built_title', { count: trigger.threshold ?? 0 }), subtitle: fill('robots_built_subtitle') };
         default:

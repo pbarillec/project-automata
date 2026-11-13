@@ -277,15 +277,23 @@ test('AUT-046 view model: an Exceptional event in the burst suppresses the focus
     const era: DomainEvent = { type: 'eraChanged', oldEraId: 'manual_workshop', newEraId: 'automated_factory' };
     const update = viewModel.consumeEvents(state, [constructedEvent('robot_line'), era]);
     assert.deepEqual(update.exceptional, ['eraChanged']);
-    assert.deepEqual(update.accepted.map((t) => t.key), ['c:robot_line']);
-    assert.equal(update.outcome?.started.length, 1, 'the toast is shown');
+    // AUT-048: the era title card owns the batch: the Robot Line built Major toast is subsumed (ONE card shows).
+    assert.deepEqual(update.accepted.map((t) => t.key), []);
+    assert.deepEqual(update.skipped, [{ key: 'c:robot_line', reason: 'subsumed' }]);
+    assert.equal(update.eraScheduled?.key, 'e:automated_factory');
 
     const second = new MilestonePresentationViewModel();
     second.syncFromState(state);
     const burst = second.consumeEvents(state, [breakthroughEvent('advanced_robotics'), constructedEvent('advanced_robotics_complex', 'breakthrough', 'advanced_robotics'), { type: 'eraChanged', oldEraId: 'automated_factory', newEraId: 'robotics_complex', breakthroughId: 'advanced_robotics' }]);
-    assert.deepEqual(burst.accepted.map((t) => t.key), ['b:advanced_robotics'], 'the construction is subsumed by the breakthrough toast');
-    assert.equal(burst.accepted[0].focusSuppressed, true, 'the era / construction reveal owns the camera');
-    assert.deepEqual(burst.skipped, [{ key: 'c:advanced_robotics_complex', reason: 'subsumed' }]);
+    assert.deepEqual(burst.accepted.map((t) => t.key), [], 'AUT-048: the era title card subsumes the breakthrough and construction toasts');
+    assert.deepEqual(burst.skipped.map((s) => [s.key, s.reason]), [['c:advanced_robotics_complex', 'subsumed'], ['b:advanced_robotics', 'subsumed']]);
+    assert.equal(burst.eraScheduled?.key, 'e:robotics_complex');
+    const noEra = new MilestonePresentationViewModel();
+    noEra.syncFromState(state);
+    const sameBatch = noEra.consumeEvents(state, [breakthroughEvent('advanced_robotics'), constructedEvent('advanced_robotics_complex', 'breakthrough', 'advanced_robotics'), { type: 'firstRobotProduced' }]);
+    assert.deepEqual(sameBatch.accepted.map((t) => t.key), ['b:advanced_robotics'], 'without an era card the construction is still subsumed by the breakthrough toast');
+    assert.equal(sameBatch.accepted[0].focusSuppressed, true, 'an Exceptional reveal owns the camera');
+    assert.deepEqual(sameBatch.skipped, [{ key: 'c:advanced_robotics_complex', reason: 'subsumed' }]);
 
     const first = new MilestonePresentationViewModel();
     first.syncFromState(state);

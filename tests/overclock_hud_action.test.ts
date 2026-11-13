@@ -210,12 +210,12 @@ test('AUT-UI-003 device tooling: ui003 scenario, overclock trigger, seed command
     const cli = read('tools/device/cli.ts');
     assert.match(cli, /command === 'seed-ui003'/);
     assert.match(cli, /seed-ui003 \[--serial <id>\]/);
-    assert.match(cli, /aut046\|aut047\|ui003\]/);
-    assert.match(cli, /--trigger next-goal\|overclock\|none/);
+    assert.match(cli, /aut046\|aut047\|ui003\|aut048\|aut048-era3\]/);
+    assert.match(cli, /--trigger next-goal\|overclock\|robot-line-build\|none/);
     assert.match(cli, /expectCommands: scenario\.expectCommands/);
     const capture = read('tools/device/reveal_capture.ts');
     assert.match(capture, /trigger === 'overclock' \? 'OverclockAction'/);
-    assert.match(capture, /export type RevealTrigger = 'none' \| 'next-goal' \| 'overclock';/);
+    assert.match(capture, /export type RevealTrigger = 'none' \| 'next-goal' \| 'overclock' \| 'robot-line-build';/);
 
     const event = (tMs: number, evt: string, extra: Record<string, unknown>): TimelineEvent => ({ tMs, event: { v: 1, seq: tMs, evt, ...extra } as TimelineEvent['event'] });
     const chain = [

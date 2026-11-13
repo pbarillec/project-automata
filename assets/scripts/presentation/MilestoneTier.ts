@@ -9,12 +9,13 @@ import { isFirstAutomationEvidence } from './AutomationPayoffViewModel.ts';
  * - `minor`: small chip toast + short light pulse, never a camera focus, never a title.
  * - `major`: title (+ subtitle) toast, sparks + ~1 s light pulse, camera focus allowed.
  * - `exceptional`: owned by an existing controller (first automation / first robot / era change / Reboot). This module only
- *   classifies it; it never presents it (AUT-048 / AUT-049 own the era / Reboot presentation).
+ *   classifies it; the era title card is built by `EraTransition.ts` (AUT-048), Reboot stays with AUT-049.
  */
 export type MilestoneTier = 'none' | 'minor' | 'major' | 'exceptional';
-export type PresentedMilestoneTier = 'minor' | 'major';
+/** `exceptional` is presented only as the AUT-048 era title card (the other Exceptional events stay with their owners). */
+export type PresentedMilestoneTier = 'minor' | 'major' | 'exceptional';
 export type MilestoneAccent = 'amber' | 'cyan';
-export type MilestoneKind = 'producer_milestone' | 'automation' | 'breakthrough' | 'robots_built' | 'producer_constructed';
+export type MilestoneKind = 'producer_milestone' | 'automation' | 'breakthrough' | 'robots_built' | 'producer_constructed' | 'era_title';
 
 /** Tier of every DomainEvent type (the tests pin that this table covers exactly the `DomainEvent` union). */
 export const MILESTONE_EVENT_TIERS: Readonly<Record<DomainEvent['type'], MilestoneTier>> = Object.freeze({
@@ -84,6 +85,8 @@ export interface MilestoneTrigger {
     readonly sparks: boolean;
     /** Light pulse on the producer. */
     readonly pulse: boolean;
+    /** Era the AUT-048 title card announces (`era_title` only, null otherwise). */
+    readonly eraId: string | null;
     /** Set by the view model when an Exceptional event shares the burst: the toast shows, the focus is skipped. */
     readonly focusSuppressed: boolean;
 }
@@ -162,6 +165,7 @@ function trigger(fields: TriggerFields): MilestoneTrigger {
         focusProducerId: fields.tier === 'major' ? (fields.focusProducerId ?? null) : null,
         sparks: fields.tier === 'major' && fields.sparks === true,
         pulse: fields.pulse === true,
+        eraId: null,
         focusSuppressed: false,
     });
 }

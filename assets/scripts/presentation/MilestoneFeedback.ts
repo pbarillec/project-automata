@@ -3,7 +3,7 @@ import { ZONE_LAYOUT, type FactoryZoneRect } from './FactoryZoneLayout.ts';
 import type { MilestoneAccent, MilestoneTrigger, PresentedMilestoneTier } from './MilestoneTier.ts';
 
 /** Light pulse length on the producer (Minor short, Major about 1 s) and Major spark length, in seconds. */
-export const MILESTONE_PULSE_SECONDS: Readonly<Record<PresentedMilestoneTier, number>> = Object.freeze({ minor: 0.5, major: 1.0 });
+export const MILESTONE_PULSE_SECONDS: Readonly<Record<PresentedMilestoneTier, number>> = Object.freeze({ minor: 0.5, major: 1.0, exceptional: 0 });
 export const MILESTONE_SPARK_SECONDS = 0.8;
 /** Major sparks: 4-6 nodes from the existing AUT-040 spark pool. */
 export const MILESTONE_SPARK_COUNT = 6;

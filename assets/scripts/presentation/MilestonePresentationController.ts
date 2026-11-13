@@ -4,6 +4,7 @@ import type { GameState } from '../state/GameState.ts';
 import type { MobileCameraController } from '../camera/MobileCameraController';
 import type { ConstructionPresentationController } from './ConstructionPresentationController';
 import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
+import { eraTransitionSpec, resolveEraFocus } from './EraTransition.ts';
 import { MILESTONE_ACCENT_RGB, MILESTONE_RING_HEIGHT, MILESTONE_RING_VISIBLE_ABOVE, MILESTONE_SPARK_COUNT, milestoneRingBars, producerFootprint, resolveMilestoneFocus, sampleMilestoneEffect } from './MilestoneFeedback.ts';
 import { MilestonePresentationViewModel, type MilestoneUpdate } from './MilestonePresentationViewModel.ts';
 import type { MilestoneToastItem } from './MilestoneToastQueue.ts';
@@ -30,7 +31,8 @@ interface RunningEffect {
 
 /**
  * AUT-046 thin `cc` controller over the pure `MilestonePresentationViewModel`: one reusable pipeline
- * (DomainEvent -> tier -> toast + pulse/spark + optional focus). The toast is a single touch-transparent band below the HUD (no touch
+ * (DomainEvent -> tier -> toast + pulse/spark + optional focus). AUT-048 adds the Exceptional era title card to the same band (plus an
+ * optional era focus beat through the same camera API); the environment fade stays with the AUT-045 controller. The toast is a single touch-transparent band below the HUD (no touch
  * listener, so camera panning and every button stay live); idle it has scale 0 (scale-based visibility). Pulse plates come from the
  * bootstrap, sparks from the AUT-040 pool, the focus goes through the existing `focusOnRevealTarget`. Never writes GameState,
  * never submits a command, never delays control.
@@ -61,6 +63,7 @@ export class MilestonePresentationController extends Component {
     private shownText = '';
     private effect: RunningEffect | null = null;
     private sparksDirty = false;
+    private eraAppliedReportedFor = 0;
 
     public start(): void {
         this.ensureToast();
@@ -72,6 +75,7 @@ export class MilestonePresentationController extends Component {
         const update = this.viewModel.syncFromState(state);
         this.report(update, 'sync');
         if (isDeviceDiagnosticsEnabled()) emitDeviceEvent('milestone_presentation', { phase: 'synced', source: 'session' });
+        this.emitEra('synced', { source: 'session', eraId: state.run.currentEraId });
         return update;
     }
 
@@ -83,9 +87,23 @@ export class MilestonePresentationController extends Component {
         return update;
     }
 
+    /**
+     * Review / debug replay of one era title card (and its focus beat) from the era id alone. Presentation only: no GameState read or
+     * write, no command, no save, and the AUT-045 environment is not touched.
+     */
+    public replayEraTransition(eraId: string): MilestoneUpdate {
+        const update = this.viewModel.replayEra(eraId);
+        this.report(update, 'replay');
+        return update;
+    }
+
     public update(deltaSeconds: number): void {
         const tick = this.viewModel.tick(deltaSeconds);
-        for (const item of tick.finished) this.emit('toast_finished', { id: item.id, key: item.trigger.key, tier: item.trigger.tier });
+        for (const item of tick.finished) {
+            this.emit('toast_finished', { id: item.id, key: item.trigger.key, tier: item.trigger.tier });
+            if (item.trigger.kind === 'era_title') this.emitEra('title_finished', { eraId: item.trigger.eraId, elapsedSeconds: item.elapsed });
+        }
+        // Era card offers made when the card delay elapsed are already merged into started (both start paths are handled).
         for (const item of tick.started) this.onToastStarted(item);
         if (tick.frame) this.renderToast(tick.frame.item, tick.frame.sample.alpha, tick.frame.sample.wipe);
         else this.hideToast();
@@ -94,6 +112,8 @@ export class MilestonePresentationController extends Component {
 
     private report(update: MilestoneUpdate, source: string): void {
         if (update.rebooted) this.stopEffect();
+        if (update.eraCancelled) this.emitEra('cancelled', { source, reason: 'reboot' });
+        if (update.eraScheduled) this.emitEra('scheduled', { source, eraId: update.eraScheduled.eraId, cardDelaySeconds: eraTransitionSpec(update.eraScheduled.eraId)?.cardDelaySeconds ?? null, subsumed: update.skipped.filter((s) => s.reason === 'subsumed').map((s) => s.key) });
         if (!isDeviceDiagnosticsEnabled()) return;
         if (update.exceptional.length > 0) this.emit('exceptional_routed', { source, types: update.exceptional });
         if (update.skipped.length > 0) this.emit('skipped', { source, skipped: update.skipped });
@@ -105,6 +125,10 @@ export class MilestonePresentationController extends Component {
 
     private onToastStarted(item: MilestoneToastItem): void {
         const trigger = item.trigger;
+        if (trigger.kind === 'era_title') {
+            this.onEraCardStarted(item);
+            return;
+        }
         this.emit('toast_started', { id: item.id, key: trigger.key, tier: trigger.tier, kind: trigger.kind, accent: trigger.accent, producerId: trigger.producerId, extra: item.extra, ...this.textOf(item) });
         if (trigger.pulse || trigger.sparks) {
             this.stopEffect();
@@ -117,6 +141,38 @@ export class MilestonePresentationController extends Component {
         if (trigger.pulse) this.emit('pulse_started', { id: item.id, key: trigger.key, tier: trigger.tier, accent: trigger.accent, producerId: trigger.producerId, anchorResolved: anchor !== null, anchorName: anchor?.name ?? null, worldPos: world, plate: plate !== null, plateParent: plate?.parent?.name ?? null });
         if (trigger.sparks) this.emit('sparks_started', { id: item.id, key: trigger.key, tier: trigger.tier, count: MILESTONE_SPARK_COUNT, producerId: trigger.producerId, anchorResolved: anchor !== null, worldPos: world, poolSize: sparkPool.length, poolParent: sparkPool[0]?.parent?.name ?? null, constructionActive: this.construction?.isAnyConstructing() === true });
         this.requestFocus(trigger);
+    }
+
+    private onEraCardStarted(item: MilestoneToastItem): void {
+        const trigger = item.trigger;
+        const text = this.textOf(item);
+        const spec = eraTransitionSpec(trigger.eraId);
+        this.emit('toast_started', { id: item.id, key: trigger.key, tier: trigger.tier, kind: trigger.kind, accent: trigger.accent, producerId: null, extra: item.extra, ...text });
+        this.emitEra('title_started', { id: item.id, eraId: trigger.eraId, title: text.title, subtitle: text.subtitle, accent: trigger.accent, cardDelaySeconds: spec?.cardDelaySeconds ?? null });
+        this.requestEraFocus(trigger);
+    }
+
+    /** Era focus beat: the existing focusOnRevealTarget only; a touch / pan cancels it inside the camera (no re-snap). */
+    private requestEraFocus(trigger: MilestoneTrigger): void {
+        const eraId = trigger.eraId ?? '';
+        const producerId = trigger.focusProducerId;
+        const anchor = producerId !== null ? this.resolveProducerAnchor?.(producerId) ?? null : null;
+        const camera = this.cameraController;
+        const cameraState = camera?.getCameraState() ?? null;
+        const world = anchor ? { x: anchor.worldPosition.x, y: anchor.worldPosition.y, z: anchor.worldPosition.z } : null;
+        const decision = resolveEraFocus({
+            eraId,
+            cameraFocus: cameraState ? { x: cameraState.focus.x, z: cameraState.focus.z } : null,
+            target: anchor ? { x: anchor.worldPosition.x, z: anchor.worldPosition.z } : null,
+            constructionActive: this.construction?.isAnyConstructing() === true,
+            cameraFocusActive: camera?.isFocusTransitionActive() === true,
+        });
+        if (decision.focus && camera && anchor) {
+            camera.focusOnRevealTarget(anchor.worldPosition);
+            this.emitEra('focus_requested', { eraId, producerId, anchorResolved: true, worldPos: world });
+        } else {
+            this.emitEra('focus_skipped', { eraId, producerId, reason: decision.reason, anchorResolved: anchor !== null, worldPos: world });
+        }
     }
 
     private requestFocus(trigger: MilestoneTrigger): void {
@@ -204,13 +260,15 @@ export class MilestonePresentationController extends Component {
             this.underline!.setScale(hasUnderline ? 1 : 0, hasUnderline ? 1 : 0, 1);
             this.underline!.setPosition(new Vec3(-layout.width / 2 + layout.underlineInset, layout.underlineCenterY, 0));
         }
-        const accent = colors.accent[trigger.accent];
+        const isEra = trigger.kind === 'era_title';
+        // The era underline uses the AUT-045 environment cyan (59,112,121) / amber; the era title text stays off-white.
+        const accent = isEra ? colors.eraUnderline[trigger.accent] : colors.accent[trigger.accent];
         // Graphics fills render a solid colour on Android (a spriteFrame-less Sprite renders nothing).
         const pillGraphics = this.pillGraphics!;
         pillGraphics.clear();
         pillGraphics.fillColor = new Color(colors.pill.r, colors.pill.g, colors.pill.b, Math.round(colors.pill.a * alpha));
         pillGraphics.fillRect(-layout.width / 2, -layout.height, layout.width, layout.height);
-        const titleColor = colors.titleAccent[trigger.accent];
+        const titleColor = isEra ? colors.text : colors.titleAccent[trigger.accent];
         this.titleLabel!.color = new Color(titleColor.r, titleColor.g, titleColor.b, Math.round(255 * alpha));
         this.subtitleLabel!.color = new Color(colors.subtitle.r, colors.subtitle.g, colors.subtitle.b, Math.round(255 * alpha));
         if (layout.underlineHeight > 0) {
@@ -222,6 +280,11 @@ export class MilestonePresentationController extends Component {
             underlineGraphics.fillRect(0, -layout.underlineHeight / 2, underlineWidth, layout.underlineHeight);
         }
         this.node.setScale(1, 1, 1);
+        if (isEra && this.eraAppliedReportedFor !== item.id && alpha >= 1) {
+            this.eraAppliedReportedFor = item.id;
+            const pill = this.pill!;
+            this.emitEra('title_applied', { id: item.id, eraId: trigger.eraId, bandScale: this.node.scale.x, labelText: this.titleLabel!.string, fontSize: this.titleLabel!.fontSize, underlineRgb: { r: accent.r, g: accent.g, b: accent.b }, pillWorldPos: { x: pill.worldPosition.x, y: pill.worldPosition.y, z: pill.worldPosition.z }, wipe });
+        }
     }
 
     private layoutLabel(label: Label, width: number, lineHeight: number, fontSize: number, centerY: number, text: string): void {
@@ -298,6 +361,10 @@ export class MilestonePresentationController extends Component {
             });
         }
         this.sparksDirty = false;
+    }
+
+    private emitEra(phase: string, payload: Record<string, unknown>): void {
+        if (isDeviceDiagnosticsEnabled()) emitDeviceEvent('era_transition', { phase, ...payload });
     }
 
     private emit(phase: string, payload: Record<string, unknown>): void {

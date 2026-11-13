@@ -41,7 +41,7 @@ test('too few frames fail and the summary lists frames, checks and relative even
 });
 
 test('reveal scenarios: aut043 stays the default, aut044 selects the Advanced Robotics Complex seed and expectations', () => {
-    assert.deepEqual(Object.keys(REVEAL_SCENARIOS).sort(), ['aut043', 'aut044', 'aut046', 'aut047', 'ui003']);
+    assert.deepEqual(Object.keys(REVEAL_SCENARIOS).sort(), ['aut043', 'aut044', 'aut046', 'aut047', 'aut048', 'aut048-era3', 'ui003']);
     assert.equal(DEFAULT_REVEAL_SCENARIO_ID, 'aut043');
     assert.equal(resolveRevealScenario(undefined)?.id, 'aut043', 'no --scenario = the AUT-043 default');
     assert.equal(resolveRevealScenario(true)?.id, 'aut043', 'a bare --scenario flag falls back to the default');
