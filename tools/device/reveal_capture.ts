@@ -19,6 +19,7 @@ import { pngSize } from './adb.ts';
 import { seedAut043, type Aut043SeedVariant } from './seed_aut043.ts';
 import { seedAut044 } from './seed_aut044.ts';
 import { seedAut046 } from './seed_aut046.ts';
+import { seedAut047 } from './seed_aut047.ts';
 import { parseHudActions } from './scenarios/ui001_core_loop.ts';
 import { parseUiLayout, rectCentre } from './ui_geometry.ts';
 
@@ -34,6 +35,7 @@ export interface RevealCaptureOptions {
     /** Producer id whose `construction_state` started/activated chain must be observed (null = not required). */
     readonly expectConstruction?: string | null;
     readonly expectFocus?: boolean;
+    readonly expectBoostPhases?: readonly string[];
     readonly preMs?: number;
     readonly durationMs?: number;
     readonly intervalMs?: number;
@@ -57,7 +59,7 @@ export interface RevealCaptureResult {
 
 export const DEFAULT_REVEAL_EVENT_TYPES: readonly string[] = Object.freeze([
     'scene_ready', 'session_state', 'ui_layout', 'command_result', 'construction_state', 'camera_focus', 'reveal_state',
-    'milestone_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'error',
+    'milestone_presentation', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'error',
 ]);
 
 /** A named live-reveal scenario: the seed (unbuilt variant), the producer whose construction must be observed and whether a camera focus is expected. */
@@ -67,6 +69,11 @@ export interface RevealScenario {
     readonly seed: (driver: SessionDeviceDriver, packageName: string, activity: string) => Promise<unknown>;
     readonly expectConstruction: string | null;
     readonly expectFocus: boolean;
+    /** Optional AUT-047 settings: no trigger (the boost is seeded active), a longer capture and the `boost_presentation` phases that must be observed. */
+    readonly trigger?: RevealTrigger;
+    readonly durationMs?: number;
+    readonly intervalMs?: number;
+    readonly expectBoostPhases?: readonly string[];
 }
 
 export const DEFAULT_REVEAL_SCENARIO_ID = 'aut043';
@@ -76,6 +83,8 @@ export const REVEAL_SCENARIOS: Readonly<Record<string, RevealScenario>> = Object
     aut043: { id: 'aut043', label: 'aut043-cell', seed: (d, pkg, act) => seedAut043(d, pkg, act, 'unbuilt'), expectConstruction: 'automated_cell', expectFocus: true },
     aut044: { id: 'aut044', label: 'aut044-arc', seed: (d, pkg, act) => seedAut044(d, pkg, act, 'unbuilt'), expectConstruction: 'advanced_robotics_complex', expectFocus: true },
     aut046: { id: 'aut046', label: 'aut046-milestone', seed: (d, pkg, act) => seedAut046(d, pkg, act, 'breakthrough'), expectConstruction: null, expectFocus: false },
+    // AUT-047: Free Overclock seeded ACTIVE (22 s left): sustained look from the load, then the expiry ease-out; there is no HUD Overclock action to tap.
+    aut047: { id: 'aut047', label: 'aut047-overclock', seed: (d, pkg, act) => seedAut047(d, pkg, act, 'active'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 30_000, intervalMs: 400, expectBoostPhases: ['synced', 'effect_applied', 'ended', 'settled'] },
 });
 
 export function resolveRevealScenario(id: unknown): RevealScenario | null {
@@ -84,7 +93,7 @@ export function resolveRevealScenario(id: unknown): RevealScenario | null {
 }
 
 /** Objective checks over a timeline (pure, unit-tested). `tMs` is relative to the trigger (negative = before). */
-export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number }): RevealCheck[] {
+export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[] }): RevealCheck[] {
     const checks: RevealCheck[] = [];
     const errors = events.filter((e) => e.event.evt === 'error');
     checks.push({ id: 'no_error_events', ok: errors.length === 0, detail: `${errors.length} error events` });
@@ -104,6 +113,10 @@ export function evaluateRevealTimeline(events: readonly TimelineEvent[], options
         const settled = focus ? events.find((e) => e.event.evt === 'camera_focus' && (e.event.phase === 'settled' || e.event.phase === 'cancelled') && Number(e.event.seq) > Number(focus.event.seq)) : undefined;
         checks.push({ id: 'camera_focus_started', ok: focus !== undefined, detail: focus ? `t=${focus.tMs}ms target=${JSON.stringify(focus.event.target ?? null)}` : 'not observed' });
         checks.push({ id: 'camera_focus_finished', ok: settled !== undefined, detail: settled ? `t=${settled.tMs}ms ${String(settled.event.phase)}` : 'not observed' });
+    }
+    for (const phase of options.expectBoostPhases ?? []) {
+        const hit = events.find((e) => e.event.evt === 'boost_presentation' && e.event.phase === phase);
+        checks.push({ id: `boost_${phase}`, ok: hit !== undefined, detail: hit ? `t=${hit.tMs}ms ${JSON.stringify({ mode: hit.event.mode ?? null, timeScale: hit.event.timeScale ?? null, anchorResolved: hit.event.anchorResolved ?? null })}` : 'not observed' });
     }
     return checks;
 }
@@ -182,7 +195,7 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
     collect(Date.now());
     await driver.stopLogcat();
 
-    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length });
+    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectBoostPhases: options.expectBoostPhases });
     checks.unshift({ id: 'ui_layout_ready', ok: layout !== null, detail: layout ? 'ui_layout received' : 'no ui_layout (app did not reach the HUD)' });
     if (trigger !== 'none') checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
     writeFileSync(path.join(outDir, 'timeline.json'), `${JSON.stringify({ label: options.label, frames, events, checks }, null, 2)}\n`);

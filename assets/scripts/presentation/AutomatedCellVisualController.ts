@@ -25,6 +25,7 @@ import {
 import { AUTOMATED_CELL_POOL_LIMIT, advanceCellClock, sampleCellArmPose, sampleCellJob, sampleCellLampLit } from './AutomatedCellProduction.ts';
 import { AutomatedCellRevealViewModel, type AutomatedCellRevealSnapshot } from './AutomatedCellRevealViewModel.ts';
 import { resolveAutomatedCellVisualState, type AutomatedCellVisualDescriptor } from './AutomatedCellVisualStateResolver.ts';
+import { getPresentationTimeScale } from './PresentationTimeScale.ts';
 
 const { ccclass } = _decorator;
 
@@ -143,7 +144,7 @@ export class AutomatedCellVisualController extends Component implements Construc
     public update(deltaSeconds: number): void {
         const descriptor = this.descriptorValue;
         if (!descriptor || !descriptor.constructed || this.construction || !this.running) return;
-        this.clock = advanceCellClock(this.clock, deltaSeconds);
+        this.clock = advanceCellClock(this.clock, deltaSeconds * getPresentationTimeScale());
         this.applyArms(descriptor);
         this.applyItems(descriptor);
         this.applyLamps(descriptor, new Set<AutomatedCellModuleId>(descriptor.modules));

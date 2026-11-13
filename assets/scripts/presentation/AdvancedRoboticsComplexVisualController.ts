@@ -26,6 +26,7 @@ import {
 import { ARC_POOL_LIMIT, advanceArcClock, sampleArcArmPose, sampleArcJob, sampleArcLampLit, sampleArcSpirePulse } from './AdvancedRoboticsComplexProduction.ts';
 import { AdvancedRoboticsComplexRevealViewModel, type ArcRevealSnapshot } from './AdvancedRoboticsComplexRevealViewModel.ts';
 import { resolveArcVisualState, type ArcVisualDescriptor } from './AdvancedRoboticsComplexVisualStateResolver.ts';
+import { getPresentationTimeScale } from './PresentationTimeScale.ts';
 
 const { ccclass } = _decorator;
 
@@ -152,7 +153,7 @@ export class AdvancedRoboticsComplexVisualController extends Component implement
     public update(deltaSeconds: number): void {
         const descriptor = this.descriptorValue;
         if (!descriptor || !descriptor.constructed || this.construction || !this.running) return;
-        this.clock = advanceArcClock(this.clock, deltaSeconds);
+        this.clock = advanceArcClock(this.clock, deltaSeconds * getPresentationTimeScale());
         this.applyArms(descriptor);
         this.applyItems(descriptor);
         this.applyLamps(descriptor, new Set<ArcModuleId>(descriptor.modules));

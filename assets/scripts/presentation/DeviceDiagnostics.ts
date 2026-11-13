@@ -53,6 +53,8 @@ export const DEVICE_EVENT_TYPES = [
     'era_environment_state',
     // AUT-046: milestone / breakthrough presentation: { phase: 'synced' | 'toast_started' | 'toast_finished' | 'queue' | 'skipped' | 'exceptional_routed' | 'focus_requested' | 'focus_skipped' | 'pulse_started' | 'sparks_started' | 'effect_applied', ... }.
     'milestone_presentation',
+    // AUT-047: temporary boost presentation: { phase: 'synced' | 'started' | 'ended' | 'suspended' | 'resumed' | 'stopped' | 'settled' | 'effect_applied', ... } (effect_applied: anchorResolved, timeScale, plate / spark scale + worldPos).
+    'boost_presentation',
     'error',
 ] as const;
 

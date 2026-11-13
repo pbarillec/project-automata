@@ -26,6 +26,7 @@ import {
 import { advanceBeltClock, beltItemPhase, ROBOT_LINE_ITEM_POOL_SIZE, sampleArmPose, sampleBeltItem } from './RobotLineProduction.ts';
 import { RobotLineRevealViewModel, type RobotLineRevealSnapshot } from './RobotLineRevealViewModel.ts';
 import { resolveRobotLineVisualState, type RobotLineVisualDescriptor } from './RobotLineVisualStateResolver.ts';
+import { getPresentationTimeScale } from './PresentationTimeScale.ts';
 
 const { ccclass } = _decorator;
 
@@ -137,8 +138,9 @@ export class RobotLineVisualController extends Component implements Construction
     public update(deltaSeconds: number): void {
         const descriptor = this.descriptorValue;
         if (!descriptor || !descriptor.constructed || this.construction || !this.running) return;
-        this.armClock += deltaSeconds;
-        this.beltClock = advanceBeltClock(this.beltClock, deltaSeconds, descriptor.beltCadence);
+        const speed = getPresentationTimeScale(); // AUT-047 presentation time scale (presentation clocks only)
+        this.armClock += deltaSeconds * speed;
+        this.beltClock = advanceBeltClock(this.beltClock, deltaSeconds * speed, descriptor.beltCadence);
         this.applyArms();
         this.applyItems(descriptor);
     }

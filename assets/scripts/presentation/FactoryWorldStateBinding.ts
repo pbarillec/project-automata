@@ -147,6 +147,13 @@ export class FactoryWorldStateBinding {
         return Object.freeze({ autoFeederOwned });
     }
 
+    /** AUT-047: read-only state snapshot for presentation re-sync after a foreground (null on error). */
+    getStateSnapshot(): GameState | null {
+        let snapshot: GameState | null = null;
+        this.guard('state_snapshot', () => { snapshot = this.session.getStateSnapshot(); });
+        return snapshot;
+    }
+
     /** Accepts a world selection id (`Fabricator`) or a producer id (`fabricator`). */
     onSelectionChanged(selectionId: string | null): void {
         const producerId = resolveSelectedProducerId(selectionId);

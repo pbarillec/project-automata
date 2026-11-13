@@ -44,6 +44,7 @@ import { AdvancedRoboticsComplexVisualController, ARC_GUIDE_OFF_NODE_PREFIX, ARC
 import { ARC_BEAM_GRAPHITE_COLOR, ARC_BEAMS, ARC_FOUNDATION_SLAB, ARC_GUIDE, ARC_GUIDE_OFF_COLOR, ARC_GUIDE_ON_COLOR, ARC_GUIDE_PARTS, ARC_LAMP_IDS, ARC_LAMPS, ARC_REVEAL_TARGET, ARC_SPARK_ANCHOR, arcLocal } from './AdvancedRoboticsComplexLayout.ts';
 import { EraEnvironmentVisualController } from './EraEnvironmentVisualController';
 import { MilestonePresentationController } from './MilestonePresentationController';
+import { BoostPresentationController } from './BoostPresentationController';
 import { milestoneToastTopOffset } from './MilestoneToastLayout.ts';
 import { MILESTONE_ACCENT_RGB, producerZoneName } from './MilestoneFeedback.ts';
 import { ERA_ENV_BOXES, ERA_ENV_GROUP_IDS, ERA_ENV_GROUP_NODE_NAMES, ERA_ENV_ROOT_NODE_NAME } from './EraEnvironmentLayout.ts';
@@ -152,6 +153,7 @@ export class FactoryWorldBootstrap extends Component {
         hud.primaryActionHost = panel.node;
         const batch = this.createAssemblyBatchAction(panel.node);
         this.createMilestonePresentation(site);
+        this.createBoostPresentation(site);
         selection.onSelectionChanged = (producerId) => {
             panel.replaceSelection(producerId);
             this.binding?.onSelectionChanged(producerId);
@@ -257,6 +259,8 @@ export class FactoryWorldBootstrap extends Component {
     private onGameHide(): void {
         const binding = this.binding;
         if (!binding) return;
+        // AUT-047: the boost look stops at once on background (baseline visuals); the foreground re-syncs it silently from the state.
+        this.sessionWiring?.presentation?.boostPresentation?.onBackground();
         void binding.suspend().then((result) => {
             this.emitSessionState('suspended', result?.status ?? 'suspend_error', result?.save.ok ?? false, binding.describe().autoFeederOwned);
         });
@@ -266,6 +270,8 @@ export class FactoryWorldBootstrap extends Component {
         const binding = this.binding;
         if (!binding) return;
         const result = binding.resume();
+        const resumedState = binding.getStateSnapshot();
+        if (resumedState) this.sessionWiring?.presentation?.boostPresentation?.resume(resumedState);
         this.emitSessionState('resumed', result?.status ?? 'resume_error', null, binding.describe().autoFeederOwned);
     }
 
@@ -514,6 +520,35 @@ export class FactoryWorldBootstrap extends Component {
             controller.pulsePlates[accent] = plate;
         }
         presentation.milestonePresentation = controller;
+    }
+
+    /**
+     * AUT-047 temporary boost (Overclock) presentation: one controller node under the site, its own amber outline ring plate (4 flat opaque
+     * bars, scale 0 at rest, sized per footprint by the controller) and the wiring to the AUT-040 spark pool and the zone focus anchors
+     * (`Zone_X/X_FocusAnchor`). Nothing runs while no boost is active. Presentation only.
+     */
+    private createBoostPresentation(site: Node): void {
+        const registry = site.getChildByName('PresentationAnchors');
+        const presentation = registry?.getComponent(PresentationController) ?? null;
+        if (!registry || !presentation) return;
+        const node = site.getChildByName('BoostPresentation') ?? new Node('BoostPresentation');
+        node.parent = site;
+        const controller = node.getComponent(BoostPresentationController) ?? node.addComponent(BoostPresentationController);
+        controller.construction = presentation.constructionPresentation;
+        controller.resolveProducerAnchor = (producerId) => {
+            const zone = producerZoneName(producerId);
+            return zone === null ? null : site.getChildByName(`Zone_${zone}`)?.getChildByName(`${zone}_FocusAnchor`) ?? null;
+        };
+        const rgb = MILESTONE_ACCENT_RGB.amber;
+        const plate = site.getChildByName('BoostPulse_amber') ?? new Node('BoostPulse_amber');
+        plate.layer = Layers.Enum.DEFAULT;
+        plate.parent = site;
+        for (let index = 0; index < 4; index += 1) {
+            if (!plate.getChildByName(`BoostPulse_amber_Bar${index}`)) this.createBox(plate, `BoostPulse_amber_Bar${index}`, new Vec3(1, 1, 1), new Vec3(0, 0, 0), new Color(rgb.r, rgb.g, rgb.b, 255));
+        }
+        plate.setScale(0, 0, 0);
+        controller.pulsePlate = plate;
+        presentation.boostPresentation = controller;
     }
 
     private connectFirstAutomationPresentation(parent: Node): void {

@@ -1,11 +1,16 @@
-import { _decorator, Button, Color, Component, EventHandler, EventTouch, Label, Layers, Node, Sprite, UITransform, Vec3 } from 'cc';
+import { _decorator, Button, Color, Component, EventHandler, EventTouch, Graphics, Label, Layers, Node, Sprite, UITransform, Vec3 } from 'cc';
 import type { GameCommand } from '../domain/Commands.ts';
 import { resolveManualProduceAction, resolveNextGoalAction } from './CoreLoopActions.ts';
 import type { HudViewModel } from './HudViewModel.ts';
 import { defaultHudTexts, formatHudTexts, type DisplayNameSource } from './PresentationText.ts';
+import { BOOST_HUD_OUTLINE_THICKNESS, resolveBoostHudPill } from './BoostHudPill.ts';
 import { CORE_HUD_LAYOUT, HUD_ACTION_KEYS, cardActionFontSize, cardActionRect, cardHeight, cardRowCenterY, cardRowWidth, hudActionCard, type HudActionKey } from './UiLayout.ts';
 
 const { ccclass } = _decorator;
+
+/** AUT-047: the Overclock status pill spans the two Overclock rows (FreeOverclockValue, FreeOverclockTimer) of the HUD card. */
+const OVERCLOCK_FIRST_ROW = 4;
+const PILL_PADDING = 2;
 
 export type HudCommandEmitter = (command: GameCommand) => void;
 
@@ -29,6 +34,9 @@ export class CoreHudController extends Component {
     private latest: HudViewModel | null = null;
     private nameSource: DisplayNameSource | null = null;
     private touchBlockRegistered = false;
+    private overclockPill: Node | null = null;
+    private overclockPillGraphics: Graphics | null = null;
+    private pillKey = 'none';
 
     /**
      * AUT-LOC-001: names Next Goal objectives; null shows the generic catalogue text. The session binding
@@ -55,6 +63,51 @@ export class CoreHudController extends Component {
         this.setText('ManualProduceAction', texts.manualProduceAction);
         this.setText('NextGoalAction', texts.nextGoalAction);
         this.applyActionStates();
+        this.applyOverclockPill(viewModel.freeOverclock.state);
+    }
+
+    /** AUT-047: amber-filled active pill / amber-outlined paused pill behind the two Overclock rows; redrawn only when the style changes. */
+    private applyOverclockPill(state: HudViewModel['freeOverclock']['state']): void {
+        const style = resolveBoostHudPill(state);
+        if (style.key === this.pillKey) return;
+        this.pillKey = style.key;
+        const pill = this.overclockPill;
+        const graphics = this.overclockPillGraphics;
+        if (pill && graphics) {
+            graphics.clear();
+            if (style.visible) {
+                const layout = CORE_HUD_LAYOUT;
+                const top = cardRowCenterY(layout, OVERCLOCK_FIRST_ROW) + layout.rows[OVERCLOCK_FIRST_ROW].height / 2;
+                const bottom = cardRowCenterY(layout, OVERCLOCK_FIRST_ROW + 1) - layout.rows[OVERCLOCK_FIRST_ROW + 1].height / 2;
+                const width = cardRowWidth(layout) + (PILL_PADDING * 2);
+                if (style.fill) {
+                    graphics.fillColor = new Color(style.fill.r, style.fill.g, style.fill.b, style.fill.a);
+                    graphics.fillRect(-width / 2, bottom - PILL_PADDING, width, top - bottom + (PILL_PADDING * 2));
+                }
+                if (style.outline) {
+                    graphics.strokeColor = new Color(style.outline.r, style.outline.g, style.outline.b, style.outline.a);
+                    graphics.lineWidth = BOOST_HUD_OUTLINE_THICKNESS;
+                    graphics.rect(-width / 2, bottom - PILL_PADDING, width, top - bottom + (PILL_PADDING * 2));
+                    graphics.stroke();
+                }
+            }
+            pill.setScale(style.visible ? 1 : 0, style.visible ? 1 : 0, 1);
+        }
+        const textColor = new Color(style.text.r, style.text.g, style.text.b, style.text.a);
+        for (const key of ['FreeOverclockValue', 'FreeOverclockTimer']) {
+            const label = this.labels.get(key);
+            if (label) label.color = textColor;
+        }
+    }
+
+    private createOverclockPill(): void {
+        const pill = new Node('FreeOverclockPill');
+        pill.layer = Layers.Enum.UI_2D;
+        pill.parent = this.node;
+        pill.addComponent(UITransform);
+        this.overclockPillGraphics = pill.addComponent(Graphics);
+        pill.setScale(0, 0, 1);
+        this.overclockPill = pill;
     }
 
     /** AUT-UI-001: Manual Produce is permanent; it still re-checks its action before emitting. */
@@ -92,6 +145,8 @@ export class CoreHudController extends Component {
         const layout = CORE_HUD_LAYOUT;
         entries.forEach(([key, text], index) => {
             const row = layout.rows[index];
+            // AUT-047: the Overclock status pill sits UNDER its two rows (earlier sibling = drawn first); scale 0 until a boost is active.
+            if (key === 'FreeOverclockValue') this.createOverclockPill();
             const panel = new Node(key);
             panel.layer = Layers.Enum.UI_2D;
             panel.parent = this.node;

@@ -12,6 +12,7 @@ import {
 import { resolveAssemblyVisualState, type AssemblyVisualDescriptor } from './AssemblyVisualStateResolver.ts';
 import type { ConstructionSample } from './ConstructionSequence.ts';
 import type { ConstructionTarget } from './ConstructionPresentationController';
+import { getPresentationTimeScale } from './PresentationTimeScale.ts';
 
 const { ccclass } = _decorator;
 
@@ -81,7 +82,7 @@ export class AssemblyVisualController extends Component implements ConstructionT
         const descriptor = this.descriptorValue;
         const panel = this.moduleNodes.get('status_panel');
         if (this.construction || !descriptor || !panel || !descriptor.panelLit || !descriptor.modules.includes('status_panel')) return;
-        this.panelTime += deltaSeconds;
+        this.panelTime += deltaSeconds * getPresentationTimeScale(); // AUT-047 presentation time scale
         const scale = ASSEMBLY_MODULE_TRANSFORMS.status_panel.scale * (1 + (Math.sin(this.panelTime * 5) * PANEL_PULSE_AMOUNT));
         panel.setScale(scale, scale, scale);
     }

@@ -6,6 +6,7 @@ import { AutomationPayoffViewModel } from './AutomationPayoffViewModel.ts';
 import type { AutomationPayoffSnapshot } from './AutomationPayoffViewModel.ts';
 import { FabricatorVisualController } from './FabricatorVisualController';
 import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
+import { getPresentationTimeScale } from './PresentationTimeScale.ts';
 
 const { ccclass, property } = _decorator;
 
@@ -91,7 +92,7 @@ export class FirstAutomationPresentationController extends Component {
         }
         if (!this.activityIndicator || !this.activityIndicatorVisible) return;
 
-        this.activityTime += deltaSeconds;
+        this.activityTime += deltaSeconds * getPresentationTimeScale(); // AUT-047 presentation time scale
 
         const pulse = 1 + Math.sin(this.activityTime * 5)
             * AUTOMATION_INDICATOR_PULSE_AMOUNT;

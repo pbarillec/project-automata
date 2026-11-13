@@ -8,6 +8,7 @@ import { AutomatedCellVisualController } from './AutomatedCellVisualController';
 import { AdvancedRoboticsComplexVisualController } from './AdvancedRoboticsComplexVisualController';
 import { EraEnvironmentVisualController } from './EraEnvironmentVisualController';
 import { MilestonePresentationController } from './MilestonePresentationController';
+import { BoostPresentationController } from './BoostPresentationController';
 
 const { ccclass, property } = _decorator;
 
@@ -45,6 +46,10 @@ export class PresentationController extends Component {
     @property(MilestonePresentationController)
     public milestonePresentation: MilestonePresentationController | null = null;
 
+    /** AUT-047: temporary boost (Overclock) look: presentation time scale, low-rate sparks, activation ring; silent on load (no impulse replay). */
+    @property(BoostPresentationController)
+    public boostPresentation: BoostPresentationController | null = null;
+
     /** AUT-040: reusable construction/reveal sequence; fed before the other controllers so frame 0 is applied first. */
     @property(ConstructionPresentationController)
     public constructionPresentation: ConstructionPresentationController | null = null;
@@ -77,6 +82,7 @@ export class PresentationController extends Component {
         this.robotPopulation?.sync(state as Parameters<RobotPopulationController['sync']>[0]);
         this.eraEnvironmentVisual?.sync(state as Parameters<EraEnvironmentVisualController['sync']>[0]);
         this.milestonePresentation?.sync(state as Parameters<MilestonePresentationController['sync']>[0]);
+        this.boostPresentation?.sync(state as Parameters<BoostPresentationController['sync']>[0]);
     }
 
     public consumeDomainEvents(
@@ -92,6 +98,7 @@ export class PresentationController extends Component {
         this.robotPopulation?.consumeDomainEvents(state, events);
         this.eraEnvironmentVisual?.consumeDomainEvents(state, events);
         this.milestonePresentation?.consumeDomainEvents(state, events);
+        this.boostPresentation?.consumeDomainEvents(state, events);
     }
 
     private findAnchor(anchors: Node[], producerId: string): Node | null {

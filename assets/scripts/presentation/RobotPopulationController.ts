@@ -6,6 +6,7 @@ import { FramePerfSampler } from './FramePerfSampler.ts';
 import type { DomainEvent } from '../domain/Events.ts';
 import type { GameState } from '../state/GameState.ts';
 import { assemblyLocal, WORKER_BOT_SCALE } from './AssemblySliceLayout.ts';
+import { getPresentationTimeScale } from './PresentationTimeScale.ts';
 import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
 import {
     POPULATION_BENCHMARK_FILE,
@@ -56,6 +57,7 @@ export class RobotPopulationController extends Component {
     private robotLineBuilt = false;
     private automatedCellBuilt = false;
     private clock = 0;
+    private clipSpeed = 1;
     private perf: FramePerfSampler | null = null;
 
     /** AUT-041 benchmark (DEBUG builds only): reads the override file and starts frame-time sampling. */
@@ -94,8 +96,13 @@ export class RobotPopulationController extends Component {
         const window = this.perf?.add(deltaSeconds) ?? null;
         if (window) emitDeviceEvent('robot_perf', { visible: (this.snapshotValue?.visible ?? 0), pooled: this.pool.visible, ...window });
         if (this.pool.visible === 0 && this.robots.every((robot) => !robot.visible)) return;
-        this.clock += deltaSeconds;
+        // AUT-047: presentation time scale (Overclock ~1.3x) speeds the route clock and the clip playback; ramps / scale-in stay real time.
+        const speed = getPresentationTimeScale();
+        this.clock += deltaSeconds * speed;
+        const speedChanged = speed !== this.clipSpeed;
+        this.clipSpeed = speed;
         for (const robot of this.robots) {
+            if (speedChanged && robot.clip !== null) this.applyClipSpeed(robot);
             if (!robot.visible && robot.ramp <= 0) continue;
             robot.ramp = robot.visible ? Math.min(1, robot.ramp + (deltaSeconds / SCALE_IN_SECONDS)) : 0;
             const route = resolvePoolRobotRoute(robot.variation.slot, this.robotLineBuilt, this.automatedCellBuilt);
@@ -179,6 +186,16 @@ export class RobotPopulationController extends Component {
             if (!animation.clips.some((entry) => entry?.name === clip)) continue;
             if (first) animation.play(clip);
             else animation.crossFade(clip, CLIP_CROSS_FADE_SECONDS);
+        }
+        this.applyClipSpeed(robot);
+    }
+
+    /** AUT-047: clip playback speed follows the presentation time scale (1 outside Overclock). */
+    private applyClipSpeed(robot: PooledRobot): void {
+        if (robot.clip === null) return;
+        for (const animation of robot.animations) {
+            const state = animation.getState(robot.clip);
+            if (state) state.speed = this.clipSpeed;
         }
     }
 }

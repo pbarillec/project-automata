@@ -7,7 +7,8 @@ import { assemblyLocal, WORKER_BOT_SCALE } from './AssemblySliceLayout.ts';
 import { AssemblyVisualController } from './AssemblyVisualController';
 import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
 import { FirstRobotPresentationViewModel, type FirstRobotPresentationSnapshot } from './FirstRobotPresentationViewModel.ts';
-import { WorkerBotRoutePlayer, type WorkerBotClip, type WorkerBotPose } from './WorkerBotRoute.ts';
+import { getPresentationTimeScale } from './PresentationTimeScale.ts';
+import { WorkerBotRoutePlayer,type WorkerBotClip, type WorkerBotPose } from './WorkerBotRoute.ts';
 
 const { ccclass, property } = _decorator;
 
@@ -45,6 +46,7 @@ export class FirstRobotPresentationController extends Component {
     private snapshotValue: FirstRobotPresentationSnapshot | null = null;
     private robotNode: Node | null = null;
     private robotAnimations: Animation[] = [];
+    private clipSpeed = 1;
     private currentClip: WorkerBotClip | null = null;
     private robotY: number | null = null;
     private revealAwaitingBeat = false;
@@ -88,7 +90,10 @@ export class FirstRobotPresentationController extends Component {
 
     public update(deltaSeconds: number): void {
         if (this.player.mode === 'hidden') return;
-        const step = this.player.advance(deltaSeconds);
+        // AUT-047: presentation time scale (Overclock ~1.3x) applies to the work loop only, never to the reveal beat.
+        const speed = this.player.mode === 'loop' ? getPresentationTimeScale() : 1;
+        if (speed !== this.clipSpeed) { this.clipSpeed = speed; this.applyClipSpeed(); }
+        const step = this.player.advance(deltaSeconds * speed);
         if (step.pose) this.applyPose(step.pose, deltaSeconds);
         const diagnostics = isDeviceDiagnosticsEnabled();
         if (step.revealBeatEnded && this.revealAwaitingBeat) {
@@ -206,6 +211,17 @@ export class FirstRobotPresentationController extends Component {
             if (!animation.clips.some((entry) => entry?.name === clip)) continue;
             if (first) animation.play(clip);
             else animation.crossFade(clip, CLIP_CROSS_FADE_SECONDS);
+        }
+        this.applyClipSpeed();
+    }
+
+    /** AUT-047: clip playback speed follows the presentation time scale (1 outside Overclock). */
+    private applyClipSpeed(): void {
+        const clip = this.currentClip;
+        if (clip === null) return;
+        for (const animation of this.robotAnimations) {
+            const state = animation.getState(clip);
+            if (state) state.speed = this.clipSpeed;
         }
     }
 
