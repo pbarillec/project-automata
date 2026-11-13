@@ -65,3 +65,13 @@ Tier table pinned to the `DomainEvent` union and per-type tiers; classification 
 2. Owner only for the subjective items: how the Major feels (2.5 s duration, underline wipe, spark / pulse strength), Minor chip subtlety, whether the focus beat helps, the importance of the robots thresholds.
 3. Not verified on a device or visually: any colour, the toast / pulse / spark motion, the real touch-transparency of the band (guaranteed by having no listener, not run), Widget placement at runtime, focus interruption feel, burst behaviour with real timings. No APK was built here.
 4. Source docs untouched (`CODEX_PLAN`, `ART_DIRECTION`, `ASSET_MANIFEST`, `TECHNICAL_DESIGN`).
+
+## Device evidence and visual QA (2026-11-13)
+
+DEBUG APK built from 5002204 (gate label aut046e), seeded Robotic Logistics one tap away (`npm run device:seed-aut046`), Next Goal Unlock tapped; capture via `npm run device:reveal-capture -- --scenario aut046` plus a dense parallel-screencap burst (~100-200 ms) under `temp/aut046_dense/` (gitignored). Logcat: 0 errors; `toast_started` / `pulse_started` / `sparks_started` / `focus_skipped (on_centre)` / `effect_applied` / `toast_finished` (~2.5 s).
+
+Iterations driven by vision QA: (1) toast pill/accent used spriteFrame-less Sprites that rendered nothing -> Graphics fills; (2) offer-started toasts never started pulse/sparks/focus (only `tick.started` was handled) -> fixed; (3) anchor lookup used a snake_case node name that never resolved (`<producer>_FocusAnchor`) -> zone-based `Zone_X/X_FocusAnchor`; (4) opaque pulse plate hid the machine -> thin outline ring inside the footprint, amber sparks.
+
+Vision QA (`scene-presentation`): PASS on stills — toast (graphite pill, amber title and accent bar, below HUD/above panel, one at a time, silent baseline), HUD/camera unobstructed, pulse ring and amber sparks visible without covering the station/gantry. Non-blocking POLISH: the ring reads as a partial L-bracket at the front/lower-left of the plate rather than hugging the machine cluster.
+
+Pending (owner, subjective/live): pulse timing/duration, whether the Major reveal feels satisfying/premium, toast fade, 2.5 s duration. Not exercised on device: Minor toast, queue bursts, a Major with an off-centre target (focus path).
