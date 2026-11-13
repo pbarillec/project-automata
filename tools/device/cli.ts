@@ -198,7 +198,7 @@ async function main(): Promise<number> {
         console.log(restored ? 'restored tracked build config from temp/device/gate backup' : 'no backup found');
         return restored ? 0 : 1;
     }
-    console.log('usage: node tools/device/cli.ts devices | c3|int001|r036|ui001|r031|gp001|aut039 --apk <path> [--serial <id>] [--run-id <id>] [--skip-install] | seed-aut040 [--serial <id>] | seed-aut042 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut043 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut044 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut045 [--variant workshop|era2|era3] [--serial <id>] | seed-aut046 [--variant breakthrough] [--serial <id>] | reveal-capture [--scenario aut043|aut044] [--label <l>] [--trigger next-goal|none] | gate-build [--label <l>] | restore-build-config');
+    console.log('usage: node tools/device/cli.ts devices | c3|int001|r036|ui001|r031|gp001|aut039 --apk <path> [--serial <id>] [--run-id <id>] [--skip-install] | seed-aut040 [--serial <id>] | seed-aut042 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut043 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut044 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut045 [--variant workshop|era2|era3] [--serial <id>] | seed-aut046 [--variant breakthrough] [--serial <id>] | reveal-capture [--scenario aut043|aut044|aut046] [--label <l>] [--trigger next-goal|none] | gate-build [--label <l>] | restore-build-config');
     return command === 'help' ? 0 : 1;
 }
 
