@@ -14,15 +14,16 @@ import type { DisplayNameSource } from './PresentationText.ts';
 
 const { ccclass } = _decorator;
 
-const PULSE_PLATE_SCALE = 3.4;
-const SPARK_SIZE = 0.2;
-const SPARK_RING_RADIUS = 0.8;
-const PULSE_HEIGHT = 0.4;
-const SPARK_HEIGHT = 1.2;
+const PULSE_PLATE_SCALE = 5.0;
+const SPARK_SIZE = 0.3;
+const SPARK_RING_RADIUS = 1.1;
+const PULSE_HEIGHT = 0.5;
+const SPARK_HEIGHT = 1.4;
 
 interface RunningEffect {
     readonly trigger: MilestoneTrigger;
     elapsed: number;
+    reported?: boolean;
 }
 
 /**
@@ -107,8 +108,12 @@ export class MilestonePresentationController extends Component {
             this.stopEffect();
             this.effect = { trigger, elapsed: 0 };
         }
-        if (trigger.pulse) this.emit('pulse_started', { id: item.id, key: trigger.key, tier: trigger.tier, accent: trigger.accent, producerId: trigger.producerId });
-        if (trigger.sparks) this.emit('sparks_started', { id: item.id, key: trigger.key, tier: trigger.tier, count: MILESTONE_SPARK_COUNT, producerId: trigger.producerId });
+        const anchor = trigger.producerId !== null ? this.resolveProducerAnchor?.(trigger.producerId) ?? null : null;
+        const world = anchor ? { x: anchor.worldPosition.x, y: anchor.worldPosition.y, z: anchor.worldPosition.z } : null;
+        const plate = this.pulsePlates[trigger.accent] ?? null;
+        const sparkPool = this.construction?.sparkNodes ?? [];
+        if (trigger.pulse) this.emit('pulse_started', { id: item.id, key: trigger.key, tier: trigger.tier, accent: trigger.accent, producerId: trigger.producerId, anchorResolved: anchor !== null, anchorName: anchor?.name ?? null, worldPos: world, plate: plate !== null, plateParent: plate?.parent?.name ?? null });
+        if (trigger.sparks) this.emit('sparks_started', { id: item.id, key: trigger.key, tier: trigger.tier, count: MILESTONE_SPARK_COUNT, producerId: trigger.producerId, anchorResolved: anchor !== null, worldPos: world, poolSize: sparkPool.length, poolParent: sparkPool[0]?.parent?.name ?? null, constructionActive: this.construction?.isAnyConstructing() === true });
         this.requestFocus(trigger);
     }
 
@@ -241,6 +246,11 @@ export class MilestonePresentationController extends Component {
             plate.setScale(scale, scale > 0 ? 1 : 0, scale);
         }
         if (anchor && running.trigger.sparks) this.applySparks(anchor.worldPosition, sample.sparkIntensity, running.elapsed);
+        if (!running.reported && sample.pulse > 0.5) {
+            running.reported = true;
+            const spark = (this.construction?.sparkNodes ?? [])[0] ?? null;
+            this.emit('effect_applied', { key: running.trigger.key, anchorResolved: anchor !== null, plateScale: plate ? plate.scale.x : null, plateWorldPos: plate ? { x: plate.worldPosition.x, y: plate.worldPosition.y, z: plate.worldPosition.z } : null, sparkScale: spark ? spark.scale.x : null, sparkWorldPos: spark ? { x: spark.worldPosition.x, y: spark.worldPosition.y, z: spark.worldPosition.z } : null });
+        }
         if (sample.complete) this.stopEffect();
     }
 

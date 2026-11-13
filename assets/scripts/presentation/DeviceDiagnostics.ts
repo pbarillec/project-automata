@@ -51,7 +51,7 @@ export const DEVICE_EVENT_TYPES = [
     'advanced_robotics_complex_state',
     // AUT-045: era environment: { phase: 'synced' | 'transition_started' | 'transition_finished' | 'snapped', source, eraId, hall, vertical, teaser, transitioning, clear, illuminance }.
     'era_environment_state',
-    // AUT-046: milestone / breakthrough presentation: { phase: 'synced' | 'toast_started' | 'toast_finished' | 'queue' | 'skipped' | 'exceptional_routed' | 'focus_requested' | 'focus_skipped' | 'pulse_started' | 'sparks_started', ... }.
+    // AUT-046: milestone / breakthrough presentation: { phase: 'synced' | 'toast_started' | 'toast_finished' | 'queue' | 'skipped' | 'exceptional_routed' | 'focus_requested' | 'focus_skipped' | 'pulse_started' | 'sparks_started' | 'effect_applied', ... }.
     'milestone_presentation',
     'error',
 ] as const;

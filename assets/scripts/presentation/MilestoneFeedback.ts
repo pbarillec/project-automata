@@ -1,10 +1,11 @@
+import { FACTORY_WORLD_SELECTION_PRODUCER_IDS } from './FactoryWorldStateBinding.ts';
 import type { MilestoneAccent, MilestoneTrigger, PresentedMilestoneTier } from './MilestoneTier.ts';
 
 /** Light pulse length on the producer (Minor short, Major about 1 s) and Major spark length, in seconds. */
 export const MILESTONE_PULSE_SECONDS: Readonly<Record<PresentedMilestoneTier, number>> = Object.freeze({ minor: 0.5, major: 1.0 });
 export const MILESTONE_SPARK_SECONDS = 0.8;
 /** Major sparks: 4-6 nodes from the existing AUT-040 spark pool. */
-export const MILESTONE_SPARK_COUNT = 5;
+export const MILESTONE_SPARK_COUNT = 6;
 export const MILESTONE_SPARK_COUNT_RANGE = Object.freeze({ min: 4, max: 6 });
 
 /** Accent colours (RGB). Cyan is dimmer than the producer lamps (82,206,224); amber is the construction / breakthrough colour. Never red. */
@@ -71,4 +72,14 @@ export function resolveMilestoneFocus(input: MilestoneFocusInput): MilestoneFocu
     const distance = Math.hypot(input.target.x - input.cameraFocus.x, input.target.z - input.cameraFocus.z);
     if (distance < MILESTONE_FOCUS_OFF_CENTRE_DISTANCE) return { focus: false, reason: 'on_centre' };
     return { focus: true, reason: 'requested' };
+}
+
+/**
+ * Zone node name of a producer id (`assembly_station` -> `AssemblyStation`). The world nodes are named by zone
+ * (`Zone_AssemblyStation/AssemblyStation_FocusAnchor`), NOT by the snake_case producer id; AUT-046's first lookup used the producer id and
+ * never found an anchor, so no pulse, spark or focus was ever placed.
+ */
+export function producerZoneName(producerId: string): string | null {
+    for (const [zone, id] of Object.entries(FACTORY_WORLD_SELECTION_PRODUCER_IDS)) if (id === producerId) return zone;
+    return null;
 }

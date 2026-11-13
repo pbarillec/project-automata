@@ -311,6 +311,21 @@ test('AUT-046 focus: Minor never; Major only when off-centre, nothing else owns 
     assert.equal(F.resolveMilestoneFocus({ ...base, cameraFocus: null }).reason, 'no_camera');
 });
 
+test('AUT-046 anchor lookup: producer ids resolve to the zone-named focus anchors the bootstrap actually builds (root cause of the invisible pulse)', () => {
+    assert.equal(F.producerZoneName('assembly_station'), 'AssemblyStation');
+    assert.equal(F.producerZoneName('robot_line'), 'RobotLine');
+    assert.equal(F.producerZoneName('fabricator'), 'Fabricator');
+    assert.equal(F.producerZoneName('advanced_robotics_complex'), 'AdvancedRoboticsComplex');
+    assert.equal(F.producerZoneName('mystery'), null);
+    const bootstrap = presentation('FactoryWorldBootstrap.ts');
+    assert.match(bootstrap, /\`\$\{zoneId\}_FocusAnchor\`/, 'anchors are named by zone id');
+    assert.match(bootstrap, /producerZoneName\(producerId\)/);
+    assert.doesNotMatch(bootstrap, /resolveProducerAnchor = \(producerId\) => presentation\.getFocusAnchor/, 'the snake_case lookup never matched');
+    for (const producerId of Object.values(T.BREAKTHROUGH_FOCUS_PRODUCER)) assert.notEqual(F.producerZoneName(producerId), null, producerId);
+    const controller = code('MilestonePresentationController.ts');
+    for (const field of ['anchorResolved', 'worldPos', 'poolSize', 'poolParent', 'plateParent', 'effect_applied', 'plateScale', 'sparkScale']) assert.match(controller, new RegExp(field), `DEBUG payload carries ${field}`);
+});
+
 test('AUT-046 effects: Minor = short pulse, no sparks; Major = 4-6 sparks + about 1 s pulse; accents never red', () => {
     const minor = trigger(milestoneEvent());
     const major = trigger(breakthroughEvent('robotic_logistics'));

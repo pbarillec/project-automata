@@ -45,7 +45,7 @@ import { ARC_BEAM_GRAPHITE_COLOR, ARC_BEAMS, ARC_FOUNDATION_SLAB, ARC_GUIDE, ARC
 import { EraEnvironmentVisualController } from './EraEnvironmentVisualController';
 import { MilestonePresentationController } from './MilestonePresentationController';
 import { milestoneToastTopOffset } from './MilestoneToastLayout.ts';
-import { MILESTONE_ACCENT_RGB } from './MilestoneFeedback.ts';
+import { MILESTONE_ACCENT_RGB, producerZoneName } from './MilestoneFeedback.ts';
 import { ERA_ENV_BOXES, ERA_ENV_GROUP_IDS, ERA_ENV_GROUP_NODE_NAMES, ERA_ENV_ROOT_NODE_NAME } from './EraEnvironmentLayout.ts';
 import { ROBOT_LINE_FOUNDATION_SLAB, ROBOT_LINE_LAMP_IDS, ROBOT_LINE_LAMPS, ROBOT_LINE_OUTPUT_LIP, ROBOT_LINE_REVEAL_TARGET, ROBOT_LINE_SPARK_ANCHOR, robotLineLocal } from './RobotLineLayout.ts';
 import { FirstRobotPresentationController, ROBOT_BAY_LAMP_OFF_NODE_NAME, ROBOT_BAY_LAMP_ON_NODE_NAME } from './FirstRobotPresentationController';
@@ -496,11 +496,14 @@ export class FactoryWorldBootstrap extends Component {
         const controller = toast.getComponent(MilestonePresentationController) ?? toast.addComponent(MilestonePresentationController);
         controller.cameraController = this.cameraController();
         controller.construction = presentation.constructionPresentation;
-        controller.resolveProducerAnchor = (producerId) => presentation.getFocusAnchor(producerId);
+        controller.resolveProducerAnchor = (producerId) => {
+            const zone = producerZoneName(producerId);
+            return zone === null ? null : site.getChildByName(`Zone_${zone}`)?.getChildByName(`${zone}_FocusAnchor`) ?? null;
+        };
         for (const accent of ['amber', 'cyan'] as const) {
             const rgb = MILESTONE_ACCENT_RGB[accent];
             const plateName = `MilestonePulse_${accent}`;
-            const plate = site.getChildByName(plateName) ?? this.createBox(site, plateName, new Vec3(1, 0.08, 1), new Vec3(0, 0.4, 0), new Color(rgb.r, rgb.g, rgb.b, 255));
+            const plate = site.getChildByName(plateName) ?? this.createBox(site, plateName, new Vec3(1, 0.1, 1), new Vec3(0, 0.5, 0), new Color(rgb.r, rgb.g, rgb.b, 255));
             plate.setScale(0, 0, 0);
             controller.pulsePlates[accent] = plate;
         }
