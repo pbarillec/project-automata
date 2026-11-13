@@ -60,3 +60,13 @@ Tier timing envelope (0.3 / 2.2 / 0.5, 3.0 s hard cap, wipe), layout on 5 screen
 2. Owner only for the subjective items: how the 3.0 s card and the underline wipe feel against the construction sequence and the environment fade, whether the Era II camera skip (construction owns the camera) leaves the moment satisfying, the Era III focus beat, the card wording and colour.
 3. Not verified on a device or visually: any colour, card / underline motion, the focus beat (Era II is expected to be skipped; Era III cannot be triggered by tapping), touch cancel feel, Widget placement of the 680-wide card at runtime, the `robot-line-build` tap sequence.
 4. Source docs untouched (`CODEX_PLAN`, `ART_DIRECTION`, `ASSET_MANIFEST`, `TECHNICAL_DESIGN`).
+
+## Device evidence and visual QA (2026-11-13)
+
+DEBUG APK from 3aee336 (gate label aut048). Era II live: `npm run device:reveal-capture -- --scenario aut048` (tap Robot Line zone then Action_x1; `temp/reveal/aut048-2026-11-13T122152/`, 17 frames) — all 14 automated checks PASS: construction started/activated, `era_title_started` AUTOMATED FACTORY at 1330 ms (none before the trigger, exactly one), `era_title_finished` ~3.0 s, `focus_skipped reveal_active` (anchorResolved), environment fade started at 570 ms, 0 errors. Era III silent load: `--scenario aut048-era3` (`temp/reveal/aut048e3-2026-11-13T122216/`) — 5/5 PASS, 0 title on load.
+
+Vision QA (`scene-presentation`): PASS on agent-decidable criteria — single card under the HUD band (y~487-655 at 1080x2412), legible all-caps line with amber underline wipe, no second toast, gone by ~4.4 s with no residual, Era II hall and Robot Line construction visible and not covered, no tint/flash/clipping, Era III load shows no card, no regression.
+
+Non-blocking POLISH (tracked): the card panel is slightly translucent (a hall pylon shows behind the text at ~3.6 s); Era III vertical group/teaser not identifiable in the one era3 frame inspected (AUT-045 owns them).
+
+Not shown / pending: Era III live card (no existing tap path — unit-tested only, incl. a real GameRuntime run of the advanced_robotics breakthrough); card fade shape (frame cadence ~0.8 s); whether the hall fades or pops in (already visible at the first post frame). Owner (subjective): the ~3 s timing and the card overlapping the construction (card appears at 1.3 s while construction activates at 2.9 s).
