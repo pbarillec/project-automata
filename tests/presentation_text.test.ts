@@ -173,7 +173,7 @@ test('coverage: every Free Overclock state, including real ready/active/cooldown
     const { repository, catalogue, reports, stateModule, hud, text, progression } = await setup();
     const states = ['locked', 'ready', 'active', 'cooldown', 'suspended'];
     const rendered = states.map((state) => text.formatFreeOverclockState(state, 2, catalogue));
-    assert.deepEqual(rendered, ['Free Overclock: Locked', 'Free Overclock: Ready', 'Free Overclock: ×2', 'Free Overclock: Cooldown', 'Free Overclock: Paused']);
+    assert.deepEqual(rendered, ['Free Overclock: Locked', 'Activate Overclock', 'Free Overclock: ×2', 'Free Overclock: Cooldown', 'Free Overclock: Paused']);
     assert.equal(text.formatFreeOverclockTimer(59.2, catalogue), '60s');
 
     const state = stateModule.createFreshGameState();
@@ -184,7 +184,7 @@ test('coverage: every Free Overclock state, including real ready/active/cooldown
     seen.push(text.formatHudTexts(hud.createHudViewModel(repository, state), repository, catalogue));
     state.boosts = progression.advanceTemporaryBoosts(state.boosts, 60).boosts;
     seen.push(text.formatHudTexts(hud.createHudViewModel(repository, state), repository, catalogue));
-    assert.deepEqual(seen.map((texts) => texts.freeOverclock), ['Free Overclock: Ready', 'Free Overclock: ×2', 'Free Overclock: Cooldown']);
+    assert.deepEqual(seen.map((texts) => texts.freeOverclock), ['Activate Overclock', 'Free Overclock: ×2', 'Free Overclock: Cooldown']);
     assert.equal(seen[1].freeOverclockTimer, '60s');
     for (const texts of seen) assertNoRawKey(hudStrings(texts), 'overclock');
     assert.deepEqual(reports, []);

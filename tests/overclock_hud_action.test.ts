@@ -64,7 +64,7 @@ test('AUT-UI-003 mapping: enabled only when ready; locked / active / cooldown / 
     assert.equal(resolveOverclockAction(undefined).enabled, false);
 
     // Texts are the existing hud.free_overclock.* strings: countdown while active, cooldown seconds while cooling down.
-    assert.equal(formatFreeOverclockState('ready', 2), 'Free Overclock: Ready');
+    assert.equal(formatFreeOverclockState('ready', 2), 'Activate Overclock');
     assert.equal(formatFreeOverclockState('active', 2), 'Free Overclock: ×2');
     assert.equal(formatFreeOverclockTimer(models.active.freeOverclock.remainingSeconds), '60s');
     assert.equal(formatFreeOverclockState('cooldown', 2), 'Free Overclock: Cooldown');
@@ -87,7 +87,7 @@ test('AUT-UI-003 ready outline pill (no fill), locked / cooldown dimmed without 
     assert.equal(resolveOverclockRowText('ready'), null);
     const models = stateModels();
     assert.equal(formatHudTexts(models.ready, null).freeOverclockTimer, '', 'no 0s under Ready');
-    assert.equal(formatHudTexts(models.ready, null).freeOverclock, 'Free Overclock: Ready');
+    assert.equal(formatHudTexts(models.ready, null).freeOverclock, 'Activate Overclock');
     assert.equal(formatHudTexts(models.active, null).freeOverclockTimer, '60s');
     assert.match(formatHudTexts(models.cooldown, null).freeOverclockTimer, /^[0-9]+s$/);
     assert.deepEqual(resolveOverclockRowText('locked'), BOOST_HUD_DISABLED_TEXT);

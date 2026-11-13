@@ -64,3 +64,7 @@ First vision pass was CHANGES_REQUESTED (ready was amber text only, pill touched
 Re-review (`scene-presentation`): PASS on all agent-decidable criteria — ready outline pill reads as a control and is distinct from active (filled amber, x2 + countdown), cooldown (dimmed grey, countdown) and plain rows; gap above the pill visible; "0s" gone; Industrial Output row readable; no clipping/regression.
 
 Not shown by frames: locked state, re-enable at cooldown end (240 s), activation motion. Pending (owner, subjective): tap feel and whether the outline-only ready pill is discoverable enough, or an explicit verb/cue ("Tap") is wanted (Game Designer / AUT-LOC-001 wording call).
+
+## Owner decision (2026-11-13): explicit ready wording
+
+The ready CTA is now "Activate Overclock" (`hud.free_overclock.ready`, en.json / EmbeddedTextCatalogue / AUT-LOC-001 catalogue and the two pinning tests updated; active, cooldown, locked and suspended texts unchanged). The ready captures above show the earlier "Free Overclock: Ready" text; the new wording was verified by tests only, not re-captured on device. Text length is shorter than the previous string, so the pill width is not at risk.

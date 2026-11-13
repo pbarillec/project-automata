@@ -92,7 +92,7 @@ goals complete") were written for this task and approved in the same review.
 | `hud.industrial_output` | Industrial Output: {value} |
 | `hud.production_per_second` | {value}/s |
 | `hud.free_overclock.locked` | Free Overclock: Locked |
-| `hud.free_overclock.ready` | Free Overclock: Ready |
+| `hud.free_overclock.ready` | Activate Overclock |
 | `hud.free_overclock.active` | Free Overclock: ×{multiplier} |
 | `hud.free_overclock.cooldown` | Free Overclock: Cooldown |
 | `hud.free_overclock.suspended` | Free Overclock: Paused |
