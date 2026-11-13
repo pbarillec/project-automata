@@ -467,3 +467,8 @@ test('AUT-046 seed: one tap before a Major (Next Goal = Robotic Logistics, affor
     assert.match(cli, /command === 'seed-aut046'/);
     assert.match(cli, /seed-aut046 \[--variant breakthrough\]/);
 });
+
+test('controller starts effects for items started by the offer path (outcome.started), not only tick.started', () => {
+    const controller = readFileSync(new URL('../assets/scripts/presentation/MilestonePresentationController.ts', import.meta.url), 'utf8');
+    assert.match(controller, /update\.outcome\?\.started[\s\S]{0,80}onToastStarted/);
+});

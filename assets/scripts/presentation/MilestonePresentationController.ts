@@ -75,6 +75,8 @@ export class MilestonePresentationController extends Component {
     public consumeDomainEvents(state: GameState, events: readonly DomainEvent[]): MilestoneUpdate {
         const update = this.viewModel.consumeEvents(state, events);
         this.report(update, 'events');
+        // Items started directly by the offer (idle queue) never appear in tick.started: start their effects here.
+        for (const item of update.outcome?.started ?? []) this.onToastStarted(item);
         return update;
     }
 
