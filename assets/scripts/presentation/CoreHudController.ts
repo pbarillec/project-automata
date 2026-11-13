@@ -10,7 +10,8 @@ const { ccclass } = _decorator;
 
 /** AUT-047: the Overclock status pill spans the two Overclock rows (FreeOverclockValue, FreeOverclockTimer) of the HUD card. */
 const OVERCLOCK_FIRST_ROW = 4;
-const PILL_PADDING = 2;
+/** AUT-UI-003: the pill is inset from the Button rect so it never touches the row of text above or below it. */
+const PILL_INSET = 3;
 
 export type HudCommandEmitter = (command: GameCommand) => void;
 
@@ -81,15 +82,15 @@ export class CoreHudController extends Component {
                 const layout = CORE_HUD_LAYOUT;
                 const top = cardRowCenterY(layout, OVERCLOCK_FIRST_ROW) + layout.rows[OVERCLOCK_FIRST_ROW].height / 2;
                 const bottom = cardRowCenterY(layout, OVERCLOCK_FIRST_ROW + 1) - layout.rows[OVERCLOCK_FIRST_ROW + 1].height / 2;
-                const width = cardRowWidth(layout) + (PILL_PADDING * 2);
+                const width = cardRowWidth(layout);
                 if (style.fill) {
                     graphics.fillColor = new Color(style.fill.r, style.fill.g, style.fill.b, style.fill.a);
-                    graphics.fillRect(-width / 2, bottom - PILL_PADDING, width, top - bottom + (PILL_PADDING * 2));
+                    graphics.fillRect(-width / 2, bottom + PILL_INSET, width, top - bottom - (PILL_INSET * 2));
                 }
                 if (style.outline) {
                     graphics.strokeColor = new Color(style.outline.r, style.outline.g, style.outline.b, style.outline.a);
                     graphics.lineWidth = BOOST_HUD_OUTLINE_THICKNESS;
-                    graphics.rect(-width / 2, bottom - PILL_PADDING, width, top - bottom + (PILL_PADDING * 2));
+                    graphics.rect(-width / 2, bottom + PILL_INSET, width, top - bottom - (PILL_INSET * 2));
                     graphics.stroke();
                 }
             }
@@ -143,10 +144,17 @@ export class CoreHudController extends Component {
         if (this.latest?.freeOverclock.canActivate) this.commandEmitter?.({ type: 'activateFreeOverclock' });
     }
 
-    /** AUT-UI-003: ready = amber text, locked / cooldown = dimmed; active / suspended keep the AUT-047 pill text. */
+    /** AUT-UI-003: locked / cooldown = dimmed text; ready / active / suspended keep their pill text. */
     private applyOverclockRowText(state: HudViewModel['freeOverclock']['state']): void {
         if (state === this.rowTextState) return;
         this.rowTextState = state;
+        // AUT-UI-003: READY shows one line, centred in the pill (the timer row is empty); other states use their own rows.
+        const valueLabel = this.labels.get('FreeOverclockValue');
+        if (valueLabel) {
+            const layout = CORE_HUD_LAYOUT;
+            const y = state === 'ready' ? cardActionRect(layout, 'OverclockAction').y : cardRowCenterY(layout, OVERCLOCK_FIRST_ROW);
+            valueLabel.node.setPosition(new Vec3(0, y, 0));
+        }
         const tint = resolveOverclockRowText(state);
         if (!tint) return;
         const color = new Color(tint.r, tint.g, tint.b, tint.a);

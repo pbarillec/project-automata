@@ -43,3 +43,14 @@ Run on a device (DEBUG FactoryWorld APK installed): `npm run device:reveal-captu
 ## Unverified
 
 Everything on a device: tap comfort on the 52-unit row, that the amber ready text and dimmed disabled text are readable and distinct, the activation impulse + ramp-in after the tap (AUT-047 look, still unit-tested only until the `ui003` capture is run), the cooldown countdown and the re-enable on screen, that a disabled tap never reaches the world. Visual evidence goes to the vision-capable visual QA first; the feel of the activation (1.3x ramp) stays with the owner.
+
+## Follow-up: ready affordance and spacing (vision QA CHANGES_REQUESTED, 2026-11-13)
+
+Vision QA of `temp/reveal/ui003-2026-11-13T115616`: READY (amber text only) read as a status label, the pill touched the row above, a ready "0s" looked like a countdown, and the measured Button rect was 78 px tall. Presentation-only fix, no new text key or wording.
+
+1. READY gets an amber OUTLINE pill (`BoostHudPill` key `ready`: outline amber, no fill, default text). Fill stays reserved for ACTIVE; locked / cooldown have no pill and dimmed text. The earlier amber ready text was dropped (`resolveOverclockRowText('ready')` is now null).
+2. The pill (all states) is inset 3 design units from the Button rect (`PILL_INSET`; 4.5 px at 1080) and no longer extends 2 units beyond the rows, so it never touches the '75/40' row above.
+3. While READY the timer line is empty (`formatHudTexts`, view-model state only; locked still shows its "0s", cooldown / active / suspended show their seconds) and "Free Overclock: Ready" is vertically centred in the pill.
+4. Overclock rows are 2 x 30 = 60 units: predicted Button rect at 1080 x 2412 is 1002 x 90 px (was 78 px; measured on device before the fix). To stay inside the 35% coverage budget at 16:9 (0.3494 now), the Industrial Output row went 40 -> 32 units (equal to its font size 32, rows must be >= font). Layout only. The new measured rect from `ui_layout` on a device is NOT yet captured; re-run `npm run device:reveal-capture -- --scenario ui003` after building an APK.
+
+Tests: `overclock_hud_action` (ready outline vs active fill vs locked / cooldown, empty ready timer, inset and centring wiring, Button >= 90 px at 1080 and >= 60 units on all six screens), `boost_presentation` (ready is now the `ready` pill). `npm run check`: PASS (764 tests).

@@ -328,14 +328,17 @@ test('AUT-047 HUD mapping: active = amber-filled pill with the existing x2 / sec
     const paused = P.resolveBoostHudPill('suspended');
     assert.deepEqual([paused.visible, paused.key, paused.fill], [true, 'suspended', null]);
     assert.ok(paused.outline && paused.outline.a < 255 && paused.outline.r === P.BOOST_HUD_AMBER.r, 'amber outline, dimmed');
-    for (const state of ['locked', 'ready', 'cooldown'] as const) {
+    for (const state of ['locked', 'cooldown'] as const) {
         const style = P.resolveBoostHudPill(state);
         assert.deepEqual([style.visible, style.key, style.fill, style.outline], [false, 'none', null, null], `${state}: existing HUD only, no amber`);
         assert.deepEqual(style.text, P.BOOST_HUD_DEFAULT_TEXT);
     }
+    const readyPill = P.resolveBoostHudPill('ready');
+    assert.deepEqual([readyPill.visible, readyPill.key, readyPill.fill], [true, 'ready', null], 'AUT-UI-003: ready = outline only, fill stays reserved for active');
+    assert.deepEqual(readyPill.outline, P.BOOST_HUD_AMBER);
     assert.equal(states.cooldown.freeOverclock.state, 'cooldown');
     assert.equal(P.resolveBoostHudPill(states.cooldown.freeOverclock.state).visible, false);
-    assert.equal(P.resolveBoostHudPill(states.ready.freeOverclock.state).visible, false);
+    assert.equal(P.resolveBoostHudPill(states.ready.freeOverclock.state).key, 'ready');
 });
 
 test('AUT-047 effects stay inside the zone footprint: the activation ring reuses the AUT-046 outline layout on the Assembly zone', () => {

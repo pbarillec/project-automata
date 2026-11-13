@@ -9,8 +9,8 @@ import { GameRuntime } from '../assets/scripts/runtime/GameRuntime.ts';
 import { createFreshGameState } from '../assets/scripts/state/index.ts';
 import { createHudViewModel, type HudViewModel } from '../assets/scripts/presentation/HudViewModel.ts';
 import { resolveOverclockAction } from '../assets/scripts/presentation/CoreLoopActions.ts';
-import { formatFreeOverclockState, formatFreeOverclockTimer } from '../assets/scripts/presentation/PresentationText.ts';
-import { BOOST_HUD_AMBER, BOOST_HUD_DISABLED_TEXT, resolveOverclockRowText } from '../assets/scripts/presentation/BoostHudPill.ts';
+import { formatFreeOverclockState, formatFreeOverclockTimer, formatHudTexts } from '../assets/scripts/presentation/PresentationText.ts';
+import { BOOST_HUD_AMBER, BOOST_HUD_DISABLED_TEXT, resolveBoostHudPill, resolveOverclockRowText } from '../assets/scripts/presentation/BoostHudPill.ts';
 import * as L from '../assets/scripts/presentation/UiLayout.ts';
 import { buildUi003SeededSave, buildUi003SeededState } from '../tools/device/seed_ui003.ts';
 import { deserializeGameStateFromSaveJson } from '../assets/scripts/persistence/index.ts';
@@ -79,8 +79,17 @@ test('AUT-UI-003 mapping: enabled only when ready; locked / active / cooldown / 
     assert.equal(resolveOverclockAction(createHudViewModel(repository, runtime.getStateSnapshot()).freeOverclock).enabled, true, 're-enabled after the cooldown');
 });
 
-test('AUT-UI-003 row text: ready amber, locked / cooldown dimmed, active / suspended keep the AUT-047 pill text', () => {
-    assert.deepEqual(resolveOverclockRowText('ready'), BOOST_HUD_AMBER);
+test('AUT-UI-003 ready outline pill (no fill), locked / cooldown dimmed without a pill, active / suspended keep the AUT-047 pill; ready timer line is empty', () => {
+    const ready = resolveBoostHudPill('ready');
+    assert.deepEqual([ready.visible, ready.fill, ready.outline], [true, null, BOOST_HUD_AMBER]);
+    assert.notDeepEqual(ready.key, resolveBoostHudPill('active').key);
+    for (const dim of ['locked', 'cooldown'] as const) { const p = resolveBoostHudPill(dim); assert.deepEqual([p.visible, p.fill, p.outline], [false, null, null], dim); }
+    assert.equal(resolveOverclockRowText('ready'), null);
+    const models = stateModels();
+    assert.equal(formatHudTexts(models.ready, null).freeOverclockTimer, '', 'no 0s under Ready');
+    assert.equal(formatHudTexts(models.ready, null).freeOverclock, 'Free Overclock: Ready');
+    assert.equal(formatHudTexts(models.active, null).freeOverclockTimer, '60s');
+    assert.match(formatHudTexts(models.cooldown, null).freeOverclockTimer, /^[0-9]+s$/);
     assert.deepEqual(resolveOverclockRowText('locked'), BOOST_HUD_DISABLED_TEXT);
     assert.deepEqual(resolveOverclockRowText('cooldown'), BOOST_HUD_DISABLED_TEXT);
     assert.equal(resolveOverclockRowText('active'), null);
@@ -130,6 +139,7 @@ test('AUT-UI-003 layout: OverclockAction is exactly the two Overclock rows, a fu
     assert.equal(rect.h, card.rows[first].height + card.rows[first + 1].height);
     assert.equal(rect.w, L.cardRowWidth(card));
     assert.ok(rect.h >= L.PRODUCER_PANEL_LAYOUT.actionRow!.height, 'touch target at least as tall as the panel Buttons');
+    assert.ok(rect.h * 1.5 >= 90, 'at least 90 px tall at 1080 px wide');
     assert.equal(rect.y, (L.cardRowCenterY(card, first) + L.cardRowCenterY(card, first + 1)) / 2);
     assert.equal(L.cardActionFontSize(card, 'OverclockAction'), card.rows[first].fontSize);
     assert.ok(card.rows[first].fontSize >= L.UI_MIN_BODY_FONT_SIZE);
@@ -161,8 +171,8 @@ for (const screen of [
         assert.equal(L.rectsOverlap(rect, layout.hudButtons.ManualProduceAction), false);
         assert.equal(L.rectsOverlap(rect, layout.panel), false);
         for (const button of Object.values(layout.buttons)) assert.equal(L.rectsOverlap(rect, button), false);
-        // Touch target: at least 52 design units tall (the panel Button height) at this screen's scale.
-        assert.ok(rect.h >= L.PRODUCER_PANEL_LAYOUT.actionRow!.height * layout.scale - 1e-6);
+        // Touch target: at least 90 px tall at 1080 px wide (60 design units) at this screen's scale.
+        assert.ok(rect.h >= 60 * layout.scale - 1e-6);
     });
 }
 
@@ -223,4 +233,11 @@ test('AUT-UI-003 device tooling: ui003 scenario, overclock trigger, seed command
     const parsed = parseHudActions({ v: 1, seq: 1, evt: 'ui_layout', rects: { OverclockAction: layout.hudButtons.OverclockAction }, hudActions: { OverclockAction: { visible: true, enabled: true } } } as never);
     assert.deepEqual(parsed.rects.OverclockAction, layout.hudButtons.OverclockAction);
     assert.deepEqual(parsed.states.OverclockAction, { visible: true, enabled: true });
+});
+
+test('AUT-UI-003 pill is inset from the Button rect (no contact with the row above) and the READY line is centred', () => {
+    const hud = readFileSync(path.join(repoRoot, 'assets/scripts/presentation/CoreHudController.ts'), 'utf8');
+    assert.match(hud, /const PILL_INSET = 3;/);
+    assert.ok(hud.includes("bottom + PILL_INSET, width, top - bottom - (PILL_INSET * 2)"));
+    assert.ok(hud.includes("state === \"ready\" ? cardActionRect(layout, \"OverclockAction\").y".replace(/\"/g, String.fromCharCode(39))));
 });

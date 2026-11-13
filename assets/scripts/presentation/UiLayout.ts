@@ -102,14 +102,15 @@ export const CORE_HUD_LAYOUT: UiCardSpec = {
     // AUT-R-036-02: 24-unit body rows (at least the font size) keep HUD + panel within 35% at 16:9 with
     // Manual Produce in the bottom band.
     rows: [
-        { key: 'IndustrialOutputValue', height: 40, fontSize: 32 },
+        { key: 'IndustrialOutputValue', height: 32, fontSize: 32 },
         { key: 'ProductionPerSecondValue', height: 24, fontSize: 20 },
         { key: 'NextGoalValue', height: 24, fontSize: 22 },
         { key: 'NextGoalContext', height: 24, fontSize: 20 },
-        // AUT-UI-003: the two Overclock rows are the Free Overclock Button (OverclockAction below), so together
-        // they are as tall as the other HUD Buttons (2 x 26 = 52, the touch-target minimum).
-        { key: 'FreeOverclockValue', height: 26, fontSize: 20 },
-        { key: 'FreeOverclockTimer', height: 26, fontSize: 20 },
+        // AUT-UI-003: the two Overclock rows are the Free Overclock Button (OverclockAction below): 2 x 30 = 60 units,
+        // 90 px at 1080 px wide (the pill is inset 3 units inside it). The Industrial Output row went 40 -> 32 (its font
+        // size) to pay for it inside the 35% coverage budget.
+        { key: 'FreeOverclockValue', height: 30, fontSize: 20 },
+        { key: 'FreeOverclockTimer', height: 30, fontSize: 20 },
     ],
     rowActions: [{ key: 'OverclockAction', firstRow: 4, lastRow: 5 }],
     // AUT-UI-001: the Next Goal unlock, 52 units (78 px at 1080 px wide) for touch comfort. Font 21:

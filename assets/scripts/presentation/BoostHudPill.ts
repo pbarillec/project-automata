@@ -14,7 +14,7 @@ export interface BoostHudPillStyle {
     /** Text colour of both overclock rows. */
     readonly text: BoostHudRgba;
     /** Cache key: the style only needs a redraw when it changes. */
-    readonly key: 'none' | 'active' | 'suspended';
+    readonly key: 'none' | 'ready' | 'active' | 'suspended';
 }
 
 export const BOOST_HUD_AMBER: BoostHudRgba = Object.freeze({ r: 224, g: 168, b: 72, a: 255 });
@@ -24,6 +24,8 @@ export const BOOST_HUD_SUSPENDED_TEXT: BoostHudRgba = Object.freeze({ r: 196, g:
 export const BOOST_HUD_OUTLINE_THICKNESS = 3;
 
 const NONE: BoostHudPillStyle = Object.freeze({ visible: false, fill: null, outline: null, text: BOOST_HUD_DEFAULT_TEXT, key: 'none' });
+/** AUT-UI-003: READY = amber outline only (fill stays reserved for ACTIVE), default text: the row reads as a control. */
+const READY: BoostHudPillStyle = Object.freeze({ visible: true, fill: null, outline: BOOST_HUD_AMBER, text: BOOST_HUD_DEFAULT_TEXT, key: 'ready' });
 const ACTIVE: BoostHudPillStyle = Object.freeze({ visible: true, fill: BOOST_HUD_AMBER, outline: null, text: BOOST_HUD_ACTIVE_TEXT, key: 'active' });
 const SUSPENDED: BoostHudPillStyle = Object.freeze({ visible: true, fill: null, outline: Object.freeze({ ...BOOST_HUD_AMBER, a: 150 }), text: BOOST_HUD_SUSPENDED_TEXT, key: 'suspended' });
 
@@ -32,10 +34,9 @@ export const BOOST_HUD_DISABLED_TEXT: BoostHudRgba = Object.freeze({ r: 140, g: 
 
 /**
  * AUT-UI-003: text colour of the two Overclock rows while they are the activation Button and no pill is drawn:
- * ready = amber (tappable), locked / cooldown = dimmed (disabled). Active / suspended keep the AUT-047 pill text (null).
+ * locked / cooldown = dimmed (disabled). Ready (outline pill), active and suspended keep the pill text (null).
  */
 export function resolveOverclockRowText(state: FreeOverclockViewState): BoostHudRgba | null {
-    if (state === 'ready') return BOOST_HUD_AMBER;
     if (state === 'locked' || state === 'cooldown') return BOOST_HUD_DISABLED_TEXT;
     return null;
 }
@@ -43,5 +44,6 @@ export function resolveOverclockRowText(state: FreeOverclockViewState): BoostHud
 export function resolveBoostHudPill(state: FreeOverclockViewState): BoostHudPillStyle {
     if (state === 'active') return ACTIVE;
     if (state === 'suspended') return SUSPENDED;
+    if (state === 'ready') return READY;
     return NONE;
 }

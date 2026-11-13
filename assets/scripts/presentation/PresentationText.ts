@@ -47,7 +47,8 @@ export function formatHudTexts(viewModel: HudViewModel, names: DisplayNameSource
         nextGoal: formatNextGoalText(viewModel.nextGoal, names, catalogue),
         nextGoalContext: formatNextGoalContext(viewModel.nextGoal, catalogue),
         freeOverclock: formatFreeOverclockState(viewModel.freeOverclock.state, viewModel.freeOverclock.multiplier, catalogue),
-        freeOverclockTimer: formatFreeOverclockTimer(viewModel.freeOverclock.remainingSeconds, catalogue),
+        // AUT-UI-003: a READY row must not read as a countdown, so its timer line is empty.
+        freeOverclockTimer: viewModel.freeOverclock.state === 'ready' ? '' : formatFreeOverclockTimer(viewModel.freeOverclock.remainingSeconds, catalogue),
         manualProduceAction: catalogue.resolveText('hud.action.manual_produce'),
         nextGoalAction: formatNextGoalAction(resolveNextGoalAction(viewModel.nextGoal), viewModel.nextGoal, catalogue),
     });
