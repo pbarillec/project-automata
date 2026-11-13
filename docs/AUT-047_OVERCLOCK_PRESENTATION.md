@@ -55,3 +55,13 @@ Mapping locked / ready / active / cooldown / suspended through a real `GameRunti
 2. Owner only for the subjective items: whether ~1.3x reads as "faster", spark rate / strength, pill contrast, the ramp / ease timings.
 3. Not verified on a device or visually: any colour, motion, the Android clip `state.speed` behaviour with `crossFade`, the HUD Graphics pill rendering, the activation impulse (no trigger, see deviation 1), background / foreground behaviour. No APK was built here.
 4. Source docs untouched (`CODEX_PLAN`, `ART_DIRECTION`, `ASSET_MANIFEST`, `TECHNICAL_DESIGN`).
+
+## Device evidence and visual QA (2026-11-13)
+
+DEBUG APK from 334d0ce (gate label aut047), `npm run device:reveal-capture -- --scenario aut047` (Free Overclock seeded ACTIVE with 22 s left, 38 frames, `temp/reveal/aut047-2026-11-13T114239/`, gitignored). Automated checks PASS: boost_synced (silent load, sustained look), effect_applied (timeScale 1.3, anchorResolved), boost_ended ~21.5 s, boost_settled timeScale 1.0, 0 error events.
+
+Vision QA (`scene-presentation`): PASS on stills for HUD pill identifiable (solid amber bar "Free Overclock: x2" + countdown, no overlap), sparse small amber sparks (<=1-2 per frame, no coverage, no red/tint/flash, cyan lamp unchanged), post-expiry baseline (no residual amber, pill "Cooldown 240s" counting down), active vs cooldown clearly different, no clipping/regression. Decision HUMAN_REVIEW_REQUIRED only for the 1.3x motion/spark-cadence feel.
+
+Non-blocking POLISH (tracked): cooldown row is unstyled grey text (distinguished by its label); spark hue reads slightly yellow versus the amber pill.
+
+Not shown / pending: activation impulse + ramp-in (no HUD Overclock button exists, so it is unit-test only — follow-up needs a button task or DEBUG trigger), READY state, 1.3x speed feel (owner).
