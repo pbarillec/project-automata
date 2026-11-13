@@ -54,3 +54,13 @@ Vision QA of `temp/reveal/ui003-2026-11-13T115616`: READY (amber text only) read
 4. Overclock rows are 2 x 30 = 60 units: predicted Button rect at 1080 x 2412 is 1002 x 90 px (was 78 px; measured on device before the fix). To stay inside the 35% coverage budget at 16:9 (0.3494 now), the Industrial Output row went 40 -> 32 units (equal to its font size 32, rows must be >= font). Layout only. The new measured rect from `ui_layout` on a device is NOT yet captured; re-run `npm run device:reveal-capture -- --scenario ui003` after building an APK.
 
 Tests: `overclock_hud_action` (ready outline vs active fill vs locked / cooldown, empty ready timer, inset and centring wiring, Button >= 90 px at 1080 and >= 60 units on all six screens), `boost_presentation` (ready is now the `ready` pill). `npm run check`: PASS (764 tests).
+
+## Device evidence and visual QA (2026-11-13)
+
+DEBUG APK from 866bd26 (gate label ui003b). Captures (gitignored): `temp/reveal/ui003b-2026-11-13T120138/` (ready -> tap -> active; `--scenario ui003 --trigger overclock`) and `temp/reveal/aut047b-2026-11-13T120220/` (active -> expiry -> cooldown). Automated checks PASS: tap sent on OverclockAction, `activateFreeOverclock` accepted (`temporaryBoostActivated`), boost_started + effect_applied, 0 errors. Measured `ui_layout` rect: OverclockAction x39 y2031 w1002 h90 (meets the 90 px target).
+
+First vision pass was CHANGES_REQUESTED (ready was amber text only, pill touched the row above, "0s" under Ready, 84 px target); fixed in 866bd26 (amber outline ready pill, 3-unit inset, empty ready timer, 2x30-unit rows; Industrial Output row 40 -> 32 units for the coverage budget).
+
+Re-review (`scene-presentation`): PASS on all agent-decidable criteria — ready outline pill reads as a control and is distinct from active (filled amber, x2 + countdown), cooldown (dimmed grey, countdown) and plain rows; gap above the pill visible; "0s" gone; Industrial Output row readable; no clipping/regression.
+
+Not shown by frames: locked state, re-enable at cooldown end (240 s), activation motion. Pending (owner, subjective): tap feel and whether the outline-only ready pill is discoverable enough, or an explicit verb/cue ("Tap") is wanted (Game Designer / AUT-LOC-001 wording call).
