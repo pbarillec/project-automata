@@ -1,4 +1,5 @@
 import { FACTORY_WORLD_SELECTION_PRODUCER_IDS } from './FactoryWorldStateBinding.ts';
+import { ZONE_LAYOUT, type FactoryZoneRect } from './FactoryZoneLayout.ts';
 import type { MilestoneAccent, MilestoneTrigger, PresentedMilestoneTier } from './MilestoneTier.ts';
 
 /** Light pulse length on the producer (Minor short, Major about 1 s) and Major spark length, in seconds. */
@@ -83,3 +84,41 @@ export function producerZoneName(producerId: string): string | null {
     for (const [zone, id] of Object.entries(FACTORY_WORLD_SELECTION_PRODUCER_IDS)) if (id === producerId) return zone;
     return null;
 }
+
+/** Footprint of a producer's zone (world XZ), null when unknown. The pulse outline never leaves it. */
+export function producerFootprint(producerId: string): FactoryZoneRect | null {
+    const zone = producerZoneName(producerId);
+    return zone === null ? null : (ZONE_LAYOUT as Readonly<Record<string, FactoryZoneRect>>)[zone] ?? null;
+}
+
+export const MILESTONE_RING_INSET = 0.15;
+export const MILESTONE_RING_THICKNESS = 0.1;
+export const MILESTONE_RING_HEIGHT = 0.05;
+/** The pulse ring is visible (scale 1) while the envelope is above this; below it the ring is hidden (scale 0). */
+export const MILESTONE_RING_VISIBLE_ABOVE = 0.05;
+
+export interface MilestoneRingBar {
+    /** World XZ centre and size (the bar is a flat box of height MILESTONE_RING_HEIGHT). */
+    readonly x: number;
+    readonly z: number;
+    readonly sizeX: number;
+    readonly sizeZ: number;
+}
+
+/**
+ * AUT-046 pulse: a thin opaque OUTLINE (4 bars, no fill) hugging the zone footprint, inset so it stays inside it. No part of a
+ * machine is covered. Opaque on purpose: blending is not relied on with the unlit builtin material.
+ */
+export function milestoneRingBars(rect: FactoryZoneRect, inset: number = MILESTONE_RING_INSET, thickness: number = MILESTONE_RING_THICKNESS): readonly MilestoneRingBar[] {
+    const w = rect.width - inset * 2;
+    const d = rect.depth - inset * 2;
+    return [
+        { x: rect.x, z: rect.z - d / 2 + thickness / 2, sizeX: w, sizeZ: thickness },
+        { x: rect.x, z: rect.z + d / 2 - thickness / 2, sizeX: w, sizeZ: thickness },
+        { x: rect.x - w / 2 + thickness / 2, z: rect.z, sizeX: thickness, sizeZ: d - thickness * 2 },
+        { x: rect.x + w / 2 - thickness / 2, z: rect.z, sizeX: thickness, sizeZ: d - thickness * 2 },
+    ];
+}
+
+/** Spark colours: the accent colour (the shared AUT-040 pool is recoloured for the effect and restored afterwards). */
+export const MILESTONE_SPARK_RGB = MILESTONE_ACCENT_RGB;

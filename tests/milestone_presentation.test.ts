@@ -326,6 +326,31 @@ test('AUT-046 anchor lookup: producer ids resolve to the zone-named focus anchor
     for (const field of ['anchorResolved', 'worldPos', 'poolSize', 'poolParent', 'plateParent', 'effect_applied', 'plateScale', 'sparkScale']) assert.match(controller, new RegExp(field), `DEBUG payload carries ${field}`);
 });
 
+test('AUT-046 pulse is a thin outline inside the zone footprint (no fill, nothing covered); sparks match the accent and are small', () => {
+    for (const producerId of ['fabricator', 'assembly_station', 'robot_line', 'automated_cell', 'advanced_robotics_complex']) {
+        const rect = F.producerFootprint(producerId);
+        assert.ok(rect, producerId);
+        const bars = F.milestoneRingBars(rect);
+        assert.equal(bars.length, 4);
+        let covered = 0;
+        for (const bar of bars) {
+            assert.ok(bar.x - bar.sizeX / 2 >= rect.x - rect.width / 2 - 1e-9 && bar.x + bar.sizeX / 2 <= rect.x + rect.width / 2 + 1e-9, `${producerId} bar inside footprint (x)`);
+            assert.ok(bar.z - bar.sizeZ / 2 >= rect.z - rect.depth / 2 - 1e-9 && bar.z + bar.sizeZ / 2 <= rect.z + rect.depth / 2 + 1e-9, `${producerId} bar inside footprint (z)`);
+            assert.ok(Math.min(bar.sizeX, bar.sizeZ) <= F.MILESTONE_RING_THICKNESS + 1e-9, 'thin bar');
+            covered += bar.sizeX * bar.sizeZ;
+        }
+        assert.ok(covered < rect.width * rect.depth * 0.2, `${producerId}: the outline covers under 20% of the footprint (no fill)`);
+    }
+    assert.equal(F.producerFootprint('mystery'), null);
+    assert.ok(F.MILESTONE_RING_HEIGHT <= 0.06, 'thin');
+    const controller = code('MilestonePresentationController.ts');
+    assert.match(controller, /const SPARK_SIZE = 0\.15;/);
+    assert.match(controller, /recolorSpark\(sparks\[index\], MILESTONE_ACCENT_RGB\[accent\]\)/, 'sparks take the accent colour');
+    assert.match(controller, /POOL_DEFAULT_RGB\[index % 2\]/, 'the shared pool colours are restored');
+    assert.doesNotMatch(controller, /PULSE_PLATE_SCALE/, 'no oversized plate');
+    assert.match(presentation('FactoryWorldBootstrap.ts'), /_Bar\$\{index\}/, 'the pulse is built as 4 thin bars');
+});
+
 test('AUT-046 effects: Minor = short pulse, no sparks; Major = 4-6 sparks + about 1 s pulse; accents never red', () => {
     const minor = trigger(milestoneEvent());
     const major = trigger(breakthroughEvent('robotic_logistics'));

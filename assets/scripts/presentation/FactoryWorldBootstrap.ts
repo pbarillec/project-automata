@@ -503,7 +503,13 @@ export class FactoryWorldBootstrap extends Component {
         for (const accent of ['amber', 'cyan'] as const) {
             const rgb = MILESTONE_ACCENT_RGB[accent];
             const plateName = `MilestonePulse_${accent}`;
-            const plate = site.getChildByName(plateName) ?? this.createBox(site, plateName, new Vec3(1, 0.1, 1), new Vec3(0, 0.5, 0), new Color(rgb.r, rgb.g, rgb.b, 255));
+            // Thin outline ring: a root at the origin (hidden by scale) holding 4 unit boxes the controller sizes per producer footprint.
+            const plate = site.getChildByName(plateName) ?? new Node(plateName);
+            plate.layer = Layers.Enum.DEFAULT;
+            plate.parent = site;
+            for (let index = 0; index < 4; index += 1) {
+                if (!plate.getChildByName(`${plateName}_Bar${index}`)) this.createBox(plate, `${plateName}_Bar${index}`, new Vec3(1, 1, 1), new Vec3(0, 0, 0), new Color(rgb.r, rgb.g, rgb.b, 255));
+            }
             plate.setScale(0, 0, 0);
             controller.pulsePlates[accent] = plate;
         }

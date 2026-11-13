@@ -1,10 +1,10 @@
-import { _decorator, Color, Component, Graphics, Label, Layers, Node, UITransform, Vec3 } from 'cc';
+import { _decorator, Color, Component, Graphics, MeshRenderer, Label, Layers, Node, UITransform, Vec3 } from 'cc';
 import type { DomainEvent } from '../domain/Events.ts';
 import type { GameState } from '../state/GameState.ts';
 import type { MobileCameraController } from '../camera/MobileCameraController';
 import type { ConstructionPresentationController } from './ConstructionPresentationController';
 import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
-import { MILESTONE_SPARK_COUNT, resolveMilestoneFocus, sampleMilestoneEffect } from './MilestoneFeedback.ts';
+import { MILESTONE_ACCENT_RGB, MILESTONE_RING_HEIGHT, MILESTONE_RING_VISIBLE_ABOVE, MILESTONE_SPARK_COUNT, milestoneRingBars, producerFootprint, resolveMilestoneFocus, sampleMilestoneEffect } from './MilestoneFeedback.ts';
 import { MilestonePresentationViewModel, type MilestoneUpdate } from './MilestonePresentationViewModel.ts';
 import type { MilestoneToastItem } from './MilestoneToastQueue.ts';
 import { MILESTONE_TOAST_COLORS, MILESTONE_TOAST_LAYOUT } from './MilestoneToastLayout.ts';
@@ -14,16 +14,18 @@ import type { DisplayNameSource } from './PresentationText.ts';
 
 const { ccclass } = _decorator;
 
-const PULSE_PLATE_SCALE = 5.0;
-const SPARK_SIZE = 0.3;
-const SPARK_RING_RADIUS = 1.1;
-const PULSE_HEIGHT = 0.5;
-const SPARK_HEIGHT = 1.4;
+const SPARK_SIZE = 0.15;
+const SPARK_RING_RADIUS = 0.9;
+const PULSE_HEIGHT = 0.2;
+const SPARK_HEIGHT = 1.2;
+/** Default colours of the AUT-040 pool (index parity), restored after the effect. */
+const POOL_DEFAULT_RGB = [{ r: 82, g: 206, b: 224 }, { r: 255, g: 190, b: 80 }];
 
 interface RunningEffect {
     readonly trigger: MilestoneTrigger;
     elapsed: number;
     reported?: boolean;
+    laidOut?: boolean;
 }
 
 /**
@@ -239,13 +241,24 @@ export class MilestonePresentationController extends Component {
         const sample = sampleMilestoneEffect(running.trigger, running.elapsed);
         const anchor = running.trigger.producerId !== null ? this.resolveProducerAnchor?.(running.trigger.producerId) ?? null : null;
         const plate = this.pulsePlates[running.trigger.accent] ?? null;
-        if (anchor && plate && running.trigger.pulse) {
-            const position = anchor.worldPosition;
-            plate.setWorldPosition(position.x, PULSE_HEIGHT, position.z);
-            const scale = sample.pulse * PULSE_PLATE_SCALE;
-            plate.setScale(scale, scale > 0 ? 1 : 0, scale);
+        if (plate && running.trigger.pulse) {
+            const rect = running.trigger.producerId !== null ? producerFootprint(running.trigger.producerId) : null;
+            if (rect && !running.laidOut) {
+                running.laidOut = true;
+                const bars = milestoneRingBars(rect);
+                plate.children.forEach((bar, index) => {
+                    const spec = bars[index];
+                    if (!spec) return;
+                    bar.setPosition(spec.x, 0, spec.z);
+                    bar.setScale(spec.sizeX, MILESTONE_RING_HEIGHT, spec.sizeZ);
+                });
+                plate.setPosition(0, PULSE_HEIGHT, 0);
+            }
+            // Scale-based visibility: visible while the envelope is up, hidden (scale 0) otherwise.
+            const visible = rect !== null && sample.pulse > MILESTONE_RING_VISIBLE_ABOVE;
+            plate.setScale(visible ? 1 : 0, visible ? 1 : 0, visible ? 1 : 0);
         }
-        if (anchor && running.trigger.sparks) this.applySparks(anchor.worldPosition, sample.sparkIntensity, running.elapsed);
+        if (anchor && running.trigger.sparks) this.applySparks(anchor.worldPosition, sample.sparkIntensity, running.elapsed, running.trigger.accent);
         if (!running.reported && sample.pulse > 0.5) {
             running.reported = true;
             const spark = (this.construction?.sparkNodes ?? [])[0] ?? null;
@@ -254,12 +267,13 @@ export class MilestonePresentationController extends Component {
         if (sample.complete) this.stopEffect();
     }
 
-    private applySparks(center: Readonly<Vec3>, intensity: number, elapsed: number): void {
+    private applySparks(center: Readonly<Vec3>, intensity: number, elapsed: number, accent: MilestoneAccent): void {
         const sparks = this.construction?.sparkNodes ?? [];
         // The pool is shared: a construction sequence owns it while it runs.
         if (sparks.length === 0 || this.construction?.isAnyConstructing() === true) return;
         const count = Math.min(MILESTONE_SPARK_COUNT, sparks.length);
         for (let index = 0; index < count; index += 1) {
+            if (!this.sparksDirty) this.recolorSpark(sparks[index], MILESTONE_ACCENT_RGB[accent]);
             const flicker = 0.5 + 0.5 * Math.sin(elapsed * 38 + index * 1.7);
             const angle = (index / count) * Math.PI * 2 + elapsed * 2;
             const size = SPARK_SIZE * intensity * flicker * (index % 2 === 0 ? 1 : 0.7);
@@ -269,11 +283,19 @@ export class MilestonePresentationController extends Component {
         this.sparksDirty = true;
     }
 
+    /** The pool nodes own their unlit material (createBox); the accent colour is set through the shared material. */
+    private recolorSpark(spark: Node, rgb: { readonly r: number; readonly g: number; readonly b: number }): void {
+        spark.getComponent(MeshRenderer)?.getSharedMaterial(0)?.setProperty('mainColor', new Color(rgb.r, rgb.g, rgb.b, 255));
+    }
+
     private stopEffect(): void {
         this.effect = null;
         for (const plate of Object.values(this.pulsePlates)) plate?.setScale(0, 0, 0);
         if (this.sparksDirty && this.construction?.isAnyConstructing() !== true) {
-            for (const spark of this.construction?.sparkNodes ?? []) spark.setScale(0, 0, 0);
+            (this.construction?.sparkNodes ?? []).forEach((spark, index) => {
+                spark.setScale(0, 0, 0);
+                this.recolorSpark(spark, POOL_DEFAULT_RGB[index % 2]);
+            });
         }
         this.sparksDirty = false;
     }
