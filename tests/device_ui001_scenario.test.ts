@@ -261,7 +261,7 @@ test('AUT-UI-001 (simulated): no APK → BLOCKED environment', async () => {
 test('AUT-UI-001 helpers: HUD action parsing tolerates older payloads; font check flags missing or small sizes', async () => {
     const S = await imp('tools/device/scenarios/ui001_core_loop.ts');
     const empty = S.parseHudActions({ v: 1, seq: 1, evt: 'ui_layout', rects: {} });
-    assert.deepEqual(empty, { rects: { ManualProduceAction: null, NextGoalAction: null }, states: { ManualProduceAction: null, NextGoalAction: null } });
+    assert.deepEqual(empty, { rects: { ManualProduceAction: null, NextGoalAction: null, OverclockAction: null }, states: { ManualProduceAction: null, NextGoalAction: null, OverclockAction: null } });
     assert.deepEqual(S.fontSizeViolations({ v: 1, seq: 1, evt: 'ui_layout' }), [{ card: '*', key: '*', size: 'missing fontSizes' }]);
     assert.deepEqual(S.fontSizeViolations({ v: 1, seq: 1, evt: 'ui_layout', fontSizes: { CoreHUD: { A: 20, B: null }, ProducerPanel: { C: 19.9 } } }), [{ card: 'ProducerPanel', key: 'C', size: 19.9 }]);
     assert.ok(S.manualTapCount(3) >= 3);

@@ -27,6 +27,19 @@ const NONE: BoostHudPillStyle = Object.freeze({ visible: false, fill: null, outl
 const ACTIVE: BoostHudPillStyle = Object.freeze({ visible: true, fill: BOOST_HUD_AMBER, outline: null, text: BOOST_HUD_ACTIVE_TEXT, key: 'active' });
 const SUSPENDED: BoostHudPillStyle = Object.freeze({ visible: true, fill: null, outline: Object.freeze({ ...BOOST_HUD_AMBER, a: 150 }), text: BOOST_HUD_SUSPENDED_TEXT, key: 'suspended' });
 
+/** AUT-UI-003: dimmed text of a disabled, inactive Overclock row (locked / cooldown). */
+export const BOOST_HUD_DISABLED_TEXT: BoostHudRgba = Object.freeze({ r: 140, g: 148, b: 146, a: 255 });
+
+/**
+ * AUT-UI-003: text colour of the two Overclock rows while they are the activation Button and no pill is drawn:
+ * ready = amber (tappable), locked / cooldown = dimmed (disabled). Active / suspended keep the AUT-047 pill text (null).
+ */
+export function resolveOverclockRowText(state: FreeOverclockViewState): BoostHudRgba | null {
+    if (state === 'ready') return BOOST_HUD_AMBER;
+    if (state === 'locked' || state === 'cooldown') return BOOST_HUD_DISABLED_TEXT;
+    return null;
+}
+
 export function resolveBoostHudPill(state: FreeOverclockViewState): BoostHudPillStyle {
     if (state === 'active') return ACTIVE;
     if (state === 'suspended') return SUSPENDED;

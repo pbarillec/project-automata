@@ -441,7 +441,7 @@ test('AUT-047 device seed, command, scenario and event timeline', () => {
     const cli = read('tools/device/cli.ts');
     assert.match(cli, /command === 'seed-aut047'/);
     assert.match(cli, /seed-aut047 \[--variant active\|ready\]/);
-    assert.match(cli, /aut046\|aut047\]/);
+    assert.match(cli, /aut046\|aut047\|ui003\]/);
 
     const scenario = REVEAL_SCENARIOS.aut047;
     assert.deepEqual([scenario.id, scenario.label, scenario.expectConstruction, scenario.expectFocus, scenario.trigger], ['aut047', 'aut047-overclock', null, false, 'none']);

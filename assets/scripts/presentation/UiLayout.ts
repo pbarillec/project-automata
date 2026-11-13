@@ -65,12 +65,23 @@ export interface UiPrimaryActionSpec {
     readonly gap: number;
 }
 
+/**
+ * AUT-UI-003: a Button laid over existing label rows (no row of its own): it spans `firstRow`..`lastRow`
+ * at the full row width, so the label rows themselves become the control.
+ */
+export interface UiRowActionSpec {
+    readonly key: string;
+    readonly firstRow: number;
+    readonly lastRow: number;
+}
+
 export interface UiCardSpec {
     readonly name: string;
     readonly width: number;
     readonly padding: number;
     readonly corner: UiCorner;
     readonly rows: readonly UiRowSpec[];
+    readonly rowActions?: readonly UiRowActionSpec[];
     readonly actionRow?: UiActionRowSpec;
     readonly primaryAction?: UiPrimaryActionSpec;
 }
@@ -95,9 +106,12 @@ export const CORE_HUD_LAYOUT: UiCardSpec = {
         { key: 'ProductionPerSecondValue', height: 24, fontSize: 20 },
         { key: 'NextGoalValue', height: 24, fontSize: 22 },
         { key: 'NextGoalContext', height: 24, fontSize: 20 },
-        { key: 'FreeOverclockValue', height: 24, fontSize: 20 },
-        { key: 'FreeOverclockTimer', height: 24, fontSize: 20 },
+        // AUT-UI-003: the two Overclock rows are the Free Overclock Button (OverclockAction below), so together
+        // they are as tall as the other HUD Buttons (2 x 26 = 52, the touch-target minimum).
+        { key: 'FreeOverclockValue', height: 26, fontSize: 20 },
+        { key: 'FreeOverclockTimer', height: 26, fontSize: 20 },
     ],
+    rowActions: [{ key: 'OverclockAction', firstRow: 4, lastRow: 5 }],
     // AUT-UI-001: the Next Goal unlock, 52 units (78 px at 1080 px wide) for touch comfort. Font 21:
     // Android floors label pixels, so 21 renders as 20.67 design units at 1080 px.
     // AUT-R-036-02: Manual Produce moved to the bottom band (PRODUCER_PANEL_LAYOUT.primaryAction); the
@@ -113,7 +127,7 @@ export const CORE_HUD_LAYOUT: UiCardSpec = {
 };
 
 /** AUT-UI-001 actions owned by CoreHudController (since AUT-R-036-02 Manual Produce is laid out in the panel band). */
-export const HUD_ACTION_KEYS = ['ManualProduceAction', 'NextGoalAction'] as const;
+export const HUD_ACTION_KEYS = ['ManualProduceAction', 'NextGoalAction', 'OverclockAction'] as const;
 export type HudActionKey = typeof HUD_ACTION_KEYS[number];
 
 export const PRODUCER_PANEL_LAYOUT: UiCardSpec = {
@@ -195,6 +209,8 @@ export function hudActionCard(key: HudActionKey): UiCardSpec {
 /** Font size of action `key` in `card` (action row or primary action). */
 export function cardActionFontSize(card: UiCardSpec, key: string): number {
     if (card.primaryAction?.key === key) return card.primaryAction.fontSize;
+    const rowAction = card.rowActions?.find((action) => action.key === key);
+    if (rowAction) return card.rows[rowAction.firstRow].fontSize;
     if (card.actionRow?.actions.some((action) => action.key === key)) return card.actionRow.fontSize;
     throw new RangeError(`${card.name} has no action ${key}`);
 }
@@ -215,6 +231,12 @@ export function cardHeight(card: UiCardSpec): number {
  * directly below the last label row; AUT-R-036-02: a primary action spans the row width at the bottom.
  */
 export function cardActionRect(card: UiCardSpec, key: string): { x: number; y: number; w: number; h: number } {
+    const rowAction = card.rowActions?.find((action) => action.key === key);
+    if (rowAction) {
+        const top = cardRowCenterY(card, rowAction.firstRow) + card.rows[rowAction.firstRow].height / 2;
+        const low = cardRowCenterY(card, rowAction.lastRow) - card.rows[rowAction.lastRow].height / 2;
+        return { x: 0, y: (top + low) / 2, w: cardRowWidth(card), h: top - low };
+    }
     const bottom = -cardHeight(card) / 2 + card.padding;
     const primary = card.primaryAction;
     if (primary?.key === key) return { x: 0, y: bottom + primary.height / 2, w: cardRowWidth(card), h: primary.height };
@@ -258,7 +280,7 @@ export interface UiLayoutResult {
     /** AUT-R-036-02: the full-width screen band between the panel top and the HUD bottom (the factory view). */
     factoryBand: UiRect;
     buttons: Record<PanelActionKey, UiRect>;
-    /** AUT-UI-001 HUD action Buttons (Manual Produce, Next Goal unlock). */
+    /** AUT-UI-001 HUD action Buttons (Manual Produce, Next Goal unlock; AUT-UI-003 Free Overclock). */
     hudButtons: Record<HudActionKey, UiRect>;
     /** Every row rect (label node at its layout size; labels shrink rather than resize the node). */
     rows: { hud: Record<string, UiRect>; panel: Record<string, UiRect> };
@@ -315,7 +337,7 @@ export function computeUiLayout(
     const buttons = actionRects(panelCard, panel, PANEL_ACTION_KEYS, scale) as Record<PanelActionKey, UiRect>;
     const hudButtons = {} as Record<HudActionKey, UiRect>;
     for (const key of HUD_ACTION_KEYS) {
-        const inPanel = panelCard.primaryAction?.key === key || (panelCard.actionRow?.actions.some((a) => a.key === key) ?? false);
+        const inPanel = panelCard.primaryAction?.key === key || (panelCard.actionRow?.actions.some((a) => a.key === key) ?? false) || (panelCard.rowActions?.some((a) => a.key === key) ?? false);
         Object.assign(hudButtons, inPanel ? actionRects(panelCard, panel, [key], scale) : actionRects(hudCard, hud, [key], scale));
     }
     const bandBottom = panel.y + panel.h;

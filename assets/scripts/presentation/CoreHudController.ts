@@ -1,9 +1,9 @@
 import { _decorator, Button, Color, Component, EventHandler, EventTouch, Graphics, Label, Layers, Node, Sprite, UITransform, Vec3 } from 'cc';
 import type { GameCommand } from '../domain/Commands.ts';
-import { resolveManualProduceAction, resolveNextGoalAction } from './CoreLoopActions.ts';
+import { resolveManualProduceAction, resolveNextGoalAction, resolveOverclockAction } from './CoreLoopActions.ts';
 import type { HudViewModel } from './HudViewModel.ts';
 import { defaultHudTexts, formatHudTexts, type DisplayNameSource } from './PresentationText.ts';
-import { BOOST_HUD_OUTLINE_THICKNESS, resolveBoostHudPill } from './BoostHudPill.ts';
+import { BOOST_HUD_OUTLINE_THICKNESS, resolveBoostHudPill, resolveOverclockRowText } from './BoostHudPill.ts';
 import { CORE_HUD_LAYOUT, HUD_ACTION_KEYS, cardActionFontSize, cardActionRect, cardHeight, cardRowCenterY, cardRowWidth, hudActionCard, type HudActionKey } from './UiLayout.ts';
 
 const { ccclass } = _decorator;
@@ -37,6 +37,7 @@ export class CoreHudController extends Component {
     private overclockPill: Node | null = null;
     private overclockPillGraphics: Graphics | null = null;
     private pillKey = 'none';
+    private rowTextState = 'none';
 
     /**
      * AUT-LOC-001: names Next Goal objectives; null shows the generic catalogue text. The session binding
@@ -64,6 +65,7 @@ export class CoreHudController extends Component {
         this.setText('NextGoalAction', texts.nextGoalAction);
         this.applyActionStates();
         this.applyOverclockPill(viewModel.freeOverclock.state);
+        this.applyOverclockRowText(viewModel.freeOverclock.state);
     }
 
     /** AUT-047: amber-filled active pill / amber-outlined paused pill behind the two Overclock rows; redrawn only when the style changes. */
@@ -126,16 +128,32 @@ export class CoreHudController extends Component {
     public onActionPressed(_event: unknown, actionId: string): void {
         if (actionId === 'ManualProduceAction') this.manualProduce();
         else if (actionId === 'NextGoalAction') this.purchaseNextGoal();
+        else if (actionId === 'OverclockAction') this.activateFreeOverclock();
     }
 
     public getActionStates(): Readonly<Record<HudActionKey, HudActionState>> {
         const manual = resolveManualProduceAction();
         const nextGoal = resolveNextGoalAction(this.latest?.nextGoal);
-        return { ManualProduceAction: { visible: manual.visible, enabled: manual.enabled }, NextGoalAction: { visible: nextGoal.visible, enabled: nextGoal.enabled } };
+        const overclock = resolveOverclockAction(this.latest?.freeOverclock);
+        return { ManualProduceAction: { visible: manual.visible, enabled: manual.enabled }, NextGoalAction: { visible: nextGoal.visible, enabled: nextGoal.enabled }, OverclockAction: { visible: overclock.visible, enabled: overclock.enabled } };
     }
 
+    /** AUT-047 / AUT-UI-003: re-checks the latest snapshot (ready only) and emits the existing `activateFreeOverclock` command through commandEmitter. */
     public activateFreeOverclock(): void {
         if (this.latest?.freeOverclock.canActivate) this.commandEmitter?.({ type: 'activateFreeOverclock' });
+    }
+
+    /** AUT-UI-003: ready = amber text, locked / cooldown = dimmed; active / suspended keep the AUT-047 pill text. */
+    private applyOverclockRowText(state: HudViewModel['freeOverclock']['state']): void {
+        if (state === this.rowTextState) return;
+        this.rowTextState = state;
+        const tint = resolveOverclockRowText(state);
+        if (!tint) return;
+        const color = new Color(tint.r, tint.g, tint.b, tint.a);
+        for (const key of ['FreeOverclockValue', 'FreeOverclockTimer']) {
+            const label = this.labels.get(key);
+            if (label) label.color = color;
+        }
     }
 
     private ensureLayout(): void {
@@ -166,7 +184,7 @@ export class CoreHudController extends Component {
         // AUT-UI-001: one Button per action on its own child node; the root keeps only its touch swallowing.
         // AUT-R-036-02: Manual Produce is laid out in the bottom (panel) band; its node goes under
         // `primaryActionHost` (the panel card, which swallows touches on its area). Wiring is unchanged.
-        const actionDefaults: Record<HudActionKey, string> = { ManualProduceAction: defaults.manualProduceAction, NextGoalAction: defaults.nextGoalAction };
+        const actionDefaults: Record<HudActionKey, string | null> = { ManualProduceAction: defaults.manualProduceAction, NextGoalAction: defaults.nextGoalAction, OverclockAction: null };
         for (const key of HUD_ACTION_KEYS) {
             const card = hudActionCard(key);
             const rect = cardActionRect(card, key);
@@ -175,14 +193,18 @@ export class CoreHudController extends Component {
             node.parent = card === layout ? this.node : (this.primaryActionHost ?? this.node);
             node.setPosition(new Vec3(rect.x, rect.y, 0));
             node.addComponent(UITransform).setContentSize(rect.w, rect.h);
-            const label = node.addComponent(Label);
-            label.overflow = Label.Overflow.SHRINK;
-            label.enableWrapText = false;
-            label.string = actionDefaults[key];
-            label.fontSize = cardActionFontSize(card, key);
-            label.lineHeight = rect.h;
-            label.color = new Color(238, 241, 233, 255);
-            this.labels.set(key, label);
+            // AUT-UI-003: the Overclock Button covers the two Overclock label rows and has no label of its own.
+            const defaultText = actionDefaults[key];
+            if (defaultText !== null) {
+                const label = node.addComponent(Label);
+                label.overflow = Label.Overflow.SHRINK;
+                label.enableWrapText = false;
+                label.string = defaultText;
+                label.fontSize = cardActionFontSize(card, key);
+                label.lineHeight = rect.h;
+                label.color = new Color(238, 241, 233, 255);
+                this.labels.set(key, label);
+            }
             const button = node.addComponent(Button);
             const event = new EventHandler(); event.target = this.node; event.component = 'CoreHudController'; event.handler = 'onActionPressed'; event.customEventData = key;
             button.clickEvents = [event];

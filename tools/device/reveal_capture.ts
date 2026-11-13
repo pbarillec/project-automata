@@ -20,10 +20,11 @@ import { seedAut043, type Aut043SeedVariant } from './seed_aut043.ts';
 import { seedAut044 } from './seed_aut044.ts';
 import { seedAut046 } from './seed_aut046.ts';
 import { seedAut047 } from './seed_aut047.ts';
+import { seedUi003 } from './seed_ui003.ts';
 import { parseHudActions } from './scenarios/ui001_core_loop.ts';
 import { parseUiLayout, rectCentre } from './ui_geometry.ts';
 
-export type RevealTrigger = 'none' | 'next-goal';
+export type RevealTrigger = 'none' | 'next-goal' | 'overclock';
 
 export interface RevealCaptureOptions {
     readonly label: string;
@@ -36,6 +37,8 @@ export interface RevealCaptureOptions {
     readonly expectConstruction?: string | null;
     readonly expectFocus?: boolean;
     readonly expectBoostPhases?: readonly string[];
+    /** AUT-UI-003: command types whose accepted `command_result` (ok) must be observed. */
+    readonly expectCommands?: readonly string[];
     readonly preMs?: number;
     readonly durationMs?: number;
     readonly intervalMs?: number;
@@ -74,6 +77,7 @@ export interface RevealScenario {
     readonly durationMs?: number;
     readonly intervalMs?: number;
     readonly expectBoostPhases?: readonly string[];
+    readonly expectCommands?: readonly string[];
 }
 
 export const DEFAULT_REVEAL_SCENARIO_ID = 'aut043';
@@ -83,8 +87,10 @@ export const REVEAL_SCENARIOS: Readonly<Record<string, RevealScenario>> = Object
     aut043: { id: 'aut043', label: 'aut043-cell', seed: (d, pkg, act) => seedAut043(d, pkg, act, 'unbuilt'), expectConstruction: 'automated_cell', expectFocus: true },
     aut044: { id: 'aut044', label: 'aut044-arc', seed: (d, pkg, act) => seedAut044(d, pkg, act, 'unbuilt'), expectConstruction: 'advanced_robotics_complex', expectFocus: true },
     aut046: { id: 'aut046', label: 'aut046-milestone', seed: (d, pkg, act) => seedAut046(d, pkg, act, 'breakthrough'), expectConstruction: null, expectFocus: false },
-    // AUT-047: Free Overclock seeded ACTIVE (22 s left): sustained look from the load, then the expiry ease-out; there is no HUD Overclock action to tap.
+    // AUT-047: Free Overclock seeded ACTIVE (22 s left): sustained look from the load, then the expiry ease-out; the HUD Overclock action (AUT-UI-003) is exercised by the ui003 scenario.
     aut047: { id: 'aut047', label: 'aut047-overclock', seed: (d, pkg, act) => seedAut047(d, pkg, act, 'active'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 30_000, intervalMs: 400, expectBoostPhases: ['synced', 'effect_applied', 'ended', 'settled'] },
+    // AUT-UI-003: Free Overclock READY, baseline frame, tap the HUD OverclockAction, then the activation impulse and the active countdown (30 s capture).
+    ui003: { id: 'ui003', label: 'ui003-overclock-action', seed: (d, pkg, act) => seedUi003(d, pkg, act), expectConstruction: null, expectFocus: false, trigger: 'overclock', durationMs: 30_000, intervalMs: 400, expectBoostPhases: ['started', 'effect_applied'], expectCommands: ['activateFreeOverclock'] },
 });
 
 export function resolveRevealScenario(id: unknown): RevealScenario | null {
@@ -93,7 +99,7 @@ export function resolveRevealScenario(id: unknown): RevealScenario | null {
 }
 
 /** Objective checks over a timeline (pure, unit-tested). `tMs` is relative to the trigger (negative = before). */
-export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[] }): RevealCheck[] {
+export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[] }): RevealCheck[] {
     const checks: RevealCheck[] = [];
     const errors = events.filter((e) => e.event.evt === 'error');
     checks.push({ id: 'no_error_events', ok: errors.length === 0, detail: `${errors.length} error events` });
@@ -117,6 +123,10 @@ export function evaluateRevealTimeline(events: readonly TimelineEvent[], options
     for (const phase of options.expectBoostPhases ?? []) {
         const hit = events.find((e) => e.event.evt === 'boost_presentation' && e.event.phase === phase);
         checks.push({ id: `boost_${phase}`, ok: hit !== undefined, detail: hit ? `t=${hit.tMs}ms ${JSON.stringify({ mode: hit.event.mode ?? null, timeScale: hit.event.timeScale ?? null, anchorResolved: hit.event.anchorResolved ?? null })}` : 'not observed' });
+    }
+    for (const type of options.expectCommands ?? []) {
+        const hit = events.find((e) => e.event.evt === 'command_result' && (e.event.command as { type?: unknown } | undefined)?.type === type && e.event.ok === true);
+        checks.push({ id: `command_${type}_ok`, ok: hit !== undefined, detail: hit ? `t=${hit.tMs}ms ${JSON.stringify({ eventTypes: hit.event.eventTypes ?? null })}` : 'no accepted command_result' });
     }
     return checks;
 }
@@ -173,17 +183,18 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
     if (layout) {
         await sleep(options.preMs ?? 2_000);
         const baseline = await frame('baseline');
-        if (trigger === 'next-goal') {
+        const actionKey = trigger === 'next-goal' ? 'NextGoalAction' : trigger === 'overclock' ? 'OverclockAction' : null;
+        if (actionKey) {
             const display = pngSize(baseline);
-            const rect = parseHudActions(layoutHit?.event).rects.NextGoalAction;
+            const rect = parseHudActions(layoutHit?.event).rects[actionKey];
             if (display && rect) {
                 const point = cocosToAdb(rectCentre(rect), { w: layout.screen.w, h: layout.screen.h }, display);
                 t0 = Date.now();
                 await driver.tap(Math.round(point.x), Math.round(point.y));
                 triggered = true;
-                tapDetail = `tapped NextGoalAction at ${Math.round(point.x)},${Math.round(point.y)}`;
+                tapDetail = `tapped ${actionKey} at ${Math.round(point.x)},${Math.round(point.y)}`;
             } else {
-                tapDetail = 'NextGoalAction rect or display size missing';
+                tapDetail = `${actionKey} rect or display size missing`;
             }
         }
     }
@@ -195,7 +206,7 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
     collect(Date.now());
     await driver.stopLogcat();
 
-    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectBoostPhases: options.expectBoostPhases });
+    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands });
     checks.unshift({ id: 'ui_layout_ready', ok: layout !== null, detail: layout ? 'ui_layout received' : 'no ui_layout (app did not reach the HUD)' });
     if (trigger !== 'none') checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
     writeFileSync(path.join(outDir, 'timeline.json'), `${JSON.stringify({ label: options.label, frames, events, checks }, null, 2)}\n`);

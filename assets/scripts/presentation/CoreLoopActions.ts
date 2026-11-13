@@ -1,5 +1,5 @@
-import type { ManualProduceCommand, PurchaseBreakthroughCommand } from '../domain/Commands.ts';
-import type { HudNextGoalViewModel } from './HudViewModel.ts';
+import type { ActivateFreeOverclockCommand, ManualProduceCommand, PurchaseBreakthroughCommand } from '../domain/Commands.ts';
+import type { HudNextGoalViewModel, HudViewModel } from './HudViewModel.ts';
 
 /**
  * AUT-UI-001 engine-free mapping from HUD view-model data to the two core-loop HUD actions.
@@ -37,6 +37,23 @@ const HIDDEN_NEXT_GOAL_ACTION: NextGoalAction = Object.freeze({ visible: false, 
 
 /** Eligibility statuses that keep the action visible (owned or unknown breakthroughs hide it). */
 const VISIBLE_ELIGIBILITY = new Set(['eligible', 'locked']);
+
+export type OverclockAction = CoreLoopAction<ActivateFreeOverclockCommand>;
+
+const OVERCLOCK_READY_ACTION: OverclockAction = Object.freeze({
+    visible: true,
+    enabled: true,
+    command: Object.freeze({ type: 'activateFreeOverclock' as const }),
+});
+const OVERCLOCK_DISABLED_ACTION: OverclockAction = Object.freeze({ visible: true, enabled: false, command: null });
+
+/**
+ * AUT-UI-003: the Free Overclock row is always visible (it is the HUD status as well) and enabled only when the HUD
+ * view model says it can be activated (`ready`); locked / active / cooldown / suspended are visible-disabled.
+ */
+export function resolveOverclockAction(freeOverclock: HudViewModel['freeOverclock'] | null | undefined): OverclockAction {
+    return freeOverclock?.canActivate === true ? OVERCLOCK_READY_ACTION : OVERCLOCK_DISABLED_ACTION;
+}
 
 export function resolveManualProduceAction(): ManualProduceAction {
     return MANUAL_PRODUCE_ACTION;

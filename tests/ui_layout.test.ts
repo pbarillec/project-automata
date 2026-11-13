@@ -344,7 +344,8 @@ test('UiLayout AUT-UI-001: HUD action captions fit their Button at the nominal f
         ],
     };
     // AUT-R-036-02: each caption at its own card's font and Button width (Manual Produce in the panel band).
-    for (const key of L.HUD_ACTION_KEYS) {
+    // AUT-UI-003: OverclockAction has no label of its own (the two Overclock rows are its text); covered in overclock_hud_action.test.ts.
+    for (const key of L.HUD_ACTION_KEYS.filter((k) => k !== 'OverclockAction')) {
         const card = L.hudActionCard(key);
         const { w } = L.cardActionRect(card, key);
         const fontSize = L.cardActionFontSize(card, key);
