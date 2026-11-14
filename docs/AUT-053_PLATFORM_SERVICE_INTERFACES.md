@@ -49,3 +49,7 @@ Runtime (non-type) imports between the new files use explicit `.ts` extensions s
 - AUT-054: rewarded eligibility rules. AUT-055/056: reward flows (offline double, extended overclock). AUT-057: AdMob provider and the consumer-side suspend/resume skip for ad overlays. AUT-058: Founder Pack. AUT-060: Google Play Billing provider and its overlay skip.
 - No analytics provider choice, no event mapper, no consent integration, no iOS provider.
 - No real SDK, network or device work in this task.
+
+## Verification (2026-11-14)
+
+`npm run check` PASS (998 tests, 0 fail). Gate build of c2efb04 (`npm run device:gate-build -- --label aut053`) compiled the widened service types through the Cocos Android build; a smoke launch with the existing `aut049-post` capture passed with 0 errors on device (no visible change expected). No visual QA: no player-facing change.
