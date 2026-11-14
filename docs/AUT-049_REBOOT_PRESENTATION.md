@@ -54,3 +54,12 @@ Phase boundaries and the 4.0 s cap, card timeline (silence invisible, hard C -> 
 2. Owner only for the subjective items: how the 4 s sequence feels, the placeholder Core / socket look and whether the socket position reads as "inherited tech", the camera beat, the wording.
 3. Not verified on a device or visually: all colours, ring size / visibility at distance, the socket position relative to the Workshop machines from the default camera, the Core silhouette, the underline wipe, that the 4 opaque cyan bars are visible (alpha blending is not relied on), whether the other presentation controllers (environment / construction / robots) reset cleanly on the Reboot snapshot (pre-existing, not part of this task), the DEBUG command timing (6 s after ready).
 4. Source docs untouched (`CODEX_PLAN`, `ART_DIRECTION`, `ASSET_MANIFEST`, `TECHNICAL_DESIGN`).
+
+## Device evidence and visual QA (2026-11-14)
+
+DEBUG APK from c978ce8 (gate label aut049). Live Reboot: `npm run device:reveal-capture -- --scenario aut049` (`temp/reveal/aut049-reboot-2026-11-14T110435/`, 30 frames): all automated checks PASS, 0 errors; `rebootCompleted` after durable save, beats REBOOT / AI CORE ×5 / CIVILIZATION #2, toast and sequence finished at 4.0 s, focus resolved, socket persists after. Post-Reboot silent load: `--scenario aut049-post` (`temp/reveal/aut049-post-reboot-socket-2026-11-14T110506/`): persistent socket on load, 0 sequence/toast.
+
+Vision QA (scene-presentation, stills only): PASS. Card readable, in the band below the HUD, never over Next Goal/buttons; silence beat empty; Core/socket simple opaque cyan placeholder; no tint/flash; no card on load. Non-blocking POLISH: scan ring is larger than the viewport so only 1-2 sides show; persistent Core is small (~25 px) and touches the foundation corner/spine end; the old factory is already gone at the first sequence frame (approved post-commit variant); post-sequence camera framing is tighter than the default hall view.
+
+Pending human: whether the 4 s sequence feels right (motion/timing/feel not judged from stills).
+Sequencing note: Reboot is refused while an offline report is pending (collect UI is AUT-051).
