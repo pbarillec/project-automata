@@ -500,7 +500,7 @@ test('AUT-045 bootstrap, registry, scene and wiring: runtime-built hierarchy, st
     for (const phase of ERA_ENVIRONMENT_STATE_PHASES) assert.match(`${controller}${presentation('EraEnvironmentViewModel.ts')}`, new RegExp(`'${phase}'`), `${phase} is declared and used`);
     assert.ok(DEFAULT_REVEAL_EVENT_TYPES.includes('era_environment_state'), 'recorded in the reveal timeline');
     // No live-change scenario was added: Era II is entered by building the Robot Line (producer panel) and Era III by an era goal with no HUD action.
-    assert.deepEqual(Object.keys(REVEAL_SCENARIOS), ['aut043', 'aut044', 'aut046', 'aut047', 'ui003', 'aut048', 'aut048-era3-live', 'aut049', 'aut049-post', 'aut050', 'aut052', 'aut051', 'aut051-short', 'aut051-reload', 'rbt001', 'aut055-success', 'aut055-closed', 'aut055-failed', 'aut055-ineligible', 'aut056-success', 'aut056-free-active', 'aut056-resume', 'aut056-closed', 'aut056-failed', 'aut056-quota', 'aut056-interval', 'aut048-era3']);
+    assert.deepEqual(Object.keys(REVEAL_SCENARIOS), ['aut043', 'aut044', 'aut046', 'aut047', 'ui003', 'aut048', 'aut048-era3-live', 'aut049', 'aut049-post', 'aut050', 'aut052', 'aut051', 'aut051-short', 'aut051-reload', 'rbt001', 'aut055-success', 'aut055-closed', 'aut055-failed', 'aut055-ineligible', 'aut056-success', 'aut056-free-active', 'aut056-resume', 'aut056-closed', 'aut056-failed', 'aut056-quota', 'aut056-interval', 'aut057-offline-double', 'aut057-extended', 'aut057-no-fill', 'aut048-era3']);
     // Metas: unique a0450000 uuids.
     const uuids = new Set<string>();
     for (const file of [...PURE_MODULES, 'EraEnvironmentVisualController']) {

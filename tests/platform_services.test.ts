@@ -159,6 +159,8 @@ test('service contracts and testable providers do not import Cocos or native SDK
         path.join(repoRoot, 'assets', 'scripts', 'platform', 'noop'),
     ];
     const sourceFiles = (await Promise.all(safeRoots.map(collectTypeScriptSources))).flat();
+    // AUT-057: the pure Android ads provider (injected transport) follows the same rules as the mock / no-op providers.
+    sourceFiles.push(path.join(repoRoot, 'assets', 'scripts', 'platform', 'android', 'AndroidAdsService.ts'));
 
     assert.ok(sourceFiles.length > 0, 'expected platform service source files');
 

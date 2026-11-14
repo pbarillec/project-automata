@@ -6,6 +6,15 @@ RES_PATH = RES_PATH.replace("\\", "/")
 COCOS_ENGINE_PATH = COCOS_ENGINE_PATH.replace("\\", "/")
 
 buildDir = "${RES_PATH}/proj/build/${project.name ==~ /^[_a-zA-Z0-9-]+$/ ? project.name : 'CocosGame'}"
+// AUT-057: AdMob IDs are injected into the manifest at build time (never committed). Debug builds default to Google's public sample IDs;
+// release builds default to empty strings (ads not configured -> x2 / Extended Overclock stay hidden). Override with -PADMOB_* or the ADMOB_* env vars.
+def automataAdProperty = { String name, String fallback ->
+    def fromProject = project.findProperty(name)
+    def fromEnv = System.getenv(name)
+    def value = (fromProject != null && fromProject.toString().trim()) ? fromProject.toString().trim() : ((fromEnv != null && fromEnv.trim()) ? fromEnv.trim() : fallback)
+    return value
+}
+
 android {
     compileSdkVersion PROP_COMPILE_SDK_VERSION.toInteger()
     buildToolsVersion PROP_BUILD_TOOLS_VERSION
@@ -73,6 +82,11 @@ android {
 
     buildTypes {
         release {
+            manifestPlaceholders = [
+                ADMOB_APP_ID: automataAdProperty('ADMOB_APP_ID', ''),
+                ADMOB_UNIT_OFFLINE_DOUBLE: automataAdProperty('ADMOB_UNIT_OFFLINE_DOUBLE', ''),
+                ADMOB_UNIT_EXTENDED_OVERCLOCK: automataAdProperty('ADMOB_UNIT_EXTENDED_OVERCLOCK', '')
+            ]
             debuggable false
             jniDebuggable false
             renderscriptDebuggable false
@@ -97,6 +111,12 @@ android {
         }
 
         debug {
+            // Google public sample IDs only: the native provider also forces them whenever the app is debuggable.
+            manifestPlaceholders = [
+                ADMOB_APP_ID: 'ca-app-pub-3940256099942544~3347511713',
+                ADMOB_UNIT_OFFLINE_DOUBLE: 'ca-app-pub-3940256099942544/5224354917',
+                ADMOB_UNIT_EXTENDED_OVERCLOCK: 'ca-app-pub-3940256099942544/5224354917'
+            ]
             debuggable true
             jniDebuggable true
             renderscriptDebuggable true

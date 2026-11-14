@@ -69,6 +69,9 @@ import { CocosFileSystemPort } from '../app/CocosFileSystemPort';
 import { DEBUG_COMMAND_FILE, parseDebugCommandFile } from './DebugCommandFile.ts';
 import { DEBUG_ADS_FILE, parseDebugAdsScriptFile, type DebugAdsScript } from './DebugAdsScriptFile.ts';
 import { createBuildAdsService } from './BuildPlatformServices.ts';
+import { OverlayBackgroundGate } from './OverlayBackgroundGate.ts';
+import { createAndroidAdsTransport } from '../platform/android/AndroidNativeBridge';
+import { PlatformOverlayTracker } from '../services/PlatformOverlay';
 import { OfflineDoubleFlow } from './OfflineDoubleFlow.ts';
 import { ExtendedOverclockController } from './ExtendedOverclockController';
 import { ExtendedOverclockFlow } from './ExtendedOverclockFlow.ts';
@@ -132,6 +135,11 @@ export class FactoryWorldBootstrap extends Component {
     private pendingBinding: { binding: FactoryWorldStateBinding; status: string; displayNames: DisplayNameSource } | null = null;
     /** AUT-055: the build-selected rewarded-ad provider (mock in DEBUG, no-op otherwise). */
     private offlineAds: AdsService | null = null;
+    /** AUT-057: ONE overlay tracker shared by the ads provider and the lifecycle consumer (overlay hide != player absence). */
+    private readonly platformOverlay = new PlatformOverlayTracker();
+    private readonly overlayGate = new OverlayBackgroundGate();
+    private adsAvailabilitySignature = '';
+    private adsProviderStarted = false;
     private extendedHudSeconds = 0;
     private sessionWiring: { hud: CoreHudController; panel: ProducerPanelController; batch: AssemblyBatchActionController; selection: ProducerSelectionController; presentation: PresentationController | null; offlineReport: OfflineReportController; permanentUpgrades: PermanentUpgradeController; settings: SettingsController; reboot: RebootController; extendedOverclock: ExtendedOverclockController } | null = null;
     /** AUT-RBT-001: set by the binding's pending-offline callback and consumed by the Reboot modal to tell "blocked" from "exception" (both return null). */
@@ -252,7 +260,13 @@ export class FactoryWorldBootstrap extends Component {
         } : null;
         const cameraController = this.cameraController();
         // AUT-055: the rewarded-ad provider is chosen at build time: a mock only in DEBUG builds, otherwise the no-op (x2 hidden). The DEBUG script is read once.
-        this.offlineAds = createBuildAdsService(DEBUG === true, this.readDebugAdsScript());
+        // AUT-057: release = the Android AdMob provider (NoOp when unconfigured / no native bridge); DEBUG = the mock unless the script asks for admob_test.
+        this.offlineAds = createBuildAdsService(DEBUG === true, this.readDebugAdsScript(), {
+            androidTransport: createAndroidAdsTransport(),
+            overlay: this.platformOverlay,
+            onDiagnostic: (phase, payload) => emitDeviceEvent('ads_state', { phase, ...payload }),
+        });
+        this.platformOverlay.subscribe((event) => emitDeviceEvent('ads_state', { phase: 'overlay', state: event.phase, kind: event.kind, requestId: event.requestId }));
         bootstrapGameSession({ storage, timeService: new DefaultTimeService() }).then((result) => {
             if (!result.startup.ok) {
                 this.emitSessionState('load_failed', result.startup.status, null, false);
@@ -362,6 +376,8 @@ export class FactoryWorldBootstrap extends Component {
             chip.requestRefresh();
         }
         if (wiring.presentation?.milestonePresentation) wiring.presentation.milestonePresentation.setNameSource(displayNames);
+        // AUT-057: initialise the ads provider only now (session ready), never on the startup path; availability never blocks anything.
+        if (offlineAds) this.startAdsProvider(offlineAds);
         if (!this.lifecycleHooksRegistered) {
             game.on(Game.EVENT_HIDE, this.onGameHide, this);
             game.on(Game.EVENT_SHOW, this.onGameShow, this);
@@ -407,9 +423,49 @@ export class FactoryWorldBootstrap extends Component {
         }
     }
 
+    /**
+     * AUT-057: initialises the ads provider (fire and forget) and, while the first ads load, re-reads the availability every 3 s (up to 2 min, stops once
+     * both placements are available) so the x2 / Extended actions appear when an ad becomes ready. Later changes are picked up by the existing refresh points.
+     */
+    private startAdsProvider(ads: AdsService): void {
+        if (this.adsProviderStarted) return;
+        this.adsProviderStarted = true;
+        void ads.initialize().then((state) => {
+            emitDeviceEvent('ads_state', { phase: 'initialized', status: state.status, reason: state.reason ?? null });
+            if (state.status === 'unavailable' || state.status === 'failed') return;
+            let attempts = 0;
+            const tick = (): void => {
+                attempts += 1;
+                void this.pollAdsAvailability(ads).then((allAvailable) => {
+                    if (allAvailable || attempts >= 40) this.unschedule(tick);
+                });
+            };
+            this.schedule(tick, 3, 39);
+        }).catch(() => undefined);
+    }
+
+    private async pollAdsAvailability(ads: AdsService): Promise<boolean> {
+        let offlineDouble = false;
+        let extended = false;
+        try { offlineDouble = (await ads.getRewardedAvailability(OFFLINE_DOUBLE_CLAIM_KEY)).available === true; } catch { offlineDouble = false; }
+        try { extended = (await ads.getRewardedAvailability(EXTENDED_OVERCLOCK_CLAIM_KEY)).available === true; } catch { extended = false; }
+        const signature = `${offlineDouble}:${extended}`;
+        if (signature !== this.adsAvailabilitySignature) {
+            this.adsAvailabilitySignature = signature;
+            this.sessionWiring?.offlineReport.onAdsAvailabilityChanged();
+            this.sessionWiring?.extendedOverclock.requestRefresh();
+        }
+        return offlineDouble && extended;
+    }
+
     private onGameHide(): void {
         const binding = this.binding;
         if (!binding) return;
+        // AUT-057: a rewarded-ad overlay pauses the activity; that is not the player leaving (no suspend, no boost-look stop, no session_state).
+        if (this.overlayGate.onHide(this.platformOverlay.classifyBackground() === 'overlay') === 'skip') {
+            emitDeviceEvent('ads_state', { phase: 'overlay_hide_skipped' });
+            return;
+        }
         // AUT-047: the boost look stops at once on background (baseline visuals); the foreground re-syncs it silently from the state.
         this.sessionWiring?.presentation?.boostPresentation?.onBackground();
         void binding.suspend().then((result) => {
@@ -420,6 +476,11 @@ export class FactoryWorldBootstrap extends Component {
     private onGameShow(): void {
         const binding = this.binding;
         if (!binding) return;
+        // AUT-057: the one-shot flag (not the tracker, which may already be ended) says this show closes an overlay-induced hide: no resume, no offline report.
+        if (this.overlayGate.onShow() === 'skip') {
+            emitDeviceEvent('ads_state', { phase: 'overlay_show_skipped' });
+            return;
+        }
         const result = binding.resume();
         const resumedState = binding.getStateSnapshot();
         if (resumedState) this.sessionWiring?.presentation?.boostPresentation?.resume(resumedState);

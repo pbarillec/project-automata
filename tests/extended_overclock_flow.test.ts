@@ -237,7 +237,7 @@ test('flow: NoOp ads never offer (release builds), and createBuildAdsService(fal
     assert.equal((await debug.getRewardedAvailability(OFFLINE_DOUBLE_CLAIM_KEY)).available, true);
     // The mock exists only behind the DEBUG factory.
     const bootstrap = read('assets/scripts/presentation/FactoryWorldBootstrap.ts');
-    assert.match(bootstrap, /createBuildAdsService\(DEBUG === true, this\.readDebugAdsScript\(\)\)/);
+    assert.match(bootstrap, /createBuildAdsService\(DEBUG === true, this\.readDebugAdsScript\(\), \{/);
     assert.doesNotMatch(read('assets/scripts/presentation/ExtendedOverclockController.ts'), /MockAdsService|NoOpAdsService/);
 });
 

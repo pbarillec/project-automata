@@ -444,7 +444,7 @@ test('AUT-047 device seed, command, scenario and event timeline', () => {
     const cli = read('tools/device/cli.ts');
     assert.match(cli, /command === 'seed-aut047'/);
     assert.match(cli, /seed-aut047 \[--variant active\|ready\]/);
-    assert.match(cli, /aut046\|aut047\|ui003\|aut048\|aut048-era3\|aut048-era3-live\|aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\|rbt001\|aut055-success\|aut055-closed\|aut055-failed\|aut055-ineligible\|aut056-success\|aut056-free-active\|aut056-resume\|aut056-closed\|aut056-failed\|aut056-quota\|aut056-interval\]/);
+    assert.match(cli, /aut046\|aut047\|ui003\|aut048\|aut048-era3\|aut048-era3-live\|aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\|rbt001\|aut055-success\|aut055-closed\|aut055-failed\|aut055-ineligible\|aut056-success\|aut056-free-active\|aut056-resume\|aut056-closed\|aut056-failed\|aut056-quota\|aut056-interval\|aut057-offline-double\|aut057-extended\|aut057-no-fill\]/);
 
     const scenario = REVEAL_SCENARIOS.aut047;
     assert.deepEqual([scenario.id, scenario.label, scenario.expectConstruction, scenario.expectFocus, scenario.trigger], ['aut047', 'aut047-overclock', null, false, 'none']);

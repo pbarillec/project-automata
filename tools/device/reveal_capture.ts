@@ -27,6 +27,8 @@ import { seedAut051 } from './seed_aut051.ts';
 import { seedAut052 } from './seed_aut052.ts';
 import { seedAut055 } from './seed_aut055.ts';
 import { seedAut056 } from './seed_aut056.ts';
+import { seedAut057 } from './seed_aut057.ts';
+import { ADMOB_AVAILABILITY_WAIT_MS, ADMOB_RESULT_WAIT_AFTER_BACK_MS, ADMOB_RESULT_WAIT_BEFORE_BACK_MS, evaluateAdmob, type AdmobExpectation } from './admob_checks.ts';
 import { EXTENDED_OVERCLOCK_RELAUNCH_MARKER_EVT, evaluateExtendedOverclock, type ExtendedOverclockExpectation } from './extended_overclock_checks.ts';
 import { OFFLINE_DOUBLE_RELAUNCH_MARKER_EVT, evaluateOfflineDouble, type OfflineDoubleExpectation } from './offline_double_checks.ts';
 import { seedRbt001 } from './seed_rbt001.ts';
@@ -62,6 +64,8 @@ export interface RevealCaptureOptions {
     readonly expectOfflineDouble?: OfflineDoubleExpectation;
     /** AUT-056: 'success' / 'free_active' = REAL tap on the Extended Overclock chip (mock ad rewarded): x2 for 600 s, claim persisted across a relaunch; 'closed' / 'failed' = no boost, the chip stays; 'resume' = seeded Extended + suspended Free (no tap): expiry -> resume -> Free expiry -> cooldown; 'quota' / 'interval' = no chip. */
     readonly expectExtendedOverclock?: ExtendedOverclockExpectation;
+    /** AUT-057 (REAL AdMob test ads, best-effort): 'offline_double' / 'extended' = REAL tap on the x2 action / chip, wait ~30 s for the ad result, BACK, wait ~15 s more; 'no_fill' = network OFF (seed), no x2 / chip, free COLLECT works; the network is restored at the end. */
+    readonly expectAdmob?: AdmobExpectation;
     /** AUT-050: 'purchase' = tap the AI chip, open the panel, buy an affordable row with a real tap, switch tab, force-stop + relaunch WITHOUT reseeding (balance / rank persisted). */
     readonly expectPermanentUpgrades?: PermanentUpgradeExpectation;
     /** AUT-052: 'toggle_persist' = tap the Settings chip, open the panel, toggle Music OFF with a real tap, close, force-stop + relaunch WITHOUT reseeding (the file survives), toggle it back ON, close. */
@@ -95,7 +99,7 @@ export interface RevealCaptureResult {
 
 export const DEFAULT_REVEAL_EVENT_TYPES: readonly string[] = Object.freeze([
     'scene_ready', 'session_state', 'ui_layout', 'command_result', 'construction_state', 'camera_focus', 'reveal_state',
-    'milestone_presentation', 'era_transition', 'reboot_presentation', 'offline_report', 'offline_double', 'extended_overclock', 'permanent_upgrades', 'reboot_ui', 'settings', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'error',
+    'milestone_presentation', 'era_transition', 'reboot_presentation', 'offline_report', 'offline_double', 'extended_overclock', 'ads_state', 'permanent_upgrades', 'reboot_ui', 'settings', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'error',
 ]);
 
 /** A named live-reveal scenario: the seed (unbuilt variant), the producer whose construction must be observed and whether a camera focus is expected. */
@@ -116,6 +120,7 @@ export interface RevealScenario {
     readonly expectOfflineReport?: OfflineReportExpectation;
     readonly expectOfflineDouble?: OfflineDoubleExpectation;
     readonly expectExtendedOverclock?: ExtendedOverclockExpectation;
+    readonly expectAdmob?: AdmobExpectation;
     readonly expectPermanentUpgrades?: PermanentUpgradeExpectation;
     readonly expectSettings?: SettingsExpectation;
     readonly expectRebootUi?: RebootUiExpectation;
@@ -166,6 +171,10 @@ export const REVEAL_SCENARIOS: Readonly<Record<string, RevealScenario>> = Object
     'aut056-failed': { id: 'aut056-failed', label: 'aut056-extended-failed', seed: (d, pkg, act) => seedAut056(d, pkg, act, 'eligible', 'failed'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectExtendedOverclock: 'failed' },
     'aut056-quota': { id: 'aut056-quota', label: 'aut056-extended-quota', seed: (d, pkg, act) => seedAut056(d, pkg, act, 'quota'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 500, expectExtendedOverclock: 'quota' },
     'aut056-interval': { id: 'aut056-interval', label: 'aut056-extended-interval', seed: (d, pkg, act) => seedAut056(d, pkg, act, 'interval'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 500, expectExtendedOverclock: 'interval' },
+    // AUT-057 (REAL AdMob test ads via debug_ads.json provider admob_test; best-effort outcome, see admob_checks.ts). Network access required; no-fill switches Wi-Fi + data OFF (USB adb) and restores them.
+    'aut057-offline-double': { id: 'aut057-offline-double', label: 'aut057-admob-offline-double', seed: (d, pkg, act) => seedAut057(d, pkg, act, 'offline_double'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectAdmob: 'offline_double' },
+    'aut057-extended': { id: 'aut057-extended', label: 'aut057-admob-extended', seed: (d, pkg, act) => seedAut057(d, pkg, act, 'extended'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectAdmob: 'extended' },
+    'aut057-no-fill': { id: 'aut057-no-fill', label: 'aut057-admob-no-fill', seed: (d, pkg, act) => seedAut057(d, pkg, act, 'offline_double', { networkOff: true }), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectAdmob: 'no_fill' },
     'aut048-era3': { id: 'aut048-era3', label: 'aut048-era3-silent-load', seed: (d, pkg, act) => seedAut048(d, pkg, act, 'era3'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 400, expectEraTitle: 'none' },
 });
 
@@ -175,7 +184,7 @@ export function resolveRevealScenario(id: unknown): RevealScenario | null {
 }
 
 /** Objective checks over a timeline (pure, unit-tested). `tMs` is relative to the trigger (negative = before). */
-export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectOfflineDouble?: OfflineDoubleExpectation; expectExtendedOverclock?: ExtendedOverclockExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation; expectSettings?: SettingsExpectation; expectRebootUi?: RebootUiExpectation }): RevealCheck[] {
+export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectOfflineDouble?: OfflineDoubleExpectation; expectExtendedOverclock?: ExtendedOverclockExpectation; expectAdmob?: AdmobExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation; expectSettings?: SettingsExpectation; expectRebootUi?: RebootUiExpectation }): RevealCheck[] {
     const checks: RevealCheck[] = [];
     const errors = events.filter((e) => e.event.evt === 'error');
     checks.push({ id: 'no_error_events', ok: errors.length === 0, detail: `${errors.length} error events` });
@@ -209,6 +218,7 @@ export function evaluateRevealTimeline(events: readonly TimelineEvent[], options
     if (options.expectOfflineReport !== undefined) checks.push(...evaluateOfflineReport(events, options.expectOfflineReport));
     if (options.expectOfflineDouble !== undefined) checks.push(...evaluateOfflineDouble(events, options.expectOfflineDouble));
     if (options.expectExtendedOverclock !== undefined) checks.push(...evaluateExtendedOverclock(events, options.expectExtendedOverclock));
+    if (options.expectAdmob !== undefined) checks.push(...evaluateAdmob(events, options.expectAdmob));
     if (options.expectPermanentUpgrades !== undefined) checks.push(...evaluatePermanentUpgrades(events, options.expectPermanentUpgrades));
     if (options.expectSettings !== undefined) checks.push(...evaluateSettings(events, options.expectSettings));
     if (options.expectRebootUi !== undefined) checks.push(...evaluateRebootUi(events, options.expectRebootUi));
@@ -533,6 +543,72 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
         }
         tapDetail = details.join('; ');
     }
+    // AUT-057: the REAL AdMob test-ad drive (best-effort outcome): wait for the ad to be offered, REAL tap, wait ~30 s, BACK, wait ~15 s more. The network is always restored for the no-fill run.
+    if (layout && options.expectAdmob) {
+        const expectation = options.expectAdmob;
+        const display = pngSize(await driver.screencap());
+        const screenSize = { w: layout.screen.w, h: layout.screen.h };
+        const rectIn = (event: Record<string, unknown> | undefined, name: string) => toRect((event?.rects as Record<string, unknown> | undefined)?.[name]);
+        const latestRect = (name: string) => rectIn(stream.allEvents().filter((e) => e.evt === 'ui_layout' && rectIn(e, name) !== null).pop(), name);
+        const details: string[] = [];
+        try {
+            if (expectation === 'no_fill') {
+                await sleep(8_000);
+                await frame('post');
+                const collectRect = latestRect('OfflineReportCollect');
+                if (display && collectRect) {
+                    const point = cocosToAdb(rectCentre(collectRect), screenSize, display);
+                    const tapCursor = stream.cursor;
+                    t0 = Date.now();
+                    await driver.tap(Math.round(point.x), Math.round(point.y));
+                    triggered = true;
+                    details.push(`network OFF: tapped the free OfflineReportCollect at ${Math.round(point.x)},${Math.round(point.y)}`);
+                    await stream.waitFor((e) => e.evt === 'offline_report' && e.phase === 'collect_result', tapCursor, 8_000);
+                    await sleep(700);
+                    await frame('post');
+                } else {
+                    details.push('network OFF: OfflineReportCollect rect or display size missing');
+                }
+            } else {
+                const rectName = expectation === 'offline_double' ? 'OfflineReportDouble' : 'ExtendedOverclockAction';
+                const until = Date.now() + ADMOB_AVAILABILITY_WAIT_MS;
+                while (latestRect(rectName) === null && Date.now() < until) await sleep(500);
+                await sleep(500);
+                await frame('pre');
+                const rect = latestRect(rectName);
+                if (display && rect) {
+                    const point = cocosToAdb(rectCentre(rect), screenSize, display);
+                    const tapCursor = stream.cursor;
+                    t0 = Date.now();
+                    await driver.tap(Math.round(point.x), Math.round(point.y));
+                    triggered = true;
+                    details.push(`tapped ${rectName} at ${Math.round(point.x)},${Math.round(point.y)}`);
+                    await stream.waitFor((e) => e.evt === 'ads_state' && e.phase === 'native_started', tapCursor, 10_000);
+                    await sleep(3_000);
+                    await frame('post'); // the ad on screen
+                    let hit = await stream.waitFor((e) => e.evt === 'ads_state' && e.phase === 'ad_result', tapCursor, ADMOB_RESULT_WAIT_BEFORE_BACK_MS);
+                    if (!hit) {
+                        collect(Date.now());
+                        events.push({ tMs: Date.now() - t0, event: { v: 1, seq: 0, evt: 'capture_marker', phase: 'back_pressed' } });
+                        details.push('no ad_result yet: pressed BACK');
+                        await driver.pressBack?.();
+                        hit = await stream.waitFor((e) => e.evt === 'ads_state' && e.phase === 'ad_result', tapCursor, ADMOB_RESULT_WAIT_AFTER_BACK_MS);
+                    }
+                    details.push(hit ? `ad_result observed (status=${String(hit.event.status ?? null)})` : 'no ad_result within the wait window (best-effort)');
+                    await sleep(1_500);
+                    await frame('post');
+                    await sleep(2_000);
+                    await frame('post');
+                } else {
+                    details.push(`${rectName} never appeared (no available ad within ${ADMOB_AVAILABILITY_WAIT_MS / 1000}s) or display size missing`);
+                }
+            }
+        } finally {
+            if (expectation === 'no_fill') await driver.setNetworkEnabled?.(true);
+        }
+        tapDetail = details.join('; ');
+    }
+    if (options.expectAdmob === 'no_fill') await driver.setNetworkEnabled?.(true); // idempotent: never leave the device offline (also when no layout was reached)
     // AUT-050: the AI Upgrades drive: real taps at the rects `ui_layout` reports (chip, buy, tab), then force-stop + relaunch without reseeding.
     if (layout && options.expectPermanentUpgrades) {
         const display = pngSize(await driver.screencap());

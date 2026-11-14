@@ -19,38 +19,26 @@ public final class AutomataPlatformBridge {
             + "}";
     }
 
+    // AUT-057: rewarded ads are served by AutomataAdsController (AdMob). Every method returns immediately; showRewarded is
+    // start-then-event (the final result arrives as the "automata.ads.rewarded_result" script event).
     public static String initializeAds() {
-        return unavailableOperation();
+        return AutomataAdsController.initialize();
     }
 
     public static String getAdsStatus() {
-        return unavailableService();
+        return AutomataAdsController.status();
     }
 
     public static String getRewardedAvailability(String placementId) {
-        return "{"
-            + "\"available\":false,"
-            + "\"status\":\"unavailable\","
-            + "\"placementId\":\"" + escape(placementId) + "\","
-            + "\"reason\":\"" + COMPILE_ONLY_REASON + "\""
-            + "}";
+        return AutomataAdsController.availability(placementId);
     }
 
     public static String preloadRewarded(String placementId) {
-        return unavailableOperation();
+        return AutomataAdsController.preload(placementId);
     }
 
     public static String showRewarded(String requestJson) {
-        String placementId = extractJsonString(requestJson, "placementId");
-        String requestId = extractJsonString(requestJson, "requestId");
-
-        return "{"
-            + "\"status\":\"unavailable\","
-            + "\"placementId\":\"" + escape(placementId) + "\","
-            + "\"requestId\":\"" + escape(requestId) + "\","
-            + "\"rewardVerified\":false,"
-            + "\"reason\":\"" + COMPILE_ONLY_REASON + "\""
-            + "}";
+        return AutomataAdsController.show(requestJson);
     }
 
     public static String initializePurchases() {
@@ -146,6 +134,14 @@ public final class AutomataPlatformBridge {
         return builder.toString();
     }
 
+    static String extractJsonStringValue(String json, String key) {
+        return extractJsonString(json, key);
+    }
+
+    static String escapeJson(String value) {
+        return escape(value);
+    }
+
     private static String extractJsonString(String json, String key) {
         if (json == null || key == null || key.isEmpty()) {
             return "";
@@ -200,6 +196,9 @@ public final class AutomataPlatformBridge {
 
         return value
             .replace("\\", "\\\\")
-            .replace("\"", "\\\"");
+            .replace("\"", "\\\"")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t");
     }
 }

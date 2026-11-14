@@ -159,7 +159,7 @@ test('device: scenario, CLI (usage + seed command + options pass-through) and pa
     const cli = read('tools/device/cli.ts');
     assert.match(cli, /command === 'seed-aut052'/);
     assert.match(cli, /seed-aut052 \[--serial <id>\]/);
-    assert.match(cli, /aut051-short\|aut052\|rbt001\|aut055-success\|aut055-closed\|aut055-failed\|aut055-ineligible\|aut056-success\|aut056-free-active\|aut056-resume\|aut056-closed\|aut056-failed\|aut056-quota\|aut056-interval\]/);
+    assert.match(cli, /aut051-short\|aut052\|rbt001\|aut055-success\|aut055-closed\|aut055-failed\|aut055-ineligible\|aut056-success\|aut056-free-active\|aut056-resume\|aut056-closed\|aut056-failed\|aut056-quota\|aut056-interval\|aut057-offline-double\|aut057-extended\|aut057-no-fill\]/);
     // The AUT-050 omission must not repeat: the CLI hands expectSettings to the capture, and the capture hands it to the evaluator.
     assert.match(cli, /expectSettings: scenario\.expectSettings,/);
     const capture = read('tools/device/reveal_capture.ts');

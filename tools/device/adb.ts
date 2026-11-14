@@ -198,6 +198,14 @@ export class AdbClient {
 
     /** AUT-INT-001: sends the app to the background (Android HOME key). */
     public async pressHome(): Promise<void> { await this.shell(['input', 'keyevent', 'KEYCODE_HOME']); }
+    /** AUT-057: BACK key (best-effort dismissal of a rewarded test ad). */
+    public async pressBack(): Promise<void> { await this.shell(['input', 'keyevent', 'KEYCODE_BACK']); }
+    /** AUT-057: Wi-Fi + mobile data on / off (the no-fill scenario runs offline; always restored by the capture). */
+    public async setNetworkEnabled(enabled: boolean): Promise<void> {
+        const verb = enabled ? 'enable' : 'disable';
+        await this.shell(['svc', 'wifi', verb]);
+        await this.shell(['svc', 'data', verb]);
+    }
 
     /** AUT-INT-001: wipes the app's private data (saves included). */
     public async clearAppData(pkg: string): Promise<void> {

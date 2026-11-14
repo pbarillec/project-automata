@@ -430,4 +430,8 @@ test('new service, mock and no-op files stay free of cc and native SDKs', async 
         assert.equal(/setTimeout|setInterval|fetch\(|XMLHttpRequest/.test(source), false, `${file} uses timers/network`);
     }
     await stat(path.join(scriptsRoot, 'platform', 'android', 'AndroidNativeBridge.ts'));
+    // AUT-057: the pure Android ads provider is free of cc and native class names (its backstop timer is injected; the default timer is its only timer use).
+    const androidAds = await readFile(path.join(scriptsRoot, 'platform', 'android', 'AndroidAdsService.ts'), 'utf8');
+    assert.equal(/from\s+['"]cc['"]/.test(androidAds), false, 'AndroidAdsService imports cc');
+    assert.equal(/native\.reflection|AutomataPlatformBridge/.test(androidAds), false, 'AndroidAdsService names the native bridge');
 });

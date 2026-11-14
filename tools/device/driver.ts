@@ -32,6 +32,9 @@ export interface SessionDeviceDriver extends DeviceDriver {
     listAppFiles(pkg: string, directory: string): Promise<string[]>;
     writeAppFile(pkg: string, devicePath: string, text: string): Promise<void>;
     removeAppFiles(pkg: string, devicePaths: string[]): Promise<void>;
+    /** AUT-057 (optional so older simulated drivers stay valid): BACK key and Wi-Fi / data switch. */
+    pressBack?(): Promise<void>;
+    setNetworkEnabled?(enabled: boolean): Promise<void>;
 }
 
 export class AdbDeviceDriver implements SessionDeviceDriver {
@@ -59,6 +62,8 @@ export class AdbDeviceDriver implements SessionDeviceDriver {
     public gfxinfo(pkg: string) { return this.client.gfxinfo(pkg); }
     public commandLog() { return this.client.commandLog; }
     public pressHome() { return this.client.pressHome(); }
+    public pressBack() { return this.client.pressBack(); }
+    public setNetworkEnabled(enabled: boolean) { return this.client.setNetworkEnabled(enabled); }
     public clearAppData(pkg: string) { return this.client.clearAppData(pkg); }
     public appDataDirectory(pkg: string) { return this.client.appDataDirectory(pkg); }
     public listAppFiles(pkg: string, directory: string) { return this.client.listAppFiles(pkg, directory); }

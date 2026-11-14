@@ -848,7 +848,7 @@ test('device: scenarios, CLI usage and package script are registered', async () 
     const cli = await read('tools/device/cli.ts');
     assert.match(cli, /command === 'seed-aut051'/);
     assert.match(cli, /seed-aut051 \[--variant first\|compact\|cap\|reload\|short\]/);
-    assert.match(cli, /aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\|rbt001\|aut055-success\|aut055-closed\|aut055-failed\|aut055-ineligible\|aut056-success\|aut056-free-active\|aut056-resume\|aut056-closed\|aut056-failed\|aut056-quota\|aut056-interval\]/);
+    assert.match(cli, /aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\|rbt001\|aut055-success\|aut055-closed\|aut055-failed\|aut055-ineligible\|aut056-success\|aut056-free-active\|aut056-resume\|aut056-closed\|aut056-failed\|aut056-quota\|aut056-interval\|aut057-offline-double\|aut057-extended\|aut057-no-fill\]/);
     const short = REVEAL_SCENARIOS['aut051-short'];
     assert.equal(short.trigger, 'none');
     assert.equal(short.expectOfflineReport, 'short');

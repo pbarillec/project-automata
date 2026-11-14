@@ -150,6 +150,11 @@ export class OfflineReportController extends Component {
         if (this.isDoubleShown() !== before) this.onLayoutChanged?.('offline_double_offer');
     }
 
+    /** AUT-057: an ad placement became (un)available; re-reads the x2 offer while the card is shown. */
+    public onAdsAvailabilityChanged(): void {
+        if (this.visible) void this.refreshDouble();
+    }
+
     /** AUT-055: the flow's state changed (in-flight toggled / offer refreshed). */
     public onDoubleChanged(): void {
         if (this.visible) this.render();

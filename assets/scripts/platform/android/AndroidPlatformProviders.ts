@@ -1,18 +1,11 @@
 import type {
-    AdsService,
-    RewardedAdRequest,
-    RewardedAdResult,
-} from '../../services/AdsService';
-import type {
     EntitlementService,
     EntitlementStatus,
 } from '../../services/EntitlementService';
 import type {
-    PlatformAvailability,
     PlatformOperationResult,
     PlatformServiceState,
     ProductId,
-    RewardedPlacementId,
     EntitlementId,
 } from '../../services/PlatformServiceTypes';
 import type {
@@ -23,6 +16,9 @@ import type {
     PurchaseService,
 } from '../../services/PurchaseService';
 import { callAutomataStaticString } from './AndroidNativeBridge';
+
+// AUT-057: the ads provider is pure (injected transport) and lives in AndroidAdsService.ts; re-exported here for existing importers.
+export { AndroidAdsService } from './AndroidAdsService';
 
 type NativeObject = Record<string, unknown>;
 
@@ -86,56 +82,6 @@ function operationResult(source: NativeObject): PlatformOperationResult {
         reason: stringField(source, 'reason') || undefined,
         message: stringField(source, 'message') || undefined,
     };
-}
-
-export class AndroidAdsService implements AdsService {
-    public async initialize(): Promise<PlatformServiceState> {
-        return serviceState('ads', parseNativeObject(callAutomataStaticString('initializeAds')));
-    }
-
-    public getStatus(): PlatformServiceState {
-        return serviceState('ads', parseNativeObject(callAutomataStaticString('getAdsStatus')));
-    }
-
-    public async getRewardedAvailability(placementId: RewardedPlacementId): Promise<PlatformAvailability> {
-        const source = parseNativeObject(callAutomataStaticString(
-            'getRewardedAvailability',
-            '(Ljava/lang/String;)Ljava/lang/String;',
-            placementId,
-        ));
-
-        return {
-            available: booleanField(source, 'available'),
-            status: stringField(source, 'status', 'failed') as PlatformAvailability['status'],
-            reason: stringField(source, 'reason') || undefined,
-            message: stringField(source, 'message') || undefined,
-        };
-    }
-
-    public async preloadRewarded(placementId: RewardedPlacementId): Promise<PlatformOperationResult> {
-        return operationResult(parseNativeObject(callAutomataStaticString(
-            'preloadRewarded',
-            '(Ljava/lang/String;)Ljava/lang/String;',
-            placementId,
-        )));
-    }
-
-    public async showRewarded(request: RewardedAdRequest): Promise<RewardedAdResult> {
-        const source = parseNativeObject(callAutomataStaticString(
-            'showRewarded',
-            '(Ljava/lang/String;)Ljava/lang/String;',
-            JSON.stringify(request),
-        ));
-
-        return {
-            status: stringField(source, 'status', 'failed') as RewardedAdResult['status'],
-            placementId: stringField(source, 'placementId', request.placementId),
-            requestId: stringField(source, 'requestId', request.requestId),
-            rewardVerified: booleanField(source, 'rewardVerified'),
-            reason: stringField(source, 'reason') || undefined,
-            message: stringField(source, 'message') || undefined,
-        };
-    }
 }
 
 export class AndroidPurchaseService implements PurchaseService {
