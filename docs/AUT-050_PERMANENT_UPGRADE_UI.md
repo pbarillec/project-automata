@@ -66,3 +66,11 @@ New event `permanent_upgrades` (added to the `DeviceDiagnostics` allow-list and 
 ## Not verified here (human / device)
 
 Rendering on a real device (legibility, backdrop dim, pulse, hexagon polygon fill, lock mark), that node-level touch swallowing keeps camera and selection from receiving taps on the chip / panel exactly like the HUD, a milestone / era / Reboot toast passing over the chip for a moment (the chip sits where the toast band starts and is placed behind it), real-tap behaviour of the Button hit rects on Android, and the `aut050` capture itself (no gate build in this task). Subjective feel (panel density, whether the chip is discoverable, pulse feel) is pending human review. Copy needs Game Designer wording approval.
+
+## Device evidence and visual QA (2026-11-14)
+
+DEBUG APK from 0e1fdb7 (gate label aut050). `npm run device:reveal-capture -- --scenario aut050` (`temp/reveal/aut050-ai-upgrades-2026-11-14T120937/`, 10 frames): all 14 checks PASS, 0 errors. Real taps: chip -> panel (Production, rows affordable/affordable/insufficient) -> bought industrial_scaling (cost 2 = config, balance 4 -> 2, rank 0 -> 1, event order correct, saved) -> Automation tab (1 affordable, 2 locked) -> force-stop/relaunch: balance 2 and rank 1 persisted. Capture CLI fix 1147cee (expectPermanentUpgrades was not passed through; the first run only ran generic checks).
+
+Vision QA (stills): PASS. Chip clear of HUD/Overclock, >=64 tall; card centred with dimmed backdrop; tabs/rows/effect text unclipped; affordable/insufficient/locked states distinct; procedural hexagon AI mark renders correctly on Android; CLOSE large; after purchase rank/balance/row state updated with a faint cyan ring; locked rows show "Needs ... rank N"; no regressions.
+Non-blocking POLISH: chip right margin (~25 px) vs Overclock (~37 px); 2-line effect rows tight under the name; LOCKED label low contrast; pulse ring thin. Unverified: MAX state (seed variant `maxed`), chip vs toast band overlap, camera/selection touch-swallowing, pulse feel.
+Sequencing gap (unchanged): no Reboot UI exists, so AI Cores are only reachable via the DEBUG Reboot command or a seeded save.
