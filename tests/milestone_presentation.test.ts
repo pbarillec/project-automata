@@ -262,7 +262,8 @@ test('AUT-046 view model: milestone / robots fire once per run; Reboot clears th
     const update = viewModel.consumeEvents(reboot, [rebootEvent()]);
     assert.equal(update.rebooted, true);
     assert.deepEqual(update.exceptional, ['rebootCompleted']);
-    assert.equal(viewModel.getFrame(), null, 'Reboot clears the visible toast');
+    // AUT-049: the Reboot clears every toast of the old run; the only visible card is the Reboot title card itself.
+    assert.equal(viewModel.getFrame()?.item.trigger.kind, 'reboot_title', 'Reboot clears the visible toast, then shows its own card');
     assert.equal(viewModel.consumeEvents(reboot, events).accepted.length, 2, 'the same milestones present again in the next run');
     const lateReboot = new MilestonePresentationViewModel();
     lateReboot.syncFromState(state);

@@ -1,4 +1,5 @@
-import type { MilestoneTrigger, PresentedMilestoneTier } from './MilestoneTier.ts';
+import type { MilestoneKind, MilestoneTrigger, PresentedMilestoneTier } from './MilestoneTier.ts';
+import { REBOOT_SEQUENCE_SECONDS, sampleRebootToast, type RebootBeat } from './RebootPresentation.ts';
 
 /** Toast timing (seconds). Minor 0.15 in / 0.5 hold / 0.2 out; Major 2.5 s with an accent underline wipe. */
 export const MILESTONE_TOAST_TIMING: Readonly<Record<PresentedMilestoneTier, { readonly fadeIn: number; readonly hold: number; readonly fadeOut: number }>> = Object.freeze({
@@ -14,7 +15,9 @@ export const MILESTONE_MINOR_MERGE_SECONDS = 1.0;
 /** Waiting toasts per tier; further ones collapse into a "+N" on the last waiting (or the visible) toast. */
 export const MILESTONE_MAX_WAITING_PER_TIER = 2;
 
-export function milestoneToastDuration(tier: PresentedMilestoneTier): number {
+/** The AUT-049 Reboot title card has its own 4.0 s hard-capped beat timeline (REBOOT / AI CORE / CIVILIZATION); every other kind uses its tier timing. */
+export function milestoneToastDuration(tier: PresentedMilestoneTier, kind?: MilestoneKind): number {
+    if (kind === 'reboot_title') return REBOOT_SEQUENCE_SECONDS;
     const timing = MILESTONE_TOAST_TIMING[tier];
     return timing.fadeIn + timing.hold + timing.fadeOut;
 }
@@ -28,10 +31,16 @@ export interface MilestoneToastTimingSample {
     /** 0..1 accent underline wipe (always 0 for Minor; Major and the era title card wipe). */
     readonly wipe: number;
     readonly complete: boolean;
+    /** AUT-049 Reboot card only: which title the card shows (null = silence / not a Reboot card). */
+    readonly beat?: RebootBeat | null;
 }
 
 /** Pure timing of one toast at `elapsed` seconds. */
-export function sampleMilestoneToast(tier: PresentedMilestoneTier, elapsed: number): MilestoneToastTimingSample {
+export function sampleMilestoneToast(tier: PresentedMilestoneTier, elapsed: number, kind?: MilestoneKind): MilestoneToastTimingSample {
+    if (kind === 'reboot_title') {
+        const reboot = sampleRebootToast(elapsed);
+        return { phase: reboot.complete ? 'out' : reboot.alpha >= 1 ? 'hold' : 'in', alpha: reboot.alpha, wipe: reboot.wipe, complete: reboot.complete, beat: reboot.beat };
+    }
     const t = Math.max(0, elapsed);
     const timing = MILESTONE_TOAST_TIMING[tier];
     const total = milestoneToastDuration(tier);
@@ -129,7 +138,7 @@ export class MilestoneToastQueue {
         const started: MilestoneToastItem[] = [];
         if (this.active) {
             this.active.elapsed += delta;
-            if (sampleMilestoneToast(this.active.trigger.tier, this.active.elapsed).complete) {
+            if (sampleMilestoneToast(this.active.trigger.tier, this.active.elapsed, this.active.trigger.kind).complete) {
                 finished.push(this.active);
                 this.active = null;
             }
@@ -232,7 +241,7 @@ export class MilestoneToastQueue {
 
     private currentFrame(): MilestoneToastFrame | null {
         if (!this.active) return null;
-        return { item: this.active, sample: sampleMilestoneToast(this.active.trigger.tier, this.active.elapsed) };
+        return { item: this.active, sample: sampleMilestoneToast(this.active.trigger.tier, this.active.elapsed, this.active.trigger.kind) };
     }
 
     private create(trigger: MilestoneTrigger): MilestoneToastItem {

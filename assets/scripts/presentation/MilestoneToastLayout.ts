@@ -65,6 +65,8 @@ export const MILESTONE_TOAST_COLORS = Object.freeze({
         amber: Object.freeze({ r: 240, g: 176, b: 64, a: 255 }),
         cyan: Object.freeze({ r: 59, g: 112, b: 121, a: 255 }),
     }) as Readonly<Record<MilestoneAccent, { readonly r: number; readonly g: number; readonly b: number; readonly a: number }>>,
+    /** AUT-049 Reboot card underline: the same AUT-045 environment cyan as the Era III card (never brighter than the lamps); the title stays off-white. */
+    rebootUnderline: Object.freeze({ r: 59, g: 112, b: 121, a: 255 }),
     /** Title text carries the accent colour (cyan stays dimmer than the producer lamps 82,206,224). */
     titleAccent: Object.freeze({
         amber: Object.freeze({ r: 255, g: 200, b: 96 }),

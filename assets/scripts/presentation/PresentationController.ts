@@ -9,6 +9,7 @@ import { AdvancedRoboticsComplexVisualController } from './AdvancedRoboticsCompl
 import { EraEnvironmentVisualController } from './EraEnvironmentVisualController';
 import { MilestonePresentationController } from './MilestonePresentationController';
 import { BoostPresentationController } from './BoostPresentationController';
+import { RebootPresentationController } from './RebootPresentationController';
 
 const { ccclass, property } = _decorator;
 
@@ -50,6 +51,10 @@ export class PresentationController extends Component {
     @property(BoostPresentationController)
     public boostPresentation: BoostPresentationController | null = null;
 
+    /** AUT-049: Reboot world presentation (scan ring, relay socket, placeholder AI Core); starts only from `rebootCompleted`, silent on load. */
+    @property(RebootPresentationController)
+    public rebootPresentation: RebootPresentationController | null = null;
+
     /** AUT-040: reusable construction/reveal sequence; fed before the other controllers so frame 0 is applied first. */
     @property(ConstructionPresentationController)
     public constructionPresentation: ConstructionPresentationController | null = null;
@@ -83,6 +88,7 @@ export class PresentationController extends Component {
         this.eraEnvironmentVisual?.sync(state as Parameters<EraEnvironmentVisualController['sync']>[0]);
         this.milestonePresentation?.sync(state as Parameters<MilestonePresentationController['sync']>[0]);
         this.boostPresentation?.sync(state as Parameters<BoostPresentationController['sync']>[0]);
+        this.rebootPresentation?.sync(state as Parameters<RebootPresentationController['sync']>[0]);
     }
 
     public consumeDomainEvents(
@@ -99,6 +105,7 @@ export class PresentationController extends Component {
         this.eraEnvironmentVisual?.consumeDomainEvents(state, events);
         this.milestonePresentation?.consumeDomainEvents(state, events);
         this.boostPresentation?.consumeDomainEvents(state, events);
+        this.rebootPresentation?.consumeDomainEvents(state, events);
     }
 
     private findAnchor(anchors: Node[], producerId: string): Node | null {

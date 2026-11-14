@@ -5,14 +5,20 @@
  * gameplay path, no state write and no player-facing control; release builds never read the file.
  *
  *   { "command": { "type": "purchaseBreakthrough", "breakthroughId": "advanced_robotics" }, "delayMs": 6000 }
+ *   { "command": { "type": "rebootCivilization", "confirmed": true }, "delayMs": 6000 }     (AUT-049, capture-only Reboot trigger)
  *
- * Only an allow-listed command shape is accepted, anything else is ignored (never executed).
+ * Only an allow-listed command shape is accepted, anything else is ignored (never executed). `rebootCivilization` additionally requires
+ * the literal `confirmed: true`; there is no player-facing Reboot trigger or confirmation UI.
  */
 export const DEBUG_COMMAND_FILE = 'debug_command.json';
 export const DEBUG_COMMAND_MAX_DELAY_MS = 30000;
 
+export type DebugCommand =
+    | { readonly type: 'purchaseBreakthrough'; readonly breakthroughId: string }
+    | { readonly type: 'rebootCivilization'; readonly confirmed: true };
+
 export interface DebugCommandRequest {
-    readonly command: { readonly type: 'purchaseBreakthrough'; readonly breakthroughId: string };
+    readonly command: DebugCommand;
     readonly delayMs: number;
 }
 
@@ -23,8 +29,9 @@ export function parseDebugCommandFile(text: string | undefined): DebugCommandReq
     if (typeof raw !== 'object' || raw === null) return null;
     const { command, delayMs } = raw as { command?: unknown; delayMs?: unknown };
     if (typeof command !== 'object' || command === null) return null;
-    const { type, breakthroughId } = command as { type?: unknown; breakthroughId?: unknown };
-    if (type !== 'purchaseBreakthrough' || typeof breakthroughId !== 'string' || !/^[a-z0-9_]{1,64}$/.test(breakthroughId)) return null;
+    const { type, breakthroughId, confirmed } = command as { type?: unknown; breakthroughId?: unknown; confirmed?: unknown };
     const delay = typeof delayMs === 'number' && Number.isFinite(delayMs) ? Math.min(DEBUG_COMMAND_MAX_DELAY_MS, Math.max(0, delayMs)) : 0;
-    return { command: { type, breakthroughId }, delayMs: delay };
+    if (type === 'purchaseBreakthrough' && typeof breakthroughId === 'string' && /^[a-z0-9_]{1,64}$/.test(breakthroughId)) return { command: { type, breakthroughId }, delayMs: delay };
+    if (type === 'rebootCivilization' && confirmed === true) return { command: { type, confirmed: true }, delayMs: delay };
+    return null;
 }

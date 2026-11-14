@@ -57,6 +57,8 @@ export const DEVICE_EVENT_TYPES = [
     'era_transition',
     // AUT-048 follow-up (DEBUG only): debug_command.json read once after ready: { phase: 'scheduled' | 'submitted' | 'ignored', command?, delayMs? }; the verdict is the normal command_result.
     'debug_command',
+    // AUT-049: Reboot presentation (post-commit 4 s sequence): { phase: 'synced' | 'sequence_started' | 'phase' | 'sequence_finished' | 'duplicate_ignored' | 'focus_requested' | 'focus_skipped' | 'toast_started' | 'title_applied' | 'toast_finished', ... }.
+    'reboot_presentation',
     // AUT-047: temporary boost presentation: { phase: 'synced' | 'started' | 'ended' | 'suspended' | 'resumed' | 'stopped' | 'settled' | 'effect_applied', ... } (effect_applied: anchorResolved, timeScale, plate / spark scale + worldPos).
     'boost_presentation',
     'error',

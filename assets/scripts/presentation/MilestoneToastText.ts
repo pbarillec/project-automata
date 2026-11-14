@@ -2,6 +2,7 @@ import { getDefaultTextCatalogue, type TextCatalogue } from '../localization/ind
 import type { DisplayNameSource } from './PresentationText.ts';
 import type { MilestoneTrigger } from './MilestoneTier.ts';
 import { eraTransitionSpec } from './EraTransition.ts';
+import type { RebootBeat } from './RebootPresentation.ts';
 
 /**
  * English toast templates. They live here rather than in localization/en.json on purpose: the AUT-LOC-001 tests pin the shared
@@ -18,6 +19,10 @@ export const MILESTONE_TEXT_TEMPLATES: Readonly<Record<string, string>> = Object
     robots_built_subtitle: 'Robot output milestone',
     producer_generic: 'Producer',
     extra: '{text} +{count}',
+    // AUT-049 Reboot title card beats (English, all caps, until the AUT-052 catalogue move).
+    reboot_title: 'REBOOT',
+    reboot_ai_core: 'AI CORE ×{count}',
+    reboot_civilization: 'CIVILIZATION #{number}',
 });
 
 function fill(key: string, params: Readonly<Record<string, string | number>> = {}): string {
@@ -37,10 +42,20 @@ export function formatMilestoneToast(
     names: DisplayNameSource | null,
     extra = 0,
     catalogue: TextCatalogue = getDefaultTextCatalogue(),
+    beat: RebootBeat | null = null,
 ): MilestoneToastText {
+    // AUT-049: the Reboot card shows one title per beat (REBOOT, AI CORE x N, CIVILIZATION #N); no "+N", no subtitle.
+    if (trigger.kind === 'reboot_title') return { title: formatRebootBeat(trigger, beat ?? 'reboot'), subtitle: null };
     const text = compose(trigger, names, catalogue);
     const title = extra > 0 ? fill('extra', { text: text.title, count: extra }) : text.title;
     return { title, subtitle: text.subtitle };
+}
+
+/** Title of one beat of the Reboot card ("AI CORE ×N" uses the AI Cores granted, "CIVILIZATION #N" the new civilization). */
+export function formatRebootBeat(trigger: MilestoneTrigger, beat: RebootBeat): string {
+    if (beat === 'ai_core') return fill('reboot_ai_core', { count: trigger.reboot?.aiCoresGranted ?? 0 });
+    if (beat === 'civilization') return fill('reboot_civilization', { number: trigger.reboot?.newCivilization ?? 0 });
+    return fill('reboot_title');
 }
 
 function compose(trigger: MilestoneTrigger, names: DisplayNameSource | null, catalogue: TextCatalogue): MilestoneToastText {

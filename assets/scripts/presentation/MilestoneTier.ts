@@ -9,13 +9,13 @@ import { isFirstAutomationEvidence } from './AutomationPayoffViewModel.ts';
  * - `minor`: small chip toast + short light pulse, never a camera focus, never a title.
  * - `major`: title (+ subtitle) toast, sparks + ~1 s light pulse, camera focus allowed.
  * - `exceptional`: owned by an existing controller (first automation / first robot / era change / Reboot). This module only
- *   classifies it; the era title card is built by `EraTransition.ts` (AUT-048), Reboot stays with AUT-049.
+ *   classifies it; the era title card is built by `EraTransition.ts` (AUT-048), the Reboot title card by `RebootPresentation.ts` (AUT-049).
  */
 export type MilestoneTier = 'none' | 'minor' | 'major' | 'exceptional';
 /** `exceptional` is presented only as the AUT-048 era title card (the other Exceptional events stay with their owners). */
 export type PresentedMilestoneTier = 'minor' | 'major' | 'exceptional';
 export type MilestoneAccent = 'amber' | 'cyan';
-export type MilestoneKind = 'producer_milestone' | 'automation' | 'breakthrough' | 'robots_built' | 'producer_constructed' | 'era_title';
+export type MilestoneKind = 'producer_milestone' | 'automation' | 'breakthrough' | 'robots_built' | 'producer_constructed' | 'era_title' | 'reboot_title';
 
 /** Tier of every DomainEvent type (the tests pin that this table covers exactly the `DomainEvent` union). */
 export const MILESTONE_EVENT_TIERS: Readonly<Record<DomainEvent['type'], MilestoneTier>> = Object.freeze({
@@ -87,6 +87,8 @@ export interface MilestoneTrigger {
     readonly pulse: boolean;
     /** Era the AUT-048 title card announces (`era_title` only, null otherwise). */
     readonly eraId: string | null;
+    /** AUT-049 Reboot title card data (`reboot_title` only; absent / null otherwise). */
+    readonly reboot?: { readonly newCivilization: number; readonly aiCoresGranted: number } | null;
     /** Set by the view model when an Exceptional event shares the burst: the toast shows, the focus is skipped. */
     readonly focusSuppressed: boolean;
 }

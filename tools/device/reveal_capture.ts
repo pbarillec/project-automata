@@ -21,6 +21,7 @@ import { seedAut044 } from './seed_aut044.ts';
 import { seedAut046 } from './seed_aut046.ts';
 import { seedAut047 } from './seed_aut047.ts';
 import { seedAut048, seedAut048Era3Live } from './seed_aut048.ts';
+import { seedAut049 } from './seed_aut049.ts';
 import { seedUi003 } from './seed_ui003.ts';
 import { parseHudActions } from './scenarios/ui001_core_loop.ts';
 import { parseUiLayout, rectCentre } from './ui_geometry.ts';
@@ -41,6 +42,8 @@ export interface RevealCaptureOptions {
     readonly expectBoostPhases?: readonly string[];
     /** AUT-048: era id whose title card must start / finish (a string), or 'none' when the capture must show NO era card (silent load). */
     readonly expectEraTitle?: string;
+    /** AUT-049: 'sequence' = the 4 s Reboot sequence must start / finish; 'silent' = a load with the persistent socket and NO sequence. */
+    readonly expectReboot?: RebootExpectation;
     /** AUT-UI-003: command types whose accepted `command_result` (ok) must be observed. */
     readonly expectCommands?: readonly string[];
     readonly preMs?: number;
@@ -51,6 +54,8 @@ export interface RevealCaptureOptions {
     readonly activity?: string;
     readonly outDir?: string;
 }
+
+export type RebootExpectation = 'sequence' | 'silent';
 
 export interface TimelineFrame { readonly index: number; readonly tMs: number; readonly file: string; readonly phase: 'baseline' | 'pre' | 'post' }
 export interface TimelineEvent { readonly tMs: number; readonly event: ParsedDeviceEvent }
@@ -66,7 +71,7 @@ export interface RevealCaptureResult {
 
 export const DEFAULT_REVEAL_EVENT_TYPES: readonly string[] = Object.freeze([
     'scene_ready', 'session_state', 'ui_layout', 'command_result', 'construction_state', 'camera_focus', 'reveal_state',
-    'milestone_presentation', 'era_transition', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'error',
+    'milestone_presentation', 'era_transition', 'reboot_presentation', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'error',
 ]);
 
 /** A named live-reveal scenario: the seed (unbuilt variant), the producer whose construction must be observed and whether a camera focus is expected. */
@@ -83,6 +88,7 @@ export interface RevealScenario {
     readonly expectBoostPhases?: readonly string[];
     readonly expectCommands?: readonly string[];
     readonly expectEraTitle?: string;
+    readonly expectReboot?: RebootExpectation;
 }
 
 export const DEFAULT_REVEAL_SCENARIO_ID = 'aut043';
@@ -101,6 +107,10 @@ export const REVEAL_SCENARIOS: Readonly<Record<string, RevealScenario>> = Object
     // AUT-048 Era III: no existing tap path triggers the era goal (no HUD action by design): this capture only proves the silent load (no card, no focus) at the natural era.
     // AUT-048 follow-up: the DEBUG-only debug_command.json (written by the seed, read once after ready) submits the normal Advanced Robotics purchase; trigger 'none' on the capture side.
     'aut048-era3-live': { id: 'aut048-era3-live', label: 'aut048-era3-live', seed: (d, pkg, act) => seedAut048Era3Live(d, pkg, act), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 18_000, intervalMs: 400, expectEraTitle: 'robotics_complex', expectCommands: ['purchaseBreakthrough'] },
+    // AUT-049: the DEBUG-only debug_command.json (written by the seed, read once after ready) submits the confirmed Reboot; trigger 'none' on the capture side.
+    aut049: { id: 'aut049', label: 'aut049-reboot', seed: (d, pkg, act) => seedAut049(d, pkg, act, 'reboot'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 18_000, intervalMs: 300, expectCommands: ['rebootCivilization'], expectReboot: 'sequence' },
+    // AUT-049: a post-Reboot save (Civilization #2, AI Cores): silent load, persistent relay socket, no sequence.
+    'aut049-post': { id: 'aut049-post', label: 'aut049-post-reboot-socket', seed: (d, pkg, act) => seedAut049(d, pkg, act, 'post'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 400, expectReboot: 'silent' },
     'aut048-era3': { id: 'aut048-era3', label: 'aut048-era3-silent-load', seed: (d, pkg, act) => seedAut048(d, pkg, act, 'era3'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 400, expectEraTitle: 'none' },
 });
 
@@ -110,7 +120,7 @@ export function resolveRevealScenario(id: unknown): RevealScenario | null {
 }
 
 /** Objective checks over a timeline (pure, unit-tested). `tMs` is relative to the trigger (negative = before). */
-export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string }): RevealCheck[] {
+export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation }): RevealCheck[] {
     const checks: RevealCheck[] = [];
     const errors = events.filter((e) => e.event.evt === 'error');
     checks.push({ id: 'no_error_events', ok: errors.length === 0, detail: `${errors.length} error events` });
@@ -140,6 +150,45 @@ export function evaluateRevealTimeline(events: readonly TimelineEvent[], options
         checks.push({ id: `command_${type}_ok`, ok: hit !== undefined, detail: hit ? `t=${hit.tMs}ms ${JSON.stringify({ eventTypes: hit.event.eventTypes ?? null })}` : 'no accepted command_result' });
     }
     if (options.expectEraTitle !== undefined) checks.push(...evaluateEraTransition(events, options.expectEraTitle));
+    if (options.expectReboot !== undefined) checks.push(...evaluateRebootPresentation(events, options.expectReboot));
+    return checks;
+}
+
+/** Reboot presentation objective checks (pure): post-commit start only, phases, 4 s cap, title beats, socket; a silent load starts nothing. */
+export function evaluateRebootPresentation(events: readonly TimelineEvent[], expect: RebootExpectation): RevealCheck[] {
+    const reboot = events.filter((e) => e.event.evt === 'reboot_presentation');
+    const phase = (name: string) => reboot.filter((e) => e.event.phase === name);
+    const checks: RevealCheck[] = [];
+    const synced = phase('synced')[0];
+    checks.push({ id: 'reboot_synced_on_load', ok: synced !== undefined, detail: synced ? `socketPersistent=${String(synced.event.socketPersistent)} civilization=${String(synced.event.civilization)}` : 'no reboot_presentation synced' });
+    const started = phase('sequence_started');
+    if (expect === 'silent') {
+        checks.push({ id: 'reboot_persistent_socket_on_load', ok: synced?.event.socketPersistent === true, detail: `socketPersistent=${String(synced?.event.socketPersistent ?? null)}` });
+        checks.push({ id: 'reboot_no_sequence_on_load', ok: started.length === 0 && phase('toast_started').length === 0, detail: `${started.length} sequence_started, ${phase('toast_started').length} toast_started` });
+        return checks;
+    }
+    checks.push({ id: 'reboot_sequence_started', ok: started.length === 1, detail: started.length ? `t=${started[0].tMs}ms newCivilization=${String(started[0].event.newCivilization)} aiCoresGranted=${String(started[0].event.aiCoresGranted)}` : 'not observed' });
+    const commit = events.find((e) => e.event.evt === 'command_result' && (e.event.command as { type?: unknown } | undefined)?.type === 'rebootCivilization' && e.event.ok === true);
+    const commitTypes: unknown[] = Array.isArray(commit?.event.eventTypes) ? (commit?.event.eventTypes as unknown[]) : [];
+    checks.push({ id: 'reboot_event_after_durable_save', ok: commitTypes.includes('rebootCompleted'), detail: commit ? `eventTypes=${JSON.stringify(commitTypes)}` : 'no accepted rebootCivilization command_result' });
+    checks.push({ id: 'reboot_no_sequence_before_command', ok: started.every((e) => commit === undefined || e.tMs >= commit.tMs - 500), detail: started.length ? `sequence t=${started[0].tMs}ms, command t=${String(commit?.tMs ?? null)}ms` : 'none' });
+    const reached = phase('phase').map((e) => String(e.event.name));
+    checks.push({ id: 'reboot_phases_observed', ok: ['silence', 'core', 'civilization'].every((name) => reached.includes(name)), detail: `phases=${JSON.stringify(reached)}` });
+    const finished = phase('sequence_finished')[0];
+    const elapsed = finished && typeof finished.event.elapsedSeconds === 'number' ? finished.event.elapsedSeconds : null;
+    checks.push({ id: 'reboot_sequence_finished_within_cap', ok: finished !== undefined && elapsed !== null && elapsed <= 4.05, detail: finished ? `t=${finished.tMs}ms elapsed=${String(elapsed)}s socketVisible=${String(finished.event.socketVisible)}` : 'not observed' });
+    checks.push({ id: 'reboot_socket_persists_after', ok: finished?.event.socketVisible === true, detail: `socketVisible=${String(finished?.event.socketVisible ?? null)}` });
+    const titles = phase('title_applied').map((e) => String(e.event.labelText ?? ''));
+    checks.push({ id: 'reboot_title_beats', ok: titles.length === 3 && titles[0] === 'REBOOT' && /^AI CORE \u00d7\d+$/.test(titles[1]) && /^CIVILIZATION #\d+$/.test(titles[2]), detail: JSON.stringify(titles) });
+    const toastFinished = phase('toast_finished')[0];
+    const toastElapsed = toastFinished && typeof toastFinished.event.elapsedSeconds === 'number' ? toastFinished.event.elapsedSeconds : null;
+    checks.push({ id: 'reboot_toast_finished_within_cap', ok: toastFinished !== undefined && toastElapsed !== null && toastElapsed <= 4.2, detail: toastFinished ? `elapsed=${String(toastElapsed)}s` : 'not observed' });
+    const focus = reboot.find((e) => e.event.phase === 'focus_requested' || e.event.phase === 'focus_skipped');
+    checks.push({ id: 'reboot_focus_decision', ok: focus !== undefined, detail: focus ? `${String(focus.event.phase)} reason=${String(focus.event.reason ?? 'requested')} anchorResolved=${String(focus.event.anchorResolved ?? null)}` : 'no focus_requested / focus_skipped' });
+    const scan = reboot.find((e) => e.event.phase === 'effect_applied' && e.event.part === 'scan');
+    const core = reboot.find((e) => e.event.phase === 'effect_applied' && e.event.part === 'core');
+    checks.push({ id: 'reboot_scan_applied', ok: scan !== undefined && scan.event.plateScale === 1, detail: scan ? `plateScale=${String(scan.event.plateScale)}` : 'not observed' });
+    checks.push({ id: 'reboot_core_applied', ok: core !== undefined && core.event.socketScale === 1 && typeof core.event.coreScale === 'number' && core.event.coreScale > 0, detail: core ? `socketScale=${String(core.event.socketScale)} coreScale=${String(core.event.coreScale)}` : 'not observed' });
     return checks;
 }
 
@@ -267,7 +316,7 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
     collect(Date.now());
     await driver.stopLogcat();
 
-    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle });
+    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot });
     checks.unshift({ id: 'ui_layout_ready', ok: layout !== null, detail: layout ? 'ui_layout received' : 'no ui_layout (app did not reach the HUD)' });
     if (trigger !== 'none') checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
     writeFileSync(path.join(outDir, 'timeline.json'), `${JSON.stringify({ label: options.label, frames, events, checks }, null, 2)}\n`);

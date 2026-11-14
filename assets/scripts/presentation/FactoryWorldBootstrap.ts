@@ -45,6 +45,8 @@ import { ARC_BEAM_GRAPHITE_COLOR, ARC_BEAMS, ARC_FOUNDATION_SLAB, ARC_GUIDE, ARC
 import { EraEnvironmentVisualController } from './EraEnvironmentVisualController';
 import { MilestonePresentationController } from './MilestonePresentationController';
 import { BoostPresentationController } from './BoostPresentationController';
+import { RebootPresentationController } from './RebootPresentationController';
+import { REBOOT_CORE_EULER_DEG, REBOOT_SOCKET, socketRingBars } from './RebootPresentation.ts';
 import { milestoneToastTopOffset } from './MilestoneToastLayout.ts';
 import { MILESTONE_ACCENT_RGB, producerZoneName } from './MilestoneFeedback.ts';
 import { ERA_ENV_BOXES, ERA_ENV_GROUP_IDS, ERA_ENV_GROUP_NODE_NAMES, ERA_ENV_ROOT_NODE_NAME } from './EraEnvironmentLayout.ts';
@@ -155,6 +157,7 @@ export class FactoryWorldBootstrap extends Component {
         const batch = this.createAssemblyBatchAction(panel.node);
         this.createMilestonePresentation(site);
         this.createBoostPresentation(site);
+        this.createRebootPresentation(site);
         selection.onSelectionChanged = (producerId) => {
             panel.replaceSelection(producerId);
             this.binding?.onSelectionChanged(producerId);
@@ -575,6 +578,55 @@ export class FactoryWorldBootstrap extends Component {
         plate.setScale(0, 0, 0);
         controller.pulsePlate = plate;
         presentation.boostPresentation = controller;
+    }
+
+    /**
+     * AUT-049 Reboot world presentation: one controller node under the site, a thin cyan scan ring (4 opaque outline bars, scale 0 at rest),
+     * the relay socket (graphite base + pedestal + thin cyan outline + the placeholder AI Core cube, all primitive boxes, scale 0 at rest)
+     * and the Fabricator focus anchor for the one camera beat. The Core is intentionally simple and temporary (no asset). Presentation only.
+     */
+    private createRebootPresentation(site: Node): void {
+        const registry = site.getChildByName('PresentationAnchors');
+        const presentation = registry?.getComponent(PresentationController) ?? null;
+        if (!registry || !presentation) return;
+        const node = site.getChildByName('RebootPresentation') ?? new Node('RebootPresentation');
+        node.parent = site;
+        const controller = node.getComponent(RebootPresentationController) ?? node.addComponent(RebootPresentationController);
+        controller.cameraController = this.cameraController();
+        controller.resolveProducerAnchor = (producerId) => {
+            const zone = producerZoneName(producerId);
+            return zone === null ? null : site.getChildByName(`Zone_${zone}`)?.getChildByName(`${zone}_FocusAnchor`) ?? null;
+        };
+        const colors = REBOOT_SOCKET.colors;
+        const scan = site.getChildByName('RebootScan') ?? new Node('RebootScan');
+        scan.layer = Layers.Enum.DEFAULT;
+        scan.parent = site;
+        for (let index = 0; index < 4; index += 1) {
+            if (!scan.getChildByName(`RebootScan_Bar${index}`)) this.createBox(scan, `RebootScan_Bar${index}`, new Vec3(1, 1, 1), new Vec3(0, 0, 0), new Color(colors.scan.r, colors.scan.g, colors.scan.b, 255));
+        }
+        scan.setScale(0, 0, 0);
+        controller.scanPlate = scan;
+        let socket = site.getChildByName('RebootSocket');
+        if (!socket) {
+            socket = new Node('RebootSocket');
+            socket.layer = Layers.Enum.DEFAULT;
+            socket.parent = site;
+            socket.setPosition(REBOOT_SOCKET.x, 0, REBOOT_SOCKET.z);
+            const { base, pedestal, ring } = REBOOT_SOCKET;
+            this.createBox(socket, 'RebootSocket_Base', new Vec3(base.sizeX, base.sizeY, base.sizeZ), new Vec3(0, base.y, 0), new Color(colors.base.r, colors.base.g, colors.base.b, 255));
+            this.createBox(socket, 'RebootSocket_Pedestal', new Vec3(pedestal.sizeX, pedestal.sizeY, pedestal.sizeZ), new Vec3(0, pedestal.y, 0), new Color(colors.pedestal.r, colors.pedestal.g, colors.pedestal.b, 255));
+            socketRingBars().forEach((bar, index) => {
+                this.createBox(socket!, `RebootSocket_Ring${index}`, new Vec3(bar.sizeX, ring.height, bar.sizeZ), new Vec3(bar.x, ring.y, bar.z), new Color(colors.ring.r, colors.ring.g, colors.ring.b, 255));
+            });
+            // Placeholder AI Core: a unit cube balanced on a vertex, sized by the controller (hidden at scale 0).
+            const core = this.createBox(socket, 'RebootCore', new Vec3(1, 1, 1), new Vec3(0, 0.6, 0), new Color(colors.core.r, colors.core.g, colors.core.b, 255));
+            core.setRotationFromEuler(REBOOT_CORE_EULER_DEG.x, REBOOT_CORE_EULER_DEG.y, REBOOT_CORE_EULER_DEG.z);
+            core.setScale(0, 0, 0);
+            socket.setScale(0, 0, 0);
+        }
+        controller.socketRoot = socket;
+        controller.coreNode = socket.getChildByName('RebootCore');
+        presentation.rebootPresentation = controller;
     }
 
     private connectFirstAutomationPresentation(parent: Node): void {

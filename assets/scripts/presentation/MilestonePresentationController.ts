@@ -8,6 +8,7 @@ import { eraTransitionSpec, resolveEraFocus } from './EraTransition.ts';
 import { MILESTONE_ACCENT_RGB, MILESTONE_RING_HEIGHT, MILESTONE_RING_VISIBLE_ABOVE, MILESTONE_SPARK_COUNT, milestoneRingBars, producerFootprint, resolveMilestoneFocus, sampleMilestoneEffect } from './MilestoneFeedback.ts';
 import { MilestonePresentationViewModel, type MilestoneUpdate } from './MilestonePresentationViewModel.ts';
 import type { MilestoneToastItem } from './MilestoneToastQueue.ts';
+import type { RebootBeat } from './RebootPresentation.ts';
 import { MILESTONE_TOAST_COLORS, MILESTONE_TOAST_LAYOUT } from './MilestoneToastLayout.ts';
 import { formatMilestoneToast } from './MilestoneToastText.ts';
 import type { MilestoneAccent, MilestoneTrigger } from './MilestoneTier.ts';
@@ -64,6 +65,8 @@ export class MilestonePresentationController extends Component {
     private effect: RunningEffect | null = null;
     private sparksDirty = false;
     private eraAppliedReportedFor = 0;
+    /** AUT-049: the Reboot card beat currently drawn (text changes per beat). */
+    private rebootBeat: RebootBeat | null = null;
 
     public start(): void {
         this.ensureToast();
@@ -102,10 +105,11 @@ export class MilestonePresentationController extends Component {
         for (const item of tick.finished) {
             this.emit('toast_finished', { id: item.id, key: item.trigger.key, tier: item.trigger.tier });
             if (item.trigger.kind === 'era_title') this.emitEra('title_finished', { eraId: item.trigger.eraId, elapsedSeconds: item.elapsed });
+            if (item.trigger.kind === 'reboot_title') this.emitReboot('toast_finished', { id: item.id, key: item.trigger.key, elapsedSeconds: item.elapsed });
         }
         // Era card offers made when the card delay elapsed are already merged into started (both start paths are handled).
         for (const item of tick.started) this.onToastStarted(item);
-        if (tick.frame) this.renderToast(tick.frame.item, tick.frame.sample.alpha, tick.frame.sample.wipe);
+        if (tick.frame) this.renderToast(tick.frame.item, tick.frame.sample.alpha, tick.frame.sample.wipe, tick.frame.sample.beat ?? null);
         else this.hideToast();
         this.updateEffect(deltaSeconds);
     }
@@ -127,6 +131,13 @@ export class MilestonePresentationController extends Component {
         const trigger = item.trigger;
         if (trigger.kind === 'era_title') {
             this.onEraCardStarted(item);
+            return;
+        }
+        if (trigger.kind === 'reboot_title') {
+            // AUT-049: the card only; the scan ring / socket / Core / camera beat belong to RebootPresentationController.
+            this.rebootBeat = null;
+            this.emit('toast_started', { id: item.id, key: trigger.key, tier: trigger.tier, kind: trigger.kind, accent: trigger.accent, producerId: null, extra: 0, ...this.textOf(item, 'reboot') });
+            this.emitReboot('toast_started', { id: item.id, key: trigger.key, newCivilization: trigger.reboot?.newCivilization ?? null, aiCoresGranted: trigger.reboot?.aiCoresGranted ?? null });
             return;
         }
         this.emit('toast_started', { id: item.id, key: trigger.key, tier: trigger.tier, kind: trigger.kind, accent: trigger.accent, producerId: trigger.producerId, extra: item.extra, ...this.textOf(item) });
@@ -197,8 +208,8 @@ export class MilestonePresentationController extends Component {
 
     // ---- toast band ----
 
-    private textOf(item: MilestoneToastItem): { title: string; subtitle: string | null } {
-        return formatMilestoneToast(item.trigger, this.nameSource, item.extra);
+    private textOf(item: MilestoneToastItem, beat: RebootBeat | null = null): { title: string; subtitle: string | null } {
+        return formatMilestoneToast(item.trigger, this.nameSource, item.extra, undefined, beat);
     }
 
     private ensureToast(): void {
@@ -239,12 +250,18 @@ export class MilestonePresentationController extends Component {
         this.shownText = '';
     }
 
-    private renderToast(item: MilestoneToastItem, alpha: number, wipe: number): void {
+    private renderToast(item: MilestoneToastItem, alpha: number, wipe: number, beat: RebootBeat | null): void {
         this.ensureToast();
         const trigger = item.trigger;
+        const isReboot = trigger.kind === 'reboot_title';
+        // AUT-049: the Reboot card is invisible during its silence (scale-based hide; the item keeps its clock).
+        if (isReboot && (beat === null || alpha <= 0)) {
+            this.hideToast();
+            return;
+        }
         const layout = MILESTONE_TOAST_LAYOUT[trigger.tier];
         const colors = MILESTONE_TOAST_COLORS;
-        const text = this.textOf(item);
+        const text = this.textOf(item, isReboot ? beat : null);
         const signature = `${item.id}|${item.extra}|${text.title}`;
         if (this.shownText !== signature || this.builtLayoutTier !== trigger.tier) {
             this.shownText = signature;
@@ -260,9 +277,9 @@ export class MilestonePresentationController extends Component {
             this.underline!.setScale(hasUnderline ? 1 : 0, hasUnderline ? 1 : 0, 1);
             this.underline!.setPosition(new Vec3(-layout.width / 2 + layout.underlineInset, layout.underlineCenterY, 0));
         }
-        const isEra = trigger.kind === 'era_title';
-        // The era underline uses the AUT-045 environment cyan (59,112,121) / amber; the era title text stays off-white.
-        const accent = isEra ? colors.eraUnderline[trigger.accent] : colors.accent[trigger.accent];
+        const isEra = trigger.kind === 'era_title' || isReboot;
+        // The era / Reboot underline uses the AUT-045 environment cyan (59,112,121) / amber; their title text stays off-white.
+        const accent = isReboot ? colors.rebootUnderline : isEra ? colors.eraUnderline[trigger.accent] : colors.accent[trigger.accent];
         // Graphics fills render a solid colour on Android (a spriteFrame-less Sprite renders nothing).
         const pillGraphics = this.pillGraphics!;
         pillGraphics.clear();
@@ -280,7 +297,11 @@ export class MilestonePresentationController extends Component {
             underlineGraphics.fillRect(0, -layout.underlineHeight / 2, underlineWidth, layout.underlineHeight);
         }
         this.node.setScale(1, 1, 1);
-        if (isEra && this.eraAppliedReportedFor !== item.id && alpha >= 1) {
+        if (isReboot && this.rebootBeat !== beat) {
+            this.rebootBeat = beat;
+            this.emitReboot('title_applied', { id: item.id, beat, labelText: this.titleLabel!.string, fontSize: this.titleLabel!.fontSize, bandScale: this.node.scale.x, alpha, underlineRgb: { r: accent.r, g: accent.g, b: accent.b } });
+        }
+        if (trigger.kind === 'era_title' && this.eraAppliedReportedFor !== item.id && alpha >= 1) {
             this.eraAppliedReportedFor = item.id;
             const pill = this.pill!;
             this.emitEra('title_applied', { id: item.id, eraId: trigger.eraId, bandScale: this.node.scale.x, labelText: this.titleLabel!.string, fontSize: this.titleLabel!.fontSize, underlineRgb: { r: accent.r, g: accent.g, b: accent.b }, pillWorldPos: { x: pill.worldPosition.x, y: pill.worldPosition.y, z: pill.worldPosition.z }, wipe });
@@ -365,6 +386,10 @@ export class MilestonePresentationController extends Component {
 
     private emitEra(phase: string, payload: Record<string, unknown>): void {
         if (isDeviceDiagnosticsEnabled()) emitDeviceEvent('era_transition', { phase, ...payload });
+    }
+
+    private emitReboot(phase: string, payload: Record<string, unknown>): void {
+        if (isDeviceDiagnosticsEnabled()) emitDeviceEvent('reboot_presentation', { phase, ...payload });
     }
 
     private emit(phase: string, payload: Record<string, unknown>): void {

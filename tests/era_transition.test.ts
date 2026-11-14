@@ -303,9 +303,12 @@ test('AUT-048 Reboot: cancels a pending or visible card, re-baselines silently, 
             assert.equal(update.rebooted, true, `${via}/${stage}`);
             assert.equal(update.eraCancelled, true, `${via}/${stage}: the card in flight is cancelled`);
             assert.equal(update.eraScheduled, null, 'no card on return to Workshop');
-            assert.equal(viewModel.getFrame(), null);
+            // AUT-049: a Reboot EVENT now presents its own reboot_title card (never an era card); a snapshot return to Workshop shows nothing.
+            assert.equal(viewModel.getFrame()?.item.trigger.kind ?? null, via === 'event' ? 'reboot_title' : null);
             assert.equal(viewModel.getPendingEra(), null);
-            assert.equal(run(viewModel, 4).frames, 0, 'nothing ever shows after the cancel');
+            const after = run(viewModel, 4.2);
+            assert.deepEqual(after.finished.map((f) => f.key), via === 'event' ? ['x:2'] : [], 'no era card ever shows after the cancel');
+            assert.equal(after.started.length, 0);
             // Era fact keys were cleared: the next run's Era II presents again.
             assert.equal(viewModel.consumeEvents(era2State(), [eraEvent('automated_factory')]).eraScheduled?.key, 'e:automated_factory');
         }
@@ -447,7 +450,7 @@ test('AUT-048 device tooling: npm script, cli usage, scenarios, capture checks (
     const cli = read('tools/device/cli.ts');
     assert.match(cli, /command === 'seed-aut048'/);
     assert.match(cli, /seed-aut048 \[--variant era2\|era3\]/);
-    assert.match(cli, /aut048\|aut048-era3\|aut048-era3-live\]/);
+    assert.match(cli, /aut048\|aut048-era3\|aut048-era3-live\|aut049\|aut049-post\]/);
     assert.match(cli, /robot-line-build/);
     assert.match(cli, /expectEraTitle: scenario\.expectEraTitle/);
     const two = REVEAL_SCENARIOS.aut048;

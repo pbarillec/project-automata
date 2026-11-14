@@ -2,6 +2,7 @@ import type { DomainEvent } from '../domain/Events.ts';
 import type { GameState } from '../state/GameState.ts';
 import { isFirstAutomationEvidence } from './AutomationPayoffViewModel.ts';
 import { buildEraTrigger, eraTransitionSpec } from './EraTransition.ts';
+import { buildRebootTrigger } from './RebootPresentation.ts';
 import { buildFactTrigger, classifyMilestoneEvent, type MilestoneTrigger } from './MilestoneTier.ts';
 import { MilestoneToastQueue, type MilestoneEnqueueOutcome, type MilestoneToastFrame, type MilestoneToastItem, type MilestoneToastTick } from './MilestoneToastQueue.ts';
 
@@ -24,6 +25,8 @@ export interface MilestoneUpdate {
     readonly eraScheduled: MilestoneTrigger | null;
     /** AUT-048: a pending or visible era title card was cancelled (Reboot). */
     readonly eraCancelled: boolean;
+    /** AUT-049: the `reboot_title` card scheduled by this call (it starts at once; null when none or a duplicate). */
+    readonly rebootScheduled: MilestoneTrigger | null;
 }
 
 /** Tick result: the toast queue tick plus the era card offer made when its delay elapsed (its start is already merged into `started`). */
@@ -39,7 +42,7 @@ interface PendingEra {
 
 const NO_ITEMS: readonly MilestoneToastItem[] = Object.freeze([]);
 
-const EMPTY_UPDATE: MilestoneUpdate = Object.freeze({ accepted: [], exceptional: [], skipped: [], outcome: null, rebooted: false, eraScheduled: null, eraCancelled: false });
+const EMPTY_UPDATE: MilestoneUpdate = Object.freeze({ accepted: [], exceptional: [], skipped: [], outcome: null, rebooted: false, eraScheduled: null, eraCancelled: false, rebootScheduled: null });
 
 /** Facts a snapshot can prove: breakthrough owned, producer built, producer automated, current era (AUT-048 title card). */
 function stateFacts(state: GameState): Map<string, MilestoneTrigger | null> {
@@ -65,8 +68,9 @@ function stateFacts(state: GameState): Map<string, MilestoneTrigger | null> {
  * - A live event produces a trigger once per fact key; a later snapshot that reveals a fact no event announced yet produces
  *   it too (snapshot-before-event ordering), and the pair is deduplicated: nothing fires twice.
  * - Reboot clears the toast timeline and re-baselines silently, so the same milestones can be reached again in the next run.
- * - Exceptional events (first automation / first robot / Reboot) are classified and reported, never presented here. The era change is
- *   the exception (AUT-048): it becomes ONE title card (fact key `e:<newEraId>`, snapshot and event dedupe like every fact), shown after
+ * - Exceptional events (first automation / first robot / Reboot) are classified and reported. The Reboot becomes ONE `reboot_title` card
+ *   (AUT-049, fact key `x:<newCivilization>`, event only: a load or a snapshot never starts it) that starts at once on the cleared queue.
+ *   The era change (AUT-048) becomes ONE title card too (fact key `e:<newEraId>`, snapshot and event dedupe like every fact), shown after
  *   its card delay from t0 = observed; same-batch toasts are `subsumed`; Reboot cancels it silently.
  */
 export class MilestonePresentationViewModel {
@@ -74,6 +78,8 @@ export class MilestonePresentationViewModel {
     private readonly queue = new MilestoneToastQueue();
     private initialised = false;
     private pendingEra: PendingEra | null = null;
+    /** AUT-049 dedupe keys (`x:<newCivilization>`) of the Reboot cards already presented; kept across Reboots (only the fact keys are cleared). */
+    private readonly rebootKeys = new Set<string>();
 
     public syncFromState(state: GameState): MilestoneUpdate {
         const current = stateFacts(state);
@@ -106,7 +112,7 @@ export class MilestonePresentationViewModel {
             this.facts.add(key);
             if (trigger) accepted.push(trigger);
         }
-        return this.enqueue(accepted, [], [], false, false);
+        return this.enqueue(accepted, [], [], false, false, null);
     }
 
     public consumeEvents(state: GameState, events: readonly DomainEvent[]): MilestoneUpdate {
@@ -120,16 +126,23 @@ export class MilestonePresentationViewModel {
         const skipped: MilestoneSkip[] = [];
         let rebooted = false;
         let eraCancelled = false;
+        let rebootTrigger: MilestoneTrigger | null = null;
         const burstBreakthroughs = new Set(events.filter((e) => e.type === 'breakthroughPurchased').map((e) => (e as { breakthroughId: string }).breakthroughId));
         for (const event of events) {
             if (event.type === 'rebootCompleted') {
                 exceptional.push(event.type);
+                // AUT-049: a repeated event of an already presented Reboot changes nothing (the visible card keeps running).
+                const card = buildRebootTrigger(event);
+                if (this.rebootKeys.has(card.key)) { skipped.push({ key: card.key, reason: 'duplicate' }); continue; }
+                this.rebootKeys.add(card.key);
+                rebootTrigger = card;
                 rebooted = true;
                 accepted.length = 0;
                 eraCancelled = this.cancelEra() || eraCancelled;
                 this.queue.clear();
                 this.facts.clear();
                 for (const key of stateFacts(state).keys()) this.facts.add(key);
+                // The Reboot title card (event only, after the durable save): Reboot clears the fact keys, the post-Reboot card still shows.
                 continue;
             }
             const classification = classifyMilestoneEvent(event);
@@ -157,7 +170,7 @@ export class MilestonePresentationViewModel {
             }
             accepted.push(trigger);
         }
-        return this.enqueue(accepted, exceptional, skipped, rebooted, eraCancelled);
+        return this.enqueue(accepted, exceptional, skipped, rebooted, eraCancelled, rebootTrigger);
     }
 
     /**
@@ -201,21 +214,27 @@ export class MilestonePresentationViewModel {
         return had;
     }
 
-    private enqueue(acceptedAll: readonly MilestoneTrigger[], exceptional: readonly string[], skippedIn: readonly MilestoneSkip[], rebooted: boolean, eraCancelled: boolean): MilestoneUpdate {
+    private enqueue(acceptedAll: readonly MilestoneTrigger[], exceptional: readonly string[], skippedIn: readonly MilestoneSkip[], rebooted: boolean, eraCancelled: boolean, rebootTrigger: MilestoneTrigger | null): MilestoneUpdate {
         // ONE era card per batch (the highest era); every other toast of the same batch (Robot Line built / Advanced Robotics Majors and any
         // Minor chip) is subsumed by it, so a single card shows.
         let accepted = acceptedAll;
         let skipped = skippedIn;
         let eraScheduled: MilestoneTrigger | null = null;
-        for (const trigger of acceptedAll) if (trigger.kind === 'era_title') eraScheduled = trigger;
+        // (AUT-049: a Reboot card in the batch owns it instead; see below.)
+        for (const trigger of acceptedAll) if (trigger.kind === 'era_title' && !rebootTrigger) eraScheduled = trigger;
         if (eraScheduled) {
             skipped = [...skippedIn, ...acceptedAll.filter((t) => t.kind !== 'era_title').map((t) => ({ key: t.key, reason: 'subsumed' as const }))];
             accepted = [];
             this.pendingEra = { trigger: eraScheduled, elapsed: 0 };
         }
+        // AUT-049: the Reboot card owns its batch like the era card: every other toast of the same batch is subsumed (ONE card shows).
+        if (rebootTrigger) {
+            skipped = [...skipped, ...accepted.map((t) => ({ key: t.key, reason: 'subsumed' as const }))];
+            accepted = [rebootTrigger];
+        }
         // An Exceptional reveal in the same burst owns the camera: the toast still shows, the focus is skipped.
         const triggers = exceptional.length > 0 ? accepted.map((t) => (t.focusProducerId !== null ? { ...t, focusSuppressed: true } : t)) : accepted;
         const outcome = triggers.length > 0 ? this.queue.enqueueBurst(triggers) : null;
-        return { accepted: triggers, exceptional, skipped, outcome, rebooted, eraScheduled, eraCancelled };
+        return { accepted: triggers, exceptional, skipped, outcome, rebooted, eraScheduled, eraCancelled, rebootScheduled: rebootTrigger };
     }
 }

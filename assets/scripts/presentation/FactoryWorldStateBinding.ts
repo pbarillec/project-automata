@@ -4,6 +4,7 @@ import type { DomainEvent } from '../domain/Events.ts';
 import type {
     LifecycleActiveClockAdvanceResult,
     LifecycleCommandResult,
+    LifecycleRebootResult,
     LifecycleResumeResult,
     LifecycleSuspendResult,
 } from '../lifecycle/LifecycleSessionCoordinator.ts';
@@ -19,6 +20,8 @@ export interface FactoryWorldSessionPort {
     advanceActiveSessionFromClock(options?: { readonly requestOrdinarySave?: boolean }): Promise<LifecycleActiveClockAdvanceResult>;
     suspend(): Promise<LifecycleSuspendResult>;
     resume(): LifecycleResumeResult;
+    /** AUT-049: the confirmed Reboot transaction (critical save, then the durable `rebootCompleted` event). Optional so minimal ports still work. */
+    rebootCivilizationConfirmed?(): Promise<LifecycleRebootResult>;
 }
 
 /** World automation presentation (structurally `PresentationController`). */
@@ -167,6 +170,8 @@ export class FactoryWorldStateBinding {
 
     async submit(command: GameCommand): Promise<LifecycleCommandResult | null> {
         try {
+            // AUT-049: a Reboot goes through the session's Reboot transaction, so `rebootCompleted` exists only after `reboot_saved`.
+            if (command.type === 'rebootCivilization' && typeof this.session.rebootCivilizationConfirmed === 'function') return await this.submitReboot(command);
             const result = await this.session.execute(command, { requestOrdinarySave: true });
             if (result.execution.ok) {
                 this.fanOut(result.execution.events);
@@ -179,6 +184,18 @@ export class FactoryWorldStateBinding {
             this.report('submit', error);
             return null;
         }
+    }
+
+    private async submitReboot(command: GameCommand): Promise<LifecycleCommandResult | null> {
+        const reboot = await this.session.rebootCivilizationConfirmed!();
+        // A pending offline report blocks the Reboot: nothing executed, nothing to fan out.
+        if (reboot.status === 'pending_offline_preview') return null;
+        const result: LifecycleCommandResult = { execution: reboot.execution, save: reboot.save };
+        // `reboot_saved` carries the durable `rebootCompleted` event; `reboot_persistence_failed` still fans out the state change but never that event.
+        if (result.execution.ok) this.fanOut(result.execution.events);
+        const reportCommandResult = this.reportCommandResult;
+        if (reportCommandResult) this.guard('command_result', () => reportCommandResult(command, result));
+        return result;
     }
 
     /** Per-frame: advance the active clock; request an ordinary save at most once per interval. */

@@ -1,0 +1,56 @@
+# AUT-049 Reboot Presentation
+
+**Human gate: PENDING** (vision-capable visual QA of device screenshots first; owner only for the subjective items below). Automated checks prove the timeline / 4.0 s cap, post-commit ordering, silent load, dedupe, tier / subsumption, layout geometry, the persistent-socket rule, the DEBUG allow-list, wiring and the tooling only.
+Presentation only: no economy, runtime, data, save, camera-API, design, monetization or art-direction change; no new asset, no new light / particle. **There is no player-facing Reboot trigger or confirmation UI, no runtime hold / pre-commit behaviour, and no AUT-050 (Permanent Upgrade UI) scope.** Owner approved the 4 s post-commit variant (not the 6-8 s ART_DIRECTION §25.2 sequence).
+
+## What was built
+
+A 4.0 s hard-capped sequence started ONLY by the domain event `rebootCompleted` (the lifecycle coordinator appends it only after `reboot_saved`; `reboot_persistence_failed` never carries it; a load / first sync is a silent baseline). Two independent consumers of the same event on the same clock (like the AUT-048 card and the AUT-045 fade): the title card and the world visuals.
+
+| Phase | Time | Card (AUT-046 band) | World |
+|---|---|---|---|
+| A scan | 0.0 - 1.2 s | `REBOOT` | thin cyan scan ring (4 opaque outline bars) growing over the site |
+| B silence | 1.2 - 1.7 s | invisible | nothing |
+| C AI Core | 1.7 - 3.2 s | `AI CORE ×N` | relay socket appears, placeholder Core grows on it |
+| D new civilization | 3.2 - 4.0 s | `CIVILIZATION #N` | Core settles to the persistent size |
+
+Nothing runs outside the window (idle ticks return at once; the card and the model finish exactly at 4.0 s, a long frame hitch is clamped to the cap).
+
+- `RebootPresentation.ts` (new, pure): timeline / phases, `sampleRebootToast` (beat, alpha, wipe), `sampleRebootWorld`, `buildRebootTrigger` (`reboot_title`, key `x:<newCivilization>`), `shouldShowRelaySocket(aiCores, civilization)`, ring / socket geometry (`REBOOT_SOCKET`, `scanRingBars`), `resolveRebootFocus`, `RebootPresentationModel` (silent baseline, event-only start, dedupe, cap).
+- `RebootPresentationController.ts` (new, thin `cc`): scan ring, socket + Core by scale (never `node.active`), the one camera beat, DEBUG diagnostics. Inert: no touch listener, no command, no save, no state write.
+- New dedicated `reboot_title` Exceptional toast kind in the same AUT-046 / 048 pipeline: `MilestoneTier` (kind + optional `reboot` data), `MilestoneToastQueue` (4.0 s duration / beat timeline for that kind only; era card stays 3.0 s), `MilestoneToastText` (`REBOOT`, `AI CORE ×N`, `CIVILIZATION #N`; English until the AUT-052 catalogue move), `MilestoneToastLayout` (same Exceptional band 680 x 112, font 32, off-white title; `rebootUnderline` = AUT-045 environment cyan 59,112,121), `MilestonePresentationViewModel` (event -> card on the cleared queue, key `x:<newCivilization>`, kept across Reboots so a duplicate event does nothing while the other fact keys are cleared, post-Reboot reveal still shows), `MilestonePresentationController` (draws the beats, the silence hides the band by scale, `title_applied` per beat).
+- Subsumption (consistent with era titles): the Reboot card pre-empts every visible / waiting Minor / Major, cancels a pending / visible era card, subsumes every same-batch toast (including an era card after it in the batch), drops a Minor arriving while it shows, a later Major waits behind it.
+- Persistent socket: static, synced from the snapshot when `aiCores > 0 || civilization >= 2` (low-profile base + pedestal + thin outline + a small Core, 0.2 vs 0.55 peak). Placed in front of the opening Workshop foundation at world (-7.2, 0.2), clear of every zone, the foundation and the logistics spine (pinned by a geometry test).
+- Camera: only `MobileCameraController.focusOnRevealTarget` once, on the Fabricator anchor, skipped when within 2.5 units (`on_centre`), while a focus is active (`camera_busy`), or without camera / anchor. No tint / flash / shake, no new light / particle; the world camera is never touched otherwise.
+- `FactoryWorldBootstrap.createRebootPresentation` builds the nodes (primitive unlit boxes, anchors through `Zone_<Zone>/<Zone>_FocusAnchor`); `PresentationController` gains `rebootPresentation` (sync + consume after the milestone controller).
+- **`FactoryWorldStateBinding.submit`** now routes `rebootCivilization` through the session's Reboot transaction (`rebootCivilizationConfirmed`: critical save, then the durable `rebootCompleted`) when the port provides it; every other command is unchanged. See "Conflicts / decisions" below.
+
+### Placeholder note
+
+The AI Core is **intentionally simple and temporary**: a unit cube balanced on a vertex (primitive box, unlit cyan) on a primitive socket. No asset was created or imported; `CUSTOM_AI_CORE_01` is NOT made here (a later Art Director / asset task replaces it). Nothing in `docs/ASSET_MANIFEST.md` was touched.
+
+## DEBUG diagnostics, command and tooling
+
+- DEBUG event `reboot_presentation` (DeviceDiagnostics): `synced` (socketPersistent, civilization, aiCores), `sequence_started` (key, newCivilization, aiCoresGranted), `focus_requested` / `focus_skipped` (reason), `phase` (`name`: silence / core / civilization / complete), `effect_applied` (`part: scan | core`, scales, world positions), `sequence_finished` (elapsedSeconds, socketVisible), `duplicate_ignored`, and from the card: `toast_started`, `title_applied` (beat, label text, font, alpha), `toast_finished`.
+- `DebugCommandFile.ts` allow-list extended with `{ "type": "rebootCivilization", "confirmed": true }` (literal `confirmed: true` required; anything else ignored). Same guards as AUT-048: `DEBUG === true && isDeviceDiagnosticsEnabled()`, read once then deleted, through the normal `binding.submit`. No HUD / scene / player-facing path (pinned). `tests/core_loop_input_wiring.test.ts` needed no change (no new submit site).
+- `npm run device:seed-aut049 [-- --variant reboot|post]` (`tools/device/seed_aut049.ts`): `reboot` = a Civilization #1 save with a positive AI Core reward (Fabricator Lv50 / Assembly Lv25, **no automation or breakthroughs**, Prestige Power at the config first threshold) plus `debug_command.json` (6 s delay); `post` = the state after a Reboot (Civilization #2, 5 AI Cores, fresh run, no command) to view the persistent socket. Every seed removes a stale command file first.
+- Scenarios: `npm run device:reveal-capture -- --scenario aut049` (18 s: command ok incl. `rebootCompleted` in the command's event types, one `sequence_started`, phases, finish <= 4.05 s, card beats `REBOOT` / `AI CORE ×N` / `CIVILIZATION #N`, card finish <= 4.2 s, focus decision, scan + core applied, socket persists) and `--scenario aut049-post` (silent load: persistent socket, no sequence, no card).
+- Pins updated legitimately: `Object.keys(REVEAL_SCENARIOS)` in `tests/era_environment.test.ts` and `tests/reveal_capture.test.ts`, the cli usage regexes in `tests/boost_presentation.test.ts`, `tests/overclock_hud_action.test.ts`, `tests/era_transition.test.ts`, and two Reboot view-model assertions (`tests/milestone_presentation.test.ts`, `tests/era_transition.test.ts`): after a Reboot event the visible toast is now the `reboot_title` card (never an era card) instead of nothing.
+
+## Tests (`tests/reboot_presentation.test.ts`, 25)
+
+Phase boundaries and the 4.0 s cap, card timeline (silence invisible, hard C -> D cut, complete at 4.0), world timeline (nothing in B, socket / Core from C, nothing after), scan ring bars, model (silent load, event-only start, failed-save events never start, dedupe, frame-hitch cap, idle afterwards), socket visibility rule and geometry (clear of zones / foundation / spine / site edge), camera focus rule, trigger / text, view model (card on the cleared queue, dedupe, load / snapshot / failed save silent), queue timing, tier / subsumption, layout on 5 screens, real `LifecycleSessionCoordinator` + `FactoryWorldStateBinding` (success starts only from the durable event; `reboot_persistence_failed` fans out the state change but never starts; fallback port; pending offline report blocks), seeds (round trip, eligible, no pending offline report), DEBUG allow-list and guards, controller / wiring / Android-lesson pins, diagnostics, scenarios and capture checks, `.ts.meta` uuids.
+
+## Conflicts / decisions to confirm
+
+1. **`binding.submit` did not reach the Reboot transaction.** `FactoryWorldStateBinding.submit` called `session.execute`, i.e. the raw runtime command: no critical save and no `rebootCompleted` event (only `aiCoresGranted` + `civilizationChanged`). The DEBUG command "through the normal `binding.submit`" could therefore never start the sequence. The minimal fix is in the binding (a Reboot command uses `rebootCivilizationConfirmed`, then fans out its events; `reboot_persistence_failed` fans out the state change without `rebootCompleted`; a pending offline report returns `null`). No runtime / coordinator / domain change. A player-facing Reboot UI (future task) will submit through the same path.
+2. **Reboot is blocked while an offline report is pending** (`pending_offline_preview`), and the offline report UI is AUT-051. Any save with an automated, offline-eligible producer leaves a pending preview after launch, so the `reboot` seed deliberately has no automation / breakthroughs. A real late-game Reboot will need AUT-051's collect flow first (not changed here).
+3. **Socket position and Core look are implementer values** (see "Review plan"); the 6-8 s shutdown / archive phases of ART_DIRECTION §25.2 (conveyors / robots stopping, lights off by zone, factory fade) are NOT implemented (approved 4 s variant).
+4. **`x:<civ>` keys are kept across Reboots** in the milestone view model (separate set), while the other fact keys are cleared, so the post-Reboot reveal shows and a repeated event does nothing.
+
+## Review plan / unverified (gate build and device capture NOT done here)
+
+1. Vision-capable visual QA first: `npm run device:seed-aut049`, then `npm run device:reveal-capture -- --scenario aut049`; stills must show the ring (thin cyan outline, no fill), the card beats in the band under the HUD (graphite pill, white all-caps title, cyan underline) with a gap at 1.2-1.7 s, the Core on the socket at ~2-3 s, `CIVILIZATION #2` at ~3.5 s, nothing after ~4.2 s, the static socket afterwards; the load frames (`--scenario aut049-post`) must show the socket and no card.
+2. Owner only for the subjective items: how the 4 s sequence feels, the placeholder Core / socket look and whether the socket position reads as "inherited tech", the camera beat, the wording.
+3. Not verified on a device or visually: all colours, ring size / visibility at distance, the socket position relative to the Workshop machines from the default camera, the Core silhouette, the underline wipe, that the 4 opaque cyan bars are visible (alpha blending is not relied on), whether the other presentation controllers (environment / construction / robots) reset cleanly on the Reboot snapshot (pre-existing, not part of this task), the DEBUG command timing (6 s after ready).
+4. Source docs untouched (`CODEX_PLAN`, `ART_DIRECTION`, `ASSET_MANIFEST`, `TECHNICAL_DESIGN`).

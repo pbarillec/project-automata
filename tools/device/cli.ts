@@ -32,6 +32,7 @@ import { AUT045_SEED_VARIANTS, isAut045SeedVariant, seedAut045 } from './seed_au
 import { AUT046_SEED_VARIANTS, isAut046SeedVariant, seedAut046 } from './seed_aut046.ts';
 import { AUT047_SEED_VARIANTS, isAut047SeedVariant, seedAut047 } from './seed_aut047.ts';
 import { AUT048_SEED_VARIANTS, isAut048SeedVariant, seedAut048 } from './seed_aut048.ts';
+import { AUT049_SEED_VARIANTS, isAut049SeedVariant, seedAut049 } from './seed_aut049.ts';
 import { seedUi003 } from './seed_ui003.ts';
 import { runAut041Benchmark } from './benchmark_aut041.ts';
 import { REVEAL_SCENARIOS, resolveRevealScenario, runRevealCapture, type RevealTrigger } from './reveal_capture.ts';
@@ -185,6 +186,18 @@ async function main(): Promise<number> {
         console.log(`seeded ${filesDir}save_main.json (${variant}) and launched`);
         return 0;
     }
+    if (command === 'seed-aut049') {
+        // AUT-049 review: seed a Reboot-eligible save (reboot default, with the DEBUG-only debug_command.json) or a post-Reboot save (post) and launch.
+        const variant = flags.variant === undefined || flags.variant === true ? 'reboot' : flags.variant;
+        if (!isAut049SeedVariant(variant)) { console.log(`unknown --variant; expected one of ${AUT049_SEED_VARIANTS.join(', ')}`); return 1; }
+        const driver = new AdbDeviceDriver();
+        const selection = selectDevice(await driver.devices(), typeof flags.serial === 'string' ? flags.serial : undefined);
+        if (!selection.ok) { console.log(JSON.stringify(selection, null, 2)); return 2; }
+        if (typeof flags.serial === 'string') driver.useSerial(flags.serial);
+        const filesDir = await seedAut049(driver, 'com.projectautomata.androidbaseline', 'com.cocos.game.AppActivity', variant);
+        console.log(`seeded ${filesDir}save_main.json (${variant}) and launched`);
+        return 0;
+    }
     if (command === 'seed-ui003') {
         // AUT-UI-003 review: seed a Free Overclock READY save and launch (no install, no assertions).
         const driver = new AdbDeviceDriver();
@@ -224,6 +237,7 @@ async function main(): Promise<number> {
             expectBoostPhases: scenario.expectBoostPhases,
             expectCommands: scenario.expectCommands,
             expectEraTitle: scenario.expectEraTitle,
+            expectReboot: scenario.expectReboot,
         });
         console.log(`reveal capture ${result.ok ? 'PASS' : 'FAIL'}: ${result.outDir}`);
         for (const check of result.checks) console.log(`  ${check.ok ? 'PASS' : 'FAIL'} ${check.id}: ${check.detail}`);
@@ -240,7 +254,7 @@ async function main(): Promise<number> {
         console.log(restored ? 'restored tracked build config from temp/device/gate backup' : 'no backup found');
         return restored ? 0 : 1;
     }
-    console.log('usage: node tools/device/cli.ts devices | c3|int001|r036|ui001|r031|gp001|aut039 --apk <path> [--serial <id>] [--run-id <id>] [--skip-install] | seed-aut040 [--serial <id>] | seed-aut042 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut043 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut044 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut045 [--variant workshop|era2|era3] [--serial <id>] | seed-aut046 [--variant breakthrough] [--serial <id>] | seed-aut047 [--variant active|ready] [--serial <id>] | seed-aut048 [--variant era2|era3] [--serial <id>] | seed-ui003 [--serial <id>] | reveal-capture [--scenario aut043|aut044|aut046|aut047|ui003|aut048|aut048-era3|aut048-era3-live] [--label <l>] [--trigger next-goal|overclock|robot-line-build|none] | gate-build [--label <l>] | restore-build-config');
+    console.log('usage: node tools/device/cli.ts devices | c3|int001|r036|ui001|r031|gp001|aut039 --apk <path> [--serial <id>] [--run-id <id>] [--skip-install] | seed-aut040 [--serial <id>] | seed-aut042 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut043 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut044 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut045 [--variant workshop|era2|era3] [--serial <id>] | seed-aut046 [--variant breakthrough] [--serial <id>] | seed-aut047 [--variant active|ready] [--serial <id>] | seed-aut048 [--variant era2|era3] [--serial <id>] | seed-aut049 [--variant reboot|post] [--serial <id>] | seed-ui003 [--serial <id>] | reveal-capture [--scenario aut043|aut044|aut046|aut047|ui003|aut048|aut048-era3|aut048-era3-live|aut049|aut049-post] [--label <l>] [--trigger next-goal|overclock|robot-line-build|none] | gate-build [--label <l>] | restore-build-config');
     return command === 'help' ? 0 : 1;
 }
 
