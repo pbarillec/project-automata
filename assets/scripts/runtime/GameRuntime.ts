@@ -1,5 +1,6 @@
 import type { BreakthroughEffect, GameConfigRepository } from '../config/ConfigLoader.ts';
 import type { DomainEvent, GameCommand } from '../domain/index.ts';
+import { applyFounderPackPurchase, applyFounderStoreReport } from '../monetization/FounderOffer.ts';
 import {
     EXTENDED_OVERCLOCK_CLAIM_KEY,
     evaluateExtendedOverclockEligibility,
@@ -264,6 +265,14 @@ function executeGameCommandInternal(
             return executeActivateExtendedOverclock(state, parsedCommand.command);
         }
 
+        if (parsedCommand.command.type === 'grantFounderPack') {
+            return executeGrantFounderPack(state, parsedCommand.command);
+        }
+
+        if (parsedCommand.command.type === 'reconcileFounderEntitlement') {
+            return executeReconcileFounderEntitlement(state, parsedCommand.command);
+        }
+
         if (parsedCommand.command.type === 'launchAssemblyBatch') {
             return executeLaunchAssemblyBatch(repository, state, parsedCommand.command);
         }
@@ -455,6 +464,37 @@ function executeActivateExtendedOverclock(
     );
 
     return commit(command, draft, result.events);
+}
+
+/**
+ * AUT-058: Founder pack purchase delivery. Always succeeds for a well-formed request (a paid purchase is never refused because the offer
+ * was still locked); idempotent via the stored grant flags, so a replay emits an all-false `founderPackApplied`.
+ */
+function executeGrantFounderPack(
+    state: GameState,
+    command: GameCommand & { type: 'grantFounderPack' },
+): InternalCommandExecutionResult {
+    const result = applyFounderPackPurchase(state, { source: command.source, grantedAtUtcMs: command.grantedAtUtcMs });
+    const draft = cloneGameState(state);
+    draft.meta = result.meta;
+    return commit(command, draft, [{ type: 'founderPackApplied', origin: 'purchase', requestId: command.requestId, ...result.outcome }]);
+}
+
+/** AUT-058: store-report restore/reconcile. Emits `founderPackApplied` (origin restore) only when something changed. */
+function executeReconcileFounderEntitlement(
+    state: GameState,
+    command: GameCommand & { type: 'reconcileFounderEntitlement' },
+): InternalCommandExecutionResult {
+    const result = applyFounderStoreReport(state, {
+        owned: command.owned,
+        source: command.source,
+        reportedAtUtcMs: command.reportedAtUtcMs,
+    });
+    const draft = cloneGameState(state);
+    draft.meta = result.meta;
+    return commit(command, draft, result.outcome.changed
+        ? [{ type: 'founderPackApplied', origin: 'restore', requestId: null, ...result.outcome }]
+        : []);
 }
 
 /**
@@ -989,6 +1029,54 @@ function parseGameCommand(command: unknown): { ok: true; command: GameCommand } 
                 type: 'activateExtendedOverclock',
                 requestId: command.requestId,
                 claimedAtUtcMs: command.claimedAtUtcMs,
+            },
+        };
+    }
+
+    if (command.type === 'grantFounderPack') {
+        if (typeof command.requestId !== 'string' || command.requestId.length === 0) {
+            return reject('malformed_command', 'requestId must be a non-empty string.');
+        }
+
+        if (command.source !== 'store' && command.source !== 'mock') {
+            return reject('malformed_command', 'source must be "store" or "mock".');
+        }
+
+        if (typeof command.grantedAtUtcMs !== 'number' || !Number.isFinite(command.grantedAtUtcMs) || command.grantedAtUtcMs < 0) {
+            return reject('malformed_command', 'grantedAtUtcMs must be a non-negative finite number.');
+        }
+
+        return {
+            ok: true,
+            command: {
+                type: 'grantFounderPack',
+                requestId: command.requestId,
+                source: command.source,
+                grantedAtUtcMs: command.grantedAtUtcMs,
+            },
+        };
+    }
+
+    if (command.type === 'reconcileFounderEntitlement') {
+        if (command.owned !== true && command.owned !== false && command.owned !== null) {
+            return reject('malformed_command', 'owned must be true, false or null.');
+        }
+
+        if (command.source !== 'store' && command.source !== 'mock') {
+            return reject('malformed_command', 'source must be "store" or "mock".');
+        }
+
+        if (typeof command.reportedAtUtcMs !== 'number' || !Number.isFinite(command.reportedAtUtcMs) || command.reportedAtUtcMs < 0) {
+            return reject('malformed_command', 'reportedAtUtcMs must be a non-negative finite number.');
+        }
+
+        return {
+            ok: true,
+            command: {
+                type: 'reconcileFounderEntitlement',
+                owned: command.owned,
+                source: command.source,
+                reportedAtUtcMs: command.reportedAtUtcMs,
             },
         };
     }

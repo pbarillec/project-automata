@@ -1,3 +1,8 @@
+import {
+    FOUNDER_SURGE_CHARGE_FLAGS,
+    FOUNDER_SURGE_CHARGE_FLAG_PREFIX,
+    FOUNDER_SURGE_GRANTED_FLAG,
+} from './FounderOfferKeys.ts';
 import type { GameState } from './GameState.ts';
 import { REWARDED_CLAIM_HISTORY_CAP } from './RewardedClaimLimits.ts';
 
@@ -211,6 +216,27 @@ function validateMetaState(value: unknown, path: string, diagnostics: StateDiagn
     validateBooleanRecord(value.accountFeatureUnlocks, `${path}.accountFeatureUnlocks`, diagnostics);
     validateDurableEntitlementRecord(value.durableEntitlements, `${path}.durableEntitlements`, diagnostics);
     validateBooleanRecord(value.cosmeticOwnership, `${path}.cosmeticOwnership`, diagnostics);
+    validateFounderSurgeFlags(value.accountFeatureUnlocks, `${path}.accountFeatureUnlocks`, diagnostics);
+}
+
+/** AUT-058: a Founder Surge charge slot may only be one of the known slots, and may only be available once the grant flag is set. */
+function validateFounderSurgeFlags(value: unknown, path: string, diagnostics: StateDiagnostic[]): void {
+    if (!isPlainObject(value)) {
+        return;
+    }
+
+    for (const key of sortedKeys(value)) {
+        if (!key.startsWith(FOUNDER_SURGE_CHARGE_FLAG_PREFIX)) {
+            continue;
+        }
+        const itemPath = `${path}.${escapePathKey(key)}`;
+        if (!FOUNDER_SURGE_CHARGE_FLAGS.includes(key)) {
+            diagnostics.push(diagnostic('semantic', 'STATE_FOUNDER_UNKNOWN_CHARGE_SLOT', itemPath, 'Unknown Founder Surge charge slot.'));
+        }
+        else if (value[key] === true && value[FOUNDER_SURGE_GRANTED_FLAG] !== true) {
+            diagnostics.push(diagnostic('semantic', 'STATE_FOUNDER_CHARGE_WITHOUT_GRANT', itemPath, 'A Founder Surge charge cannot be available before the Surge grant flag is recorded.'));
+        }
+    }
 }
 
 function validateDurableEntitlementRecord(value: unknown, path: string, diagnostics: StateDiagnostic[]): void {

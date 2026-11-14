@@ -42,6 +42,7 @@ export const MILESTONE_EVENT_TIERS: Readonly<Record<DomainEvent['type'], Milesto
     permanentUpgradePurchased: 'none',
     civilizationChanged: 'none',
     rebootCompleted: 'exceptional',
+    founderPackApplied: 'none',
 });
 
 /**

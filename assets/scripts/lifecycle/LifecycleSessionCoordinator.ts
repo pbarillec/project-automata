@@ -1,5 +1,6 @@
 import type { GameConfigRepository } from '../config/ConfigLoader.ts';
 import type { DomainEvent, GameCommand } from '../domain/index.ts';
+import { getFounderSurgeChargesRemaining } from '../monetization/FounderOffer.ts';
 import { getRewardedClaimHistory, recordRewardedClaim } from '../monetization/RewardedClaimHistory.ts';
 import {
     EXTENDED_OVERCLOCK_CLAIM_KEY,
@@ -115,6 +116,13 @@ export type LifecycleExtendedOverclockResult =
     | LifecycleExtendedOverclockNotGrantedResult
     | LifecycleExtendedOverclockDurableResult
     | LifecycleExtendedOverclockDurabilityFailureResult;
+
+/** AUT-058: outcome of a Founder pack purchase delivery / store report. `already_applied`: valid, nothing to persist (replay / not owned). */
+export type LifecycleFounderResult =
+    | { readonly status: 'rejected'; readonly execution: CommandRejectionResult }
+    | { readonly status: 'already_applied'; readonly execution: CommandSuccessResult; readonly save: null }
+    | { readonly status: 'applied_saved'; readonly execution: CommandSuccessResult; readonly save: PersistenceSaveResult & { readonly ok: true } }
+    | { readonly status: 'applied_persistence_failed'; readonly execution: CommandSuccessResult; readonly save: PersistenceSaveResult & { readonly ok: false } };
 
 export interface LifecycleOfflineDoubleOffer {
     readonly eligibility: RewardedEligibilityResult;
@@ -357,6 +365,19 @@ export class LifecycleSessionCoordinator {
     }
 
     async execute(command: GameCommand, options: { readonly requestOrdinarySave?: boolean } = {}): Promise<LifecycleCommandResult> {
+        if (command.type === 'grantFounderPack' || command.type === 'reconcileFounderEntitlement') {
+            // AUT-058: a generic submit can never grant or restore the Founder pack; only the dedicated store-delivery paths do.
+            return Object.freeze({
+                execution: Object.freeze({
+                    ok: false as const,
+                    reason: 'malformed_command' as const,
+                    message: 'The Founder pack can only be applied from a store purchase delivery or entitlement report.',
+                    events: Object.freeze([]) as readonly DomainEvent[],
+                }),
+                save: null,
+            });
+        }
+
         if (command.type === 'activateExtendedOverclock') {
             // AUT-056: a generic submit can never grant the rewarded boost; only a verified proof does.
             return Object.freeze({
@@ -678,6 +699,51 @@ export class LifecycleSessionCoordinator {
         }
 
         return Object.freeze({ status: 'activated_saved' as const, execution, save });
+    }
+
+    /**
+     * AUT-058: applies a completed Founder pack purchase delivery (store/mock) exactly once, then one critical save. Replays are safe
+     * (no extra Surges). The store layer must call this and see `applied_saved` / `already_applied` BEFORE acknowledging the purchase.
+     */
+    async applyFounderPackPurchase(request: { readonly requestId: string; readonly source: 'store' | 'mock' }): Promise<LifecycleFounderResult> {
+        return this.executeFounderCommand({
+            type: 'grantFounderPack',
+            requestId: request.requestId,
+            source: request.source,
+            grantedAtUtcMs: this.readNowUtcMs(),
+        });
+    }
+
+    /** AUT-058: applies a store entitlement report (restore/reconcile). Never grants Surges; not-owned/unknown reports change nothing. */
+    async reconcileFounderEntitlement(report: { readonly owned: boolean | null; readonly source: 'store' | 'mock' }): Promise<LifecycleFounderResult> {
+        return this.executeFounderCommand({
+            type: 'reconcileFounderEntitlement',
+            owned: report.owned,
+            source: report.source,
+            reportedAtUtcMs: this.readNowUtcMs(),
+        });
+    }
+
+    getFounderSurgeChargesRemaining(): number {
+        return getFounderSurgeChargesRemaining(this.runtime.getStateSnapshot());
+    }
+
+    private async executeFounderCommand(command: GameCommand): Promise<LifecycleFounderResult> {
+        const execution = this.runtime.execute(command);
+        if (!execution.ok) {
+            return Object.freeze({ status: 'rejected' as const, execution });
+        }
+
+        const changed = execution.events.some((event) => event.type === 'founderPackApplied' && event.changed);
+        if (!changed) {
+            return Object.freeze({ status: 'already_applied' as const, execution, save: null });
+        }
+
+        this.persistence.markDirty();
+        const save = await this.requestSave({ intent: 'critical', reason: 'founder_entitlement' });
+        return save.ok
+            ? Object.freeze({ status: 'applied_saved' as const, execution, save })
+            : Object.freeze({ status: 'applied_persistence_failed' as const, execution, save });
     }
 
     private readExtendedOverclockBlockedReason(state: GameState): 'active' | 'locked' | 'offline_pending' | null {

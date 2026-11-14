@@ -29,6 +29,7 @@ export type PersistenceSaveReason =
     | 'reboot'
     | 'permanent_upgrade_purchase'
     | 'extended_overclock_activation'
+    | 'founder_entitlement'
     | 'manual';
 
 export interface PersistenceCoordinatorOptions {

@@ -20,7 +20,8 @@ export type DomainEvent =
     | AiCoreBalanceChangedEvent
     | PermanentUpgradePurchasedEvent
     | CivilizationChangedEvent
-    | RebootCompletedEvent;
+    | RebootCompletedEvent
+    | FounderPackAppliedEvent;
 
 export interface IndustrialOutputChangedEvent {
     readonly type: 'industrialOutputChanged';
@@ -183,4 +184,18 @@ export interface RebootCompletedEvent {
     readonly newCivilization: number;
     readonly aiCoresGranted: number;
     readonly prestigePower: number;
+}
+
+/**
+ * AUT-058: a Founder's Factory Pack purchase delivery (`origin: 'purchase'`) or a store-report restore (`origin: 'restore'`) was applied.
+ * A replayed delivery still emits it with every flag false / 0 (nothing changed, the pack is already owned).
+ */
+export interface FounderPackAppliedEvent {
+    readonly type: 'founderPackApplied';
+    readonly origin: 'purchase' | 'restore';
+    readonly requestId: string | null;
+    readonly entitlementGranted: boolean;
+    readonly cosmeticGranted: boolean;
+    readonly surgesGranted: number;
+    readonly changed: boolean;
 }

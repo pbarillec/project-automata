@@ -6,11 +6,13 @@ export type {
     BuyProducerLevelsCommand,
     CommandType,
     GameCommand,
+    GrantFounderPackCommand,
     LaunchAssemblyBatchCommand,
     ManualProduceCommand,
     PurchaseBreakthroughCommand,
     PurchasePermanentUpgradeCommand,
     RebootCivilizationCommand,
+    ReconcileFounderEntitlementCommand,
 } from './Commands.ts';
 
 export type {
@@ -24,6 +26,7 @@ export type {
     DomainEvent,
     EraChangedEvent,
     FirstRobotProducedEvent,
+    FounderPackAppliedEvent,
     IndustrialOutputChangedEvent,
     PermanentUpgradePurchasedEvent,
     ProducerConstructedEvent,
