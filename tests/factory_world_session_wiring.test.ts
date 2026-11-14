@@ -45,11 +45,13 @@ test('inputs stay inert until the session is ready; then both command emitters r
     const emitters = [...source.matchAll(/(\w+)\.commandEmitter = \(command\) => \{ void binding\.submit\(command\); \};/g)].map((m) => m[1]);
     // AUT-GP-001: the Assembly batch Button is the third emitter.
     assert.deepEqual(emitters, ['hud', 'panel', 'batch']);
-    assert.equal((source.match(/commandEmitter =/g) || []).length, 3);
+    // AUT-050: the AI Upgrades panel is the fourth emitter (it needs the submit result, so it returns the promise instead of `void`).
+    assert.equal((source.match(/commandEmitter =/g) || []).length, 4);
     const activate = methodBody(source, 'private activateSessionBinding(');
     assert.match(activate, /wiring\.hud\.commandEmitter = /);
     assert.match(activate, /wiring\.panel\.commandEmitter = /);
     assert.match(activate, /wiring\.batch\.commandEmitter = /);
+    assert.match(activate, /wiring\.permanentUpgrades\.commandEmitter = /);
     assert.match(activate, /binding\.init\(\);/);
     const start = methodBody(source, 'public start(): void {');
     assert.doesNotMatch(start, /commandEmitter/);

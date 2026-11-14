@@ -47,6 +47,7 @@ import { MilestonePresentationController } from './MilestonePresentationControll
 import { BoostPresentationController } from './BoostPresentationController';
 import { RebootPresentationController } from './RebootPresentationController';
 import { OfflineReportController, type OfflineReportShowReason } from './OfflineReportController';
+import { PermanentUpgradeController } from './PermanentUpgradeController';
 import { REBOOT_CORE_EULER_DEG, REBOOT_SOCKET, socketRingBars } from './RebootPresentation.ts';
 import { milestoneToastTopOffset } from './MilestoneToastLayout.ts';
 import { MILESTONE_ACCENT_RGB, producerZoneName } from './MilestoneFeedback.ts';
@@ -112,7 +113,7 @@ export class FactoryWorldBootstrap extends Component {
     /** AUT-INT-001: the persistent session binding; null until the save has loaded (inputs stay inert). */
     private binding: FactoryWorldStateBinding | null = null;
     private pendingBinding: { binding: FactoryWorldStateBinding; status: string; displayNames: DisplayNameSource } | null = null;
-    private sessionWiring: { hud: CoreHudController; panel: ProducerPanelController; batch: AssemblyBatchActionController; selection: ProducerSelectionController; presentation: PresentationController | null; offlineReport: OfflineReportController } | null = null;
+    private sessionWiring: { hud: CoreHudController; panel: ProducerPanelController; batch: AssemblyBatchActionController; selection: ProducerSelectionController; presentation: PresentationController | null; offlineReport: OfflineReportController; permanentUpgrades: PermanentUpgradeController } | null = null;
     private saveRootPath = '';
     private lifecycleHooksRegistered = false;
     /** AUT-R-036: frames left before the DEBUG `ui_layout` diagnostic (0 = none scheduled). */
@@ -159,6 +160,8 @@ export class FactoryWorldBootstrap extends Component {
         this.createMilestonePresentation(site);
         this.createBoostPresentation(site);
         this.createRebootPresentation(site);
+        // AUT-050: the AI Upgrades chip + panel sit below the offline card (the offline report root stays the LAST child of the Canvas).
+        const permanentUpgrades = this.createPermanentUpgrades();
         const offlineReport = this.createOfflineReport();
         selection.onSelectionChanged = (producerId) => {
             panel.replaceSelection(producerId);
@@ -166,7 +169,7 @@ export class FactoryWorldBootstrap extends Component {
         };
         this.reportUiLayoutAfterSelection(selection);
         const presentation = site.getChildByName('PresentationAnchors')?.getComponent(PresentationController) ?? null;
-        this.sessionWiring = { hud, panel, batch, selection, presentation, offlineReport };
+        this.sessionWiring = { hud, panel, batch, selection, presentation, offlineReport, permanentUpgrades };
         this.startPersistentSession(presentation);
     }
 
@@ -230,6 +233,8 @@ export class FactoryWorldBootstrap extends Component {
                 reportCommandResult: (command, commandResult) => this.emitCommandResult(command, commandResult),
                 // AUT-GP-001: the Assembly batch Button follows the same snapshots and selection as the panel.
                 assemblyBatch: this.sessionWiring?.batch ?? null,
+                // AUT-050: the AI Upgrades chip / panel follows every fresh snapshot.
+                permanentUpgrades: this.sessionWiring?.permanentUpgrades ?? null,
                 observeDomainEvents: isDeviceDiagnosticsEnabled() ? (events) => this.emitAssemblyBatchEvents(events) : undefined,
                 // AUT-051: a Reboot blocked by the pending offline report re-surfaces the card.
                 onRebootBlockedByPendingOffline: () => { this.sessionWiring?.offlineReport.reportRebootBlocked(); this.showOfflineReport('reboot_blocked'); },
@@ -252,6 +257,8 @@ export class FactoryWorldBootstrap extends Component {
         wiring.hud.commandEmitter = (command) => { void binding.submit(command); };
         wiring.panel.commandEmitter = (command) => { void binding.submit(command); };
         wiring.batch.commandEmitter = (command) => { void binding.submit(command); };
+        // AUT-050: the AI Upgrades panel submits the existing purchasePermanentUpgrade command and observes the result (in-flight guard, failure note).
+        wiring.permanentUpgrades.commandEmitter = (command) => binding.submit(command);
         // AUT-051: the Offline Factory Report card collects through the session (binding), never through a GameCommand.
         wiring.offlineReport.collectEmitter = () => binding.collectOfflineReport();
         wiring.offlineReport.setNameSource(displayNames);
@@ -997,6 +1004,34 @@ export class FactoryWorldBootstrap extends Component {
         return controller;
     }
 
+    /**
+     * AUT-050 AI Upgrades: a full-screen root (below the offline report root) holding the dim backdrop and a safe-area container for the
+     * panel card; the entry chip is built by the controller under the HUD safe-area container. Hidden by scale (0) until opened.
+     */
+    private createPermanentUpgrades(): PermanentUpgradeController {
+        const canvas = this.node.getChildByName('CoreHudCanvas');
+        if (!canvas) throw new Error('createUiRoot() must run before the permanent upgrade panel is built.');
+        const stretched = (parent: Node, name: string): Node => {
+            const node = parent.getChildByName(name) ?? new Node(name);
+            node.parent = parent;
+            node.layer = Layers.Enum.UI_2D;
+            node.getComponent(UITransform) ?? node.addComponent(UITransform);
+            this.stretchWidget(node.getComponent(Widget) ?? node.addComponent(Widget));
+            return node;
+        };
+        const root = stretched(canvas, 'PermanentUpgrades');
+        const backdrop = stretched(root, 'PermanentUpgradesBackdrop');
+        const safe = stretched(root, 'PermanentUpgradesSafeArea');
+        safe.getComponent(SafeArea) ?? safe.addComponent(SafeArea);
+        const controller = root.getComponent(PermanentUpgradeController) ?? root.addComponent(PermanentUpgradeController);
+        controller.backdropNode = backdrop;
+        controller.safeNode = safe;
+        controller.chipHost = this.uiSafeArea();
+        controller.screenRectOf = (node) => this.uiScreenRect(node);
+        controller.onLayoutChanged = (reason) => this.scheduleUiLayoutDiagnostics(reason);
+        return controller;
+    }
+
     /** DEBUG: screen rectangle (bottom-left frame) of a UI node through the UI camera. */
     private uiScreenRect(node: Node): UiRect | null {
         const uiCamera = this.node.getChildByName('CoreHudCanvas')?.getChildByName('UICamera')?.getComponent(Camera) ?? null;
@@ -1096,6 +1131,13 @@ export class FactoryWorldBootstrap extends Component {
         const offlineNodes = this.sessionWiring?.offlineReport.getRectNodes() ?? null;
         rects.OfflineReportCard = offlineNodes?.card ? rectOf(offlineNodes.card) : null;
         rects.OfflineReportCollect = offlineNodes?.collect ? rectOf(offlineNodes.collect) : null;
+        // AUT-050: the AI Upgrades chip, panel, tabs, CLOSE and buy buttons, only while shown / open (null otherwise).
+        const upgradeNodes = this.sessionWiring?.permanentUpgrades.getRectNodes() ?? null;
+        rects.PermanentUpgradeChip = upgradeNodes?.chip ? rectOf(upgradeNodes.chip) : null;
+        rects.PermanentUpgradePanel = upgradeNodes?.panel ? rectOf(upgradeNodes.panel) : null;
+        rects.PermanentUpgradeClose = upgradeNodes?.close ? rectOf(upgradeNodes.close) : null;
+        upgradeNodes?.tabs.forEach((node, index) => { rects[`PermanentUpgradeTab${index}`] = node ? rectOf(node) : null; });
+        upgradeNodes?.buys.forEach((node, index) => { rects[`PermanentUpgradeBuy${index}`] = node ? rectOf(node) : null; });
         const rowsOf = (card: Node | null, spec: UiCardSpec) => Object.fromEntries(spec.rows.map((row) => [row.key, rectOf(card?.getChildByName(row.key))]));
         const rows = { CoreHUD: rowsOf(hud, CORE_HUD_LAYOUT), ProducerPanel: rowsOf(panel, PRODUCER_PANEL_LAYOUT) };
         // AUT-UI-001: effective (post-SHRINK) font size of every non-empty label in design units; null while empty.

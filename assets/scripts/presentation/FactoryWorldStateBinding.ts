@@ -5,6 +5,7 @@ import type {
     LifecycleActiveClockAdvanceResult,
     LifecycleCollectResult,
     LifecycleCommandResult,
+    LifecyclePermanentUpgradePurchaseResult,
     LifecycleRebootResult,
     LifecycleResumeResult,
     LifecycleSuspendResult,
@@ -13,6 +14,7 @@ import type { OfflinePreviewResult } from '../offline/index.ts';
 import type { GameState } from '../state/GameState.ts';
 import { createAssemblyBatchViewModel, type AssemblyBatchViewModel } from './AssemblyBatchViewModel.ts';
 import { createHudViewModel, type HudViewModel } from './HudViewModel.ts';
+import { createPermanentUpgradePanelViewModel, type PermanentUpgradePanelViewModel } from './PermanentUpgradePanelViewModel.ts';
 import { createProducerPanelViewModel, type ProducerPanelViewModel } from './ProducerPanelViewModel.ts';
 
 /** The authoritative persistent session (structurally `LifecycleSessionCoordinator`). */
@@ -28,6 +30,8 @@ export interface FactoryWorldSessionPort {
     getPendingOfflinePreview?(): OfflinePreviewResult | null;
     /** AUT-051: the explicit, idempotent offline collection (critical save with the collection cursor). */
     collectPendingOffline?(): Promise<LifecycleCollectResult>;
+    /** AUT-050: the permanent-upgrade purchase transaction (in-memory commit, then a critical save). Optional so minimal ports still work. */
+    purchasePermanentUpgrade?(upgradeId: string): Promise<LifecyclePermanentUpgradePurchaseResult>;
 }
 
 /** World automation presentation (structurally `PresentationController`). */
@@ -54,6 +58,11 @@ export interface FactoryWorldAssemblyBatchSink {
     refresh(viewModel: AssemblyBatchViewModel): void;
 }
 
+/** AUT-050: the AI Upgrades chip / panel, refreshed with every fresh snapshot (balance, ranks, affordability). */
+export interface FactoryWorldPermanentUpgradeSink {
+    refresh(viewModel: PermanentUpgradePanelViewModel): void;
+}
+
 export type FactoryWorldErrorReporter = (context: string, error: unknown) => void;
 /** AUT-UI-001: observes every result the session returned for a submitted command (accepted or rejected). */
 export type FactoryWorldCommandResultReporter = (command: GameCommand, result: LifecycleCommandResult) => void;
@@ -71,6 +80,8 @@ export interface FactoryWorldStateBindingOptions {
     readonly reportCommandResult?: FactoryWorldCommandResultReporter;
     /** AUT-GP-001: optional Assembly batch action sink. */
     readonly assemblyBatch?: FactoryWorldAssemblyBatchSink | null;
+    /** AUT-050: optional AI Upgrades sink. */
+    readonly permanentUpgrades?: FactoryWorldPermanentUpgradeSink | null;
     /** AUT-GP-001: optional observer of the domain events fanned out (FactoryWorld passes a DEBUG diagnostic). */
     readonly observeDomainEvents?: (events: readonly DomainEvent[]) => void;
     /** Minimum active time between ordinary save requests from `tick` (the dirty policy still decides). */
@@ -113,6 +124,7 @@ export class FactoryWorldStateBinding {
     private readonly panel: FactoryWorldPanelSink | null;
     private readonly camera: FactoryWorldCameraSink | null;
     private readonly assemblyBatch: FactoryWorldAssemblyBatchSink | null;
+    private readonly permanentUpgrades: FactoryWorldPermanentUpgradeSink | null;
     private readonly observeDomainEvents: ((events: readonly DomainEvent[]) => void) | null;
     private readonly reportError: FactoryWorldErrorReporter;
     private readonly reportCommandResult: FactoryWorldCommandResultReporter | null;
@@ -131,6 +143,7 @@ export class FactoryWorldStateBinding {
         this.panel = options.panel;
         this.camera = options.camera ?? null;
         this.assemblyBatch = options.assemblyBatch ?? null;
+        this.permanentUpgrades = options.permanentUpgrades ?? null;
         this.observeDomainEvents = options.observeDomainEvents ?? null;
         this.reportError = options.reportError ?? (() => undefined);
         this.reportCommandResult = options.reportCommandResult ?? null;
@@ -182,6 +195,8 @@ export class FactoryWorldStateBinding {
         try {
             // AUT-049: a Reboot goes through the session's Reboot transaction, so `rebootCompleted` exists only after `reboot_saved`.
             if (command.type === 'rebootCivilization' && typeof this.session.rebootCivilizationConfirmed === 'function') return await this.submitReboot(command);
+            // AUT-050: a permanent-upgrade purchase goes through the session's purchase transaction (critical save), not the ordinary-save path.
+            if (command.type === 'purchasePermanentUpgrade' && typeof this.session.purchasePermanentUpgrade === 'function') return await this.submitPermanentUpgrade(command);
             const result = await this.session.execute(command, { requestOrdinarySave: true });
             if (result.execution.ok) {
                 this.fanOut(result.execution.events);
@@ -206,6 +221,16 @@ export class FactoryWorldStateBinding {
         }
         const result: LifecycleCommandResult = { execution: reboot.execution, save: reboot.save };
         // `reboot_saved` carries the durable `rebootCompleted` event; `reboot_persistence_failed` still fans out the state change but never that event.
+        if (result.execution.ok) this.fanOut(result.execution.events);
+        const reportCommandResult = this.reportCommandResult;
+        if (reportCommandResult) this.guard('command_result', () => reportCommandResult(command, result));
+        return result;
+    }
+
+    private async submitPermanentUpgrade(command: GameCommand & { type: 'purchasePermanentUpgrade' }): Promise<LifecycleCommandResult> {
+        const purchase = await this.session.purchasePermanentUpgrade!(command.upgradeId);
+        const result: LifecycleCommandResult = { execution: purchase.execution, save: purchase.save };
+        // `permanent_upgrade_persistence_failed` still fans out the in-memory change (the session does not roll back); a rejection changes nothing.
         if (result.execution.ok) this.fanOut(result.execution.events);
         const reportCommandResult = this.reportCommandResult;
         if (reportCommandResult) this.guard('command_result', () => reportCommandResult(command, result));
@@ -307,6 +332,7 @@ export class FactoryWorldStateBinding {
         this.hud?.refresh(createHudViewModel(this.configRepository, snapshot));
         this.panel?.refresh(createProducerPanelViewModel(this.configRepository, snapshot, this.selectedProducerId));
         this.assemblyBatch?.refresh(createAssemblyBatchViewModel(this.configRepository, snapshot, this.selectedProducerId));
+        this.permanentUpgrades?.refresh(createPermanentUpgradePanelViewModel(this.configRepository, snapshot));
     }
 
     private guard(context: string, action: () => void): void {

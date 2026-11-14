@@ -61,6 +61,8 @@ export const DEVICE_EVENT_TYPES = [
     'reboot_presentation',
     // AUT-051: Offline Factory Report card: { phase: 'shown' | 'refreshed' | 'collect_tapped' | 'collect_result' | 'hidden' | 'skipped' | 'reboot_blocked' | 'auto_collected' (AUT-051b: sub-minute / zero-reward preview collected silently, no card), status, effectiveSeconds, rawSeconds, capApplied, reward, robotsDelta, notAutomatedProducerIds, explainShown, cardRect, collectRect, scale, saveOk }.
     'offline_report',
+    // AUT-050: AI Upgrades chip / panel: { phase: 'chip_shown' | 'chip_hidden' | 'opened' | 'tab' | 'row_tapped' | 'purchase_result' | 'closed', tab, upgradeId, rowState, aiCores, ranks, rank, cost, status, reason, saveOk, rows, texts, chipRect, panelRect, rowRects, buyRects, scale }.
+    'permanent_upgrades',
     // AUT-047: temporary boost presentation: { phase: 'synced' | 'started' | 'ended' | 'suspended' | 'resumed' | 'stopped' | 'settled' | 'effect_applied', ... } (effect_applied: anchorResolved, timeScale, plate / spark scale + worldPos).
     'boost_presentation',
     'error',

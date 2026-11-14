@@ -126,7 +126,9 @@ test('Fabricator world tap stays selection only: the selection path never import
     // Exactly the HUD, panel and (AUT-GP-001) Assembly batch emitters reach binding.submit.
     assert.deepEqual([...bootstrap.matchAll(/(\w+)\.commandEmitter = \(command\) => \{ void binding\.submit\(command\); \};/g)].map((m) => m[1]), ['hud', 'panel', 'batch']);
     // Plus (AUT-048 follow-up) the single DEBUG-only debug_command.json submit, which lives inside the guarded runDebugCommandFile.
-    assert.equal((bootstrap.match(/binding\.submit\(/g) ?? []).length, 4);
+    // AUT-050 adds the AI Upgrades panel emitter (it needs the result for its in-flight guard, so it is not a fire-and-forget `void` emitter).
+    assert.match(bootstrap, /wiring\.permanentUpgrades\.commandEmitter = \(command\) => binding\.submit\(command\);/);
+    assert.equal((bootstrap.match(/binding\.submit\(/g) ?? []).length, 5);
     const debugBody = methodBody(bootstrap, 'private runDebugCommandFile(binding: FactoryWorldStateBinding): void {');
     assert.match(debugBody, /^\s*if \(DEBUG !== true \|\| !isDeviceDiagnosticsEnabled\(\)\) return;/);
     assert.equal((debugBody.match(/binding\.submit\(/g) ?? []).length, 1);

@@ -22,8 +22,10 @@ import { seedAut046 } from './seed_aut046.ts';
 import { seedAut047 } from './seed_aut047.ts';
 import { seedAut048, seedAut048Era3Live } from './seed_aut048.ts';
 import { seedAut049 } from './seed_aut049.ts';
+import { seedAut050 } from './seed_aut050.ts';
 import { seedAut051 } from './seed_aut051.ts';
 import { OFFLINE_RELAUNCH_MARKER_EVT, evaluateOfflineReport, type OfflineReportExpectation } from './offline_report_checks.ts';
+import { PERMANENT_UPGRADE_RELAUNCH_MARKER_EVT, evaluatePermanentUpgrades, pickAffordableRow, type PermanentUpgradeExpectation } from './permanent_upgrade_checks.ts';
 import { seedUi003 } from './seed_ui003.ts';
 import { parseHudActions } from './scenarios/ui001_core_loop.ts';
 import { parseUiLayout, rectCentre, toRect } from './ui_geometry.ts';
@@ -48,6 +50,8 @@ export interface RevealCaptureOptions {
     readonly expectReboot?: RebootExpectation;
     /** AUT-051: 'collect' = tap COLLECT on the card, then force-stop + relaunch WITHOUT reseeding (no card, reward persisted); 'reload' = force-stop BEFORE Collect and relaunch (the card shows again with the same reward). */
     readonly expectOfflineReport?: OfflineReportExpectation;
+    /** AUT-050: 'purchase' = tap the AI chip, open the panel, buy an affordable row with a real tap, switch tab, force-stop + relaunch WITHOUT reseeding (balance / rank persisted). */
+    readonly expectPermanentUpgrades?: PermanentUpgradeExpectation;
     /** AUT-UI-003: command types whose accepted `command_result` (ok) must be observed. */
     readonly expectCommands?: readonly string[];
     readonly preMs?: number;
@@ -75,7 +79,7 @@ export interface RevealCaptureResult {
 
 export const DEFAULT_REVEAL_EVENT_TYPES: readonly string[] = Object.freeze([
     'scene_ready', 'session_state', 'ui_layout', 'command_result', 'construction_state', 'camera_focus', 'reveal_state',
-    'milestone_presentation', 'era_transition', 'reboot_presentation', 'offline_report', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'error',
+    'milestone_presentation', 'era_transition', 'reboot_presentation', 'offline_report', 'permanent_upgrades', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'error',
 ]);
 
 /** A named live-reveal scenario: the seed (unbuilt variant), the producer whose construction must be observed and whether a camera focus is expected. */
@@ -94,6 +98,7 @@ export interface RevealScenario {
     readonly expectEraTitle?: string;
     readonly expectReboot?: RebootExpectation;
     readonly expectOfflineReport?: OfflineReportExpectation;
+    readonly expectPermanentUpgrades?: PermanentUpgradeExpectation;
 }
 
 export const DEFAULT_REVEAL_SCENARIO_ID = 'aut043';
@@ -116,6 +121,8 @@ export const REVEAL_SCENARIOS: Readonly<Record<string, RevealScenario>> = Object
     aut049: { id: 'aut049', label: 'aut049-reboot', seed: (d, pkg, act) => seedAut049(d, pkg, act, 'reboot'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 18_000, intervalMs: 300, expectCommands: ['rebootCivilization'], expectReboot: 'sequence' },
     // AUT-049: a post-Reboot save (Civilization #2, AI Cores): silent load, persistent relay socket, no sequence.
     'aut049-post': { id: 'aut049-post', label: 'aut049-post-reboot-socket', seed: (d, pkg, act) => seedAut049(d, pkg, act, 'post'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 400, expectReboot: 'silent' },
+    // AUT-050: AI Upgrades. Post-Reboot seed (Civilization #2, 4 AI Cores, Optimized Fabrication rank 2): screenshot with the chip, tap the chip, screenshot the open panel, buy an affordable row with a REAL tap, screenshot, switch to Automation (locked row), force-stop + relaunch WITHOUT reseeding (balance / rank persisted).
+    aut050: { id: 'aut050', label: 'aut050-ai-upgrades', seed: (d, pkg, act) => seedAut050(d, pkg, act, 'mixed'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectPermanentUpgrades: 'purchase' },
     // AUT-051: Offline Factory Report. aut051: seeded 3 h absence (Assembly manual -> educational line), screenshot with the card, tap COLLECT at the reported rect, screenshot after, force-stop + relaunch WITHOUT reseeding (no card, reward persisted).
     aut051: { id: 'aut051', label: 'aut051-offline-report', seed: (d, pkg, act) => seedAut051(d, pkg, act, 'first'), expectConstruction: null, expectFocus: false, trigger: 'offline-collect', durationMs: 4_000, intervalMs: 500, expectOfflineReport: 'collect' },
     // AUT-051: the report survives a kill: launch with the seed, force-stop BEFORE Collect, relaunch without reseeding: the card shows again with the same (equivalent) reward.
@@ -131,7 +138,7 @@ export function resolveRevealScenario(id: unknown): RevealScenario | null {
 }
 
 /** Objective checks over a timeline (pure, unit-tested). `tMs` is relative to the trigger (negative = before). */
-export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation }): RevealCheck[] {
+export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation }): RevealCheck[] {
     const checks: RevealCheck[] = [];
     const errors = events.filter((e) => e.event.evt === 'error');
     checks.push({ id: 'no_error_events', ok: errors.length === 0, detail: `${errors.length} error events` });
@@ -163,6 +170,7 @@ export function evaluateRevealTimeline(events: readonly TimelineEvent[], options
     if (options.expectEraTitle !== undefined) checks.push(...evaluateEraTransition(events, options.expectEraTitle));
     if (options.expectReboot !== undefined) checks.push(...evaluateRebootPresentation(events, options.expectReboot));
     if (options.expectOfflineReport !== undefined) checks.push(...evaluateOfflineReport(events, options.expectOfflineReport));
+    if (options.expectPermanentUpgrades !== undefined) checks.push(...evaluatePermanentUpgrades(events, options.expectPermanentUpgrades));
     return checks;
 }
 
@@ -355,6 +363,68 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
             await reloadWait();
         }
     }
+    // AUT-050: the AI Upgrades drive: real taps at the rects `ui_layout` reports (chip, buy, tab), then force-stop + relaunch without reseeding.
+    if (layout && options.expectPermanentUpgrades) {
+        const display = pngSize(await driver.screencap());
+        const screenSize = { w: layout.screen.w, h: layout.screen.h };
+        const rectNow = async (name: string, waitMs = 5_000): Promise<{ x: number; y: number; w: number; h: number } | null> => {
+            const pick = () => toRect((stream.allEvents().filter((e) => e.evt === 'ui_layout' && toRect((e.rects as Record<string, unknown> | undefined)?.[name]) !== null).pop()?.rects as Record<string, unknown> | undefined)?.[name]);
+            const until = Date.now() + waitMs;
+            while (pick() === null && Date.now() < until) await sleep(200);
+            return pick();
+        };
+        const tapRect = async (name: string): Promise<string | null> => {
+            const rect = await rectNow(name);
+            if (!display || !rect) return null;
+            const point = cocosToAdb(rectCentre(rect), screenSize, display);
+            await driver.tap(Math.round(point.x), Math.round(point.y));
+            return `${name} at ${Math.round(point.x)},${Math.round(point.y)}`;
+        };
+        const upgradeEvent = (phase: string) => stream.allEvents().filter((e) => e.evt === 'permanent_upgrades' && e.phase === phase).pop();
+        const details: string[] = [];
+        const chipTap = await tapRect('PermanentUpgradeChip');
+        if (chipTap) {
+            details.push(`tapped ${chipTap}`);
+            await stream.waitFor((e) => e.evt === 'permanent_upgrades' && e.phase === 'opened', 0, 8_000);
+            await rectNow('PermanentUpgradeBuy0');
+            await sleep(700);
+            await frame('post');
+            const target = pickAffordableRow(upgradeEvent('opened')?.rows);
+            if (target) {
+                const cursorBefore = stream.cursor;
+                t0 = Date.now();
+                const buyTap = await tapRect(`PermanentUpgradeBuy${target.index}`);
+                if (buyTap) {
+                    triggered = true;
+                    details.push(`bought ${target.row.id} via ${buyTap}`);
+                    await stream.waitFor((e) => e.evt === 'permanent_upgrades' && e.phase === 'purchase_result', cursorBefore, 8_000);
+                    await sleep(150);
+                    await frame('post');
+                    await sleep(600);
+                    await frame('post');
+                }
+            }
+            const tabCursor = stream.cursor;
+            const tabTap = await tapRect('PermanentUpgradeTab1');
+            if (tabTap) {
+                details.push(`switched tab via ${tabTap}`);
+                await stream.waitFor((e) => e.evt === 'permanent_upgrades' && e.phase === 'tab', tabCursor, 5_000);
+                await sleep(700);
+                await frame('post');
+            }
+            collect(Date.now());
+            events.push({ tMs: Date.now() - t0, event: { v: 1, seq: 0, evt: PERMANENT_UPGRADE_RELAUNCH_MARKER_EVT, phase: 'relaunch' } });
+            await driver.forceStop(packageName);
+            const relaunchCursor = stream.cursor;
+            await driver.launch(packageName, activity);
+            await stream.waitFor((e) => e.evt === 'ui_layout', relaunchCursor, options.layoutTimeoutMs ?? 60_000);
+            await sleep(options.preMs ?? 2_000);
+            await frame('post');
+        } else {
+            details.push('PermanentUpgradeChip rect or display size missing');
+        }
+        tapDetail = details.join('; ');
+    }
     const end = Date.now() + (options.durationMs ?? 9_000);
     while (Date.now() < end) {
         await frame(triggered ? 'post' : 'pre');
@@ -363,8 +433,9 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
     collect(Date.now());
     await driver.stopLogcat();
 
-    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport });
+    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport, expectPermanentUpgrades: options.expectPermanentUpgrades });
     checks.unshift({ id: 'ui_layout_ready', ok: layout !== null, detail: layout ? 'ui_layout received' : 'no ui_layout (app did not reach the HUD)' });
+    if (options.expectPermanentUpgrades) checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
     if (trigger !== 'none') checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
     writeFileSync(path.join(outDir, 'timeline.json'), `${JSON.stringify({ label: options.label, frames, events, checks }, null, 2)}\n`);
     writeFileSync(path.join(outDir, 'summary.md'), renderRevealSummary(options.label, frames, events, checks));

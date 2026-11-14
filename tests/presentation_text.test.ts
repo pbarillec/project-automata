@@ -241,6 +241,20 @@ test('template params match exactly what PresentationText supplies', async () =>
         'offline.robots': ['count'],
         'offline.explain.manual': ['names'],
         'offline.explain.more': ['names', 'count'],
+        // AUT-050 AI Upgrades.
+        'upgrades.chip': ['count'],
+        'upgrades.balance': ['count'],
+        'upgrades.rank': ['current', 'max'],
+        'upgrades.buy': ['cost'],
+        'upgrades.needs': ['name', 'rank'],
+        'upgrades.effect.global_production': ['percent'],
+        'upgrades.effect.milestone_power': ['percent'],
+        'upgrades.effect.automated_multiplier': ['multiplier'],
+        'upgrades.effect.breakthrough_sooner': ['name'],
+        'upgrades.effect.breakthrough_cost': ['name', 'multiplier'],
+        'upgrades.effect.starts_automated': ['name'],
+        'upgrades.effect.construction_cost': ['percent'],
+        'upgrades.effect.major_requirement': ['percent'],
     };
     for (const key of base.keys()) {
         assert.deepEqual(extractPlaceholders(base.template(key)).sort(), (expected[key] ?? []).slice().sort(), key);
@@ -287,6 +301,15 @@ test('every catalogue entry is reachable from the composition paths (no dead key
     }
     offline.formatOfflineReportTexts({ ...offlineVm.HIDDEN_OFFLINE_REPORT_VIEW_MODEL, visible: true, effectiveSeconds: 12_000, reward: 5, robotsDelta: 1, showRobotsRow: true }, repository, catalogue);
     offline.formatOfflineCollectFailed(catalogue);
+    // AUT-050 AI Upgrades: a fresh post-Reboot meta (locked rows resolve "Needs ..."), then a maxed row ("MAX").
+    const upgrades = await imp('assets/scripts/presentation/PermanentUpgradePanelViewModel.ts');
+    for (const ranks of [{}, { optimized_fabrication: 3 }]) {
+        const meta = stateModule.createFreshGameState();
+        meta.meta.civilizationNumber = 2;
+        meta.meta.aiCores = 6;
+        meta.meta.permanentUpgradeRanks = ranks;
+        upgrades.createPermanentUpgradePanelViewModel(repository, meta, catalogue);
+    }
     assert.deepEqual(base.keys().filter((key) => !used.has(key)), []);
 });
 
