@@ -265,6 +265,7 @@ async function main(): Promise<number> {
             expectEraTitle: scenario.expectEraTitle,
             expectReboot: scenario.expectReboot,
             expectOfflineReport: scenario.expectOfflineReport,
+            expectPermanentUpgrades: scenario.expectPermanentUpgrades,
         });
         console.log(`reveal capture ${result.ok ? 'PASS' : 'FAIL'}: ${result.outDir}`);
         for (const check of result.checks) console.log(`  ${check.ok ? 'PASS' : 'FAIL'} ${check.id}: ${check.detail}`);
