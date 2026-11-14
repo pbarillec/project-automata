@@ -78,13 +78,14 @@ test('synthetic v0 fixture migrates through one explicit step and receives deter
     const result = deserializeGameStateFromSaveJson(JSON.stringify(parsedBefore), { migrations });
 
     assert.equal(result.diagnostics.length, 0);
-    assert.equal(result.envelope.saveVersion, 2);
+    assert.equal(result.envelope.saveVersion, 3);
     assert.equal(result.state.settings.reducedMotion, false);
     assert.deepEqual(result.state.run.assistedBatches, {});
     assert.equal(result.migration.migrated, true);
     assert.deepEqual(result.migration.appliedMigrations.map((migration) => migration.id), [
         'synthetic-test-v0-to-v1',
         'v1-to-v2-assisted-batches',
+        'v2-to-v3-rewarded-claim-history',
     ]);
 
     assert.equal(parsedBefore.saveVersion, 0);
@@ -128,7 +129,7 @@ test('current-version saves bypass migration transformation and validate normall
     } = await persistenceModule();
     const { createFreshGameState } = await stateModule();
     const text = serializeGameStateToSaveJson(createFreshGameState(), {
-        saveVersion: 2,
+        saveVersion: 3,
         gameVersion: '0.1.0-test',
         contentVersion: 'current-test',
         savedAtUtc: '2026-08-22T08:30:45.123Z',
@@ -160,14 +161,14 @@ test('future and unsupported legacy versions are rejected deterministically', as
     } = await persistenceModule();
     const { createFreshGameState } = await stateModule();
     const currentText = serializeGameStateToSaveJson(createFreshGameState(), {
-        saveVersion: 2,
+        saveVersion: 3,
         gameVersion: '0.1.0-test',
         contentVersion: 'current-test',
         savedAtUtc: '2026-08-22T08:30:45.123Z',
     });
 
     const future = JSON.parse(currentText);
-    future.saveVersion = 3;
+    future.saveVersion = 4;
     const futureResult = deserializeGameStateFromSaveJson(JSON.stringify(future));
     assert.deepEqual(futureResult.diagnostics.map((diagnostic) => diagnostic.code), ['SAVE_UNSUPPORTED_VERSION']);
 
@@ -293,7 +294,7 @@ async function realV1SaveText(mutateState) {
     const state = createFreshGameState();
     mutateState?.(state);
     const current = JSON.parse(serializeGameStateToSaveJson(state, {
-        saveVersion: 2,
+        saveVersion: 3,
         gameVersion: '0.1.0-test',
         contentVersion: 'v1-test',
         savedAtUtc: '2026-11-11T08:00:00.000Z',
@@ -313,13 +314,13 @@ test('AUT-GP-001 production v1 -> v2 migration adds an empty assisted batch reco
 
     const result = deserializeGameStateFromSaveJson(text);
 
-    assert.equal(CURRENT_SAVE_VERSION, 2);
+    assert.equal(CURRENT_SAVE_VERSION, 3);
     assert.equal(result.diagnostics.length, 0);
-    assert.equal(result.envelope.saveVersion, 2);
+    assert.equal(result.envelope.saveVersion, 3);
     assert.deepEqual(result.state.run.assistedBatches, {});
     assert.equal(result.state.run.industrialOutput, 4321);
     assert.equal(result.state.run.producers.assembly_station.level, 3);
-    assert.deepEqual(result.migration.appliedMigrations.map((migration) => migration.id), ['v1-to-v2-assisted-batches']);
+    assert.deepEqual(result.migration.appliedMigrations.map((migration) => migration.id), ['v1-to-v2-assisted-batches', 'v2-to-v3-rewarded-claim-history']);
     assert.equal(JSON.parse(text).payload.run.assistedBatches, undefined, 'the parsed legacy input is not mutated');
 });
 
@@ -343,7 +344,7 @@ test('AUT-GP-001 an in-flight assisted batch survives a current-version save rou
     state.run.assistedBatches.assembly_station = { durationSeconds: 15, remainingSeconds: 6.25 };
 
     const text = serializeGameStateToSaveJson(state, {
-        saveVersion: 2,
+        saveVersion: 3,
         gameVersion: '0.1.0-test',
         contentVersion: 'round-trip',
         savedAtUtc: '2026-11-11T08:00:00.000Z',

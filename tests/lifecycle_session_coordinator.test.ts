@@ -141,7 +141,7 @@ async function activeBoostState() {
 
 function metadata(savedAtUtc, label = 'aut-028') {
     return Object.freeze({
-        saveVersion: 2,
+        saveVersion: 3,
         gameVersion: '0.1.0-test',
         contentVersion: label,
         savedAtUtc,

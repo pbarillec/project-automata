@@ -17,7 +17,7 @@ async function stateModule() {
 
 function metadata(label = 'base') {
     return Object.freeze({
-        saveVersion: 2,
+        saveVersion: 3,
         gameVersion: '0.1.0-test',
         contentVersion: `0.1.0-${label}`,
         savedAtUtc: '2026-08-22T08:30:45.123Z',

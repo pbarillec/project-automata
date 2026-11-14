@@ -112,7 +112,7 @@ test('binding refreshes the batch sink with the panel on init, selection and fan
     const { ManualTimeService } = await imp('assets/scripts/time/index.ts');
     const { bootstrapGameSession } = await imp('assets/scripts/lifecycle/index.ts');
     const { FactoryWorldStateBinding } = await imp('assets/scripts/presentation/FactoryWorldStateBinding.ts');
-    const save = serializeGameStateToSaveJson(await assistedState(1), { saveVersion: 2, gameVersion: 'test', contentVersion: 'test', savedAtUtc: '2026-11-11T08:00:00.000Z' });
+    const save = serializeGameStateToSaveJson(await assistedState(1), { saveVersion: 3, gameVersion: 'test', contentVersion: 'test', savedAtUtc: '2026-11-11T08:00:00.000Z' });
     const clock = new ManualTimeService({ utcIso: '2026-11-11T08:00:00.000Z', monotonicSeconds: 0 });
     const boot = await bootstrapGameSession({ storage: new InMemorySaveStorage({ [SAVE_MAIN_NAME]: save }), timeService: clock });
     const batch = { models: [], refresh(model) { batch.models.push(model); } };

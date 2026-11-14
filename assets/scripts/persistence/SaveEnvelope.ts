@@ -9,8 +9,11 @@ import {
     type SaveMigrationStep,
 } from './SaveMigrations.ts';
 
-/** AUT-GP-001: saveVersion 2 adds `payload.run.assistedBatches` (v1 → v2 migration below). */
-export const CURRENT_SAVE_VERSION = 2;
+/**
+ * AUT-GP-001: saveVersion 2 adds `payload.run.assistedBatches` (v1 → v2 migration below).
+ * AUT-MIG-001: saveVersion 3 adds `recentClaimUtcMs` to every rewarded claim (v2 → v3 migration).
+ */
+export const CURRENT_SAVE_VERSION = 3;
 export const SAVE_INTEGRITY_ALGORITHM = 'fnv1a32-payload-v1';
 export const SAVE_TIMESTAMP_UTC_ISO_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
@@ -26,9 +29,24 @@ export const SAVE_MIGRATION_V1_TO_V2_ASSISTED_BATCHES: SaveMigrationStep = Objec
     migrate: migrateV1ToV2AssistedBatches,
 });
 
+/**
+ * AUT-MIG-001 production migration: v2 rewarded claims had no history. Each entry gets
+ * `recentClaimUtcMs = []`, or `[lastClaimUtcMs]` when a finite last claim is known (real data, and
+ * the conservative choice: it keeps the quota and minimum-interval rules from being bypassed). No
+ * further entries are ever invented from claimCount. claimCount/lastClaimUtcMs are untouched.
+ * The payload is re-hashed only when the v2 hash was valid, so corruption is never laundered.
+ */
+export const SAVE_MIGRATION_V2_TO_V3_REWARDED_CLAIM_HISTORY: SaveMigrationStep = Object.freeze({
+    id: 'v2-to-v3-rewarded-claim-history',
+    sourceVersion: 2,
+    targetVersion: 3,
+    migrate: migrateV2ToV3RewardedClaimHistory,
+});
+
 /** Every released production migration step, in source-version order. */
 export const PRODUCTION_SAVE_MIGRATION_STEPS: readonly SaveMigrationStep[] = Object.freeze([
     SAVE_MIGRATION_V1_TO_V2_ASSISTED_BATCHES,
+    SAVE_MIGRATION_V2_TO_V3_REWARDED_CLAIM_HISTORY,
 ]);
 export const DEFAULT_SAVE_MIGRATION_REGISTRY = createSaveMigrationRegistry(CURRENT_SAVE_VERSION, PRODUCTION_SAVE_MIGRATION_STEPS);
 
@@ -324,6 +342,46 @@ function migrateV1ToV2AssistedBatches(envelope: Record<string, unknown>): Record
         ...envelope,
         saveVersion: 2,
         integrity: v1HashValid
+            ? { algorithm: SAVE_INTEGRITY_ALGORITHM, payloadHash: fnv1a32Hex(stringifyCanonicalJson(migratedPayload)) }
+            : integrity,
+        payload: migratedPayload,
+    };
+}
+
+function migrateV2ToV3RewardedClaimHistory(envelope: Record<string, unknown>): Record<string, unknown> {
+    const payload = envelope.payload;
+    if (!isPlainObject(payload) || !isPlainObject(payload.monetization) || !isPlainObject(payload.monetization.rewardedClaims)) {
+        throw new Error('v2 save payload.monetization.rewardedClaims must be an object.');
+    }
+
+    const claims: Record<string, unknown> = {};
+    for (const [key, claim] of Object.entries(payload.monetization.rewardedClaims)) {
+        if (!isPlainObject(claim)) {
+            throw new Error(`v2 rewarded claim "${key}" must be an object.`);
+        }
+        if ('recentClaimUtcMs' in claim) {
+            throw new Error(`v2 rewarded claim "${key}" must not already contain recentClaimUtcMs.`);
+        }
+        const last = claim.lastClaimUtcMs;
+        claims[key] = {
+            ...claim,
+            recentClaimUtcMs: typeof last === 'number' && Number.isFinite(last) ? [last] : [],
+        };
+    }
+
+    const integrity = envelope.integrity;
+    const v2HashValid = isPlainObject(integrity) &&
+        integrity.algorithm === SAVE_INTEGRITY_ALGORITHM &&
+        integrity.payloadHash === fnv1a32Hex(stringifyCanonicalJson(payload));
+    const migratedPayload = {
+        ...payload,
+        monetization: { ...payload.monetization, rewardedClaims: claims },
+    };
+
+    return {
+        ...envelope,
+        saveVersion: 3,
+        integrity: v2HashValid
             ? { algorithm: SAVE_INTEGRITY_ALGORITHM, payloadHash: fnv1a32Hex(stringifyCanonicalJson(migratedPayload)) }
             : integrity,
         payload: migratedPayload,

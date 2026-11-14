@@ -137,6 +137,7 @@ async function eligibleRebootState() {
         placementId: 'rewarded.offline_double',
         claimCount: 1,
         lastClaimUtcMs: 456,
+        recentClaimUtcMs: [456],
     };
     state.monetization.productMetadataCache.founder = {
         productId: 'founder',
@@ -159,7 +160,7 @@ async function eligibleRebootState() {
 
 function metadata(savedAtUtc, label = 'aut-029') {
     return Object.freeze({
-        saveVersion: 2,
+        saveVersion: 3,
         gameVersion: '0.1.0-test',
         contentVersion: label,
         savedAtUtc,

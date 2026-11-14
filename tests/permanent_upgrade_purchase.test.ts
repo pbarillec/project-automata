@@ -102,7 +102,7 @@ async function eligibleRebootState() {
 
 function metadata(savedAtUtc, label = 'aut-030') {
     return Object.freeze({
-        saveVersion: 2,
+        saveVersion: 3,
         gameVersion: '0.1.0-test',
         contentVersion: label,
         savedAtUtc,

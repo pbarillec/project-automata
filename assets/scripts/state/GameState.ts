@@ -105,6 +105,8 @@ export interface RewardedClaimState {
     placementId: string;
     claimCount: number;
     lastClaimUtcMs: number | null;
+    /** AUT-MIG-001: newest claim timestamps, ascending, capped at REWARDED_CLAIM_HISTORY_CAP. */
+    recentClaimUtcMs: number[];
 }
 
 export interface PendingMonetizationRequestState {

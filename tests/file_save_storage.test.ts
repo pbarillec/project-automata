@@ -103,7 +103,7 @@ test('AtomicSaveRepository over FileSaveStorage saves atomically with backup rot
     const { createFreshGameState } = await imp('assets/scripts/state/index.ts');
     const port = createFakePort();
     const repository = new AtomicSaveRepository(new FileSaveStorage(port));
-    const metadata = (savedAtUtc) => ({ saveVersion: 2, gameVersion: '0.0.0-test', contentVersion: 'test', savedAtUtc });
+    const metadata = (savedAtUtc) => ({ saveVersion: 3, gameVersion: '0.0.0-test', contentVersion: 'test', savedAtUtc });
 
     const first = createFreshGameState();
     first.run.industrialOutput = 10;

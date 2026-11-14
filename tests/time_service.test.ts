@@ -262,7 +262,7 @@ test('save metadata consumes injected UTC time through the clock boundary', asyn
     const result = assertDeserializeGameStateFromSaveJson(serializeGameStateToSaveJson(await freshState(), metadata));
 
     assert.equal(result.envelope.savedAtUtc, '2026-08-22T08:30:45.123Z');
-    assert.equal(metadata.saveVersion, 2);
+    assert.equal(metadata.saveVersion, 3);
 });
 
 test('dirty save scheduling can consume monotonic elapsed time from TimeService', async () => {

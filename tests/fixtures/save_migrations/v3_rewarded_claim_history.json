@@ -1,0 +1,82 @@
+{
+  "contentVersion": "v1-test",
+  "gameVersion": "0.1.0-test",
+  "integrity": {
+    "algorithm": "fnv1a32-payload-v1",
+    "payloadHash": "a9683fdd"
+  },
+  "payload": {
+    "boosts": {
+      "activeBoosts": {},
+      "consumedCharges": {},
+      "cooldowns": {}
+    },
+    "lifetime": {
+      "breakthroughsPurchased": 0,
+      "highestCivilizationReached": 1,
+      "industrialOutputEarned": 0,
+      "manualProductionActions": 0,
+      "producerLevelsPurchased": 0,
+      "rebootsCompleted": 0,
+      "robotsBuilt": 0
+    },
+    "meta": {
+      "accountFeatureUnlocks": {},
+      "aiCores": 0,
+      "civilizationNumber": 1,
+      "cosmeticOwnership": {},
+      "durableEntitlements": {},
+      "lifetimeAiCoresEarned": 0,
+      "permanentUpgradeRanks": {}
+    },
+    "monetization": {
+      "pendingAdRequests": {},
+      "pendingPurchaseRequests": {},
+      "productMetadataCache": {},
+      "rewardedClaims": {
+        "rewarded.extended_overclock": {
+          "claimCount": 0,
+          "lastClaimUtcMs": null,
+          "placementId": "rewarded.extended_overclock",
+          "recentClaimUtcMs": []
+        },
+        "rewarded.offline_double": {
+          "claimCount": 5,
+          "lastClaimUtcMs": 1787366500000,
+          "placementId": "rewarded.offline_double",
+          "recentClaimUtcMs": [
+            1787366500000
+          ]
+        }
+      }
+    },
+    "run": {
+      "assistedBatches": {},
+      "automation": {},
+      "currentEraId": "manual_workshop",
+      "industrialOutput": 777,
+      "prestigePowerPeak": 0,
+      "producers": {},
+      "progressionFlags": {},
+      "purchasedBreakthroughIds": [],
+      "robotsBuilt": 0,
+      "statistics": {
+        "breakthroughsPurchased": 0,
+        "industrialOutputEarned": 0,
+        "industrialOutputSpent": 0,
+        "manualProductionActions": 0,
+        "producerLevelsPurchased": 0,
+        "robotsBuiltPeak": 0
+      }
+    },
+    "settings": {
+      "languageCode": null,
+      "musicVolume": 0,
+      "reducedMotion": false,
+      "sfxVolume": 0,
+      "vibrationEnabled": false
+    }
+  },
+  "saveVersion": 3,
+  "savedAtUtc": "2026-11-14T08:00:00.000Z"
+}

@@ -1,4 +1,5 @@
 import type { GameState } from './GameState.ts';
+import { REWARDED_CLAIM_HISTORY_CAP } from './RewardedClaimLimits.ts';
 
 export type StateValidationStage = 'structural' | 'semantic';
 
@@ -333,10 +334,51 @@ function validateRewardedClaimRecord(value: unknown, path: string, diagnostics: 
         if (!requirePlainObject(claim, itemPath, 'RewardedClaimState', diagnostics)) {
             continue;
         }
-        requireExactKeys(itemPath, claim, ['placementId', 'claimCount', 'lastClaimUtcMs'], diagnostics);
+        requireExactKeys(itemPath, claim, ['placementId', 'claimCount', 'lastClaimUtcMs', 'recentClaimUtcMs'], diagnostics);
         requireString(claim.placementId, `${itemPath}.placementId`, diagnostics);
         requireNonNegativeInteger(claim.claimCount, `${itemPath}.claimCount`, diagnostics);
         validateNullableNonNegativeFiniteNumber(claim.lastClaimUtcMs, `${itemPath}.lastClaimUtcMs`, diagnostics);
+        validateRecentClaimHistory(claim, itemPath, diagnostics);
+    }
+}
+
+function validateRecentClaimHistory(claim: Record<string, unknown>, itemPath: string, diagnostics: StateDiagnostic[]): void {
+    if (!('recentClaimUtcMs' in claim)) {
+        return;
+    }
+    const path = `${itemPath}.recentClaimUtcMs`;
+    const history = claim.recentClaimUtcMs;
+    if (!Array.isArray(history)) {
+        diagnostics.push(diagnostic('structural', 'STATE_EXPECTED_ARRAY', path, 'Expected an array.'));
+        return;
+    }
+
+    let valid = true;
+    history.forEach((item, index) => {
+        if (typeof item !== 'number' || !Number.isFinite(item) || item < 0) {
+            valid = false;
+            diagnostics.push(diagnostic('semantic', 'STATE_INVALID_NON_NEGATIVE_NUMBER', `${path}[${index}]`, 'Expected a finite non-negative number.'));
+        }
+    });
+    if (history.length > REWARDED_CLAIM_HISTORY_CAP) {
+        diagnostics.push(diagnostic('semantic', 'STATE_CLAIM_HISTORY_TOO_LONG', path, `Claim history holds at most ${REWARDED_CLAIM_HISTORY_CAP} timestamps.`));
+    }
+    if (!valid) {
+        return;
+    }
+
+    const timestamps = history as number[];
+    for (let index = 1; index < timestamps.length; index += 1) {
+        if (timestamps[index] < timestamps[index - 1]) {
+            diagnostics.push(diagnostic('semantic', 'STATE_CLAIM_HISTORY_NOT_ASCENDING', `${path}[${index}]`, 'Claim history must be in ascending order.'));
+            return;
+        }
+    }
+    if (timestamps.length > 0 && timestamps[timestamps.length - 1] !== claim.lastClaimUtcMs) {
+        diagnostics.push(diagnostic('semantic', 'STATE_CLAIM_HISTORY_LAST_MISMATCH', path, 'Newest claim history entry must equal lastClaimUtcMs.'));
+    }
+    if (typeof claim.claimCount === 'number' && timestamps.length > claim.claimCount) {
+        diagnostics.push(diagnostic('semantic', 'STATE_CLAIM_HISTORY_EXCEEDS_COUNT', path, 'Claim history cannot be longer than claimCount.'));
     }
 }
 

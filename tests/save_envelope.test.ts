@@ -8,7 +8,7 @@ const persistenceModuleUrl = pathToFileURL(path.join(repoRoot, 'assets/scripts/p
 const stateModuleUrl = pathToFileURL(path.join(repoRoot, 'assets/scripts/state/index.ts')).href;
 
 const metadata = Object.freeze({
-    saveVersion: 2,
+    saveVersion: 3,
     gameVersion: '0.1.0-test',
     contentVersion: '0.1.0-aut-010',
     savedAtUtc: '2026-08-22T08:30:45.123Z',
@@ -105,6 +105,7 @@ async function representativeState() {
         placementId: 'rewarded.extended_overclock',
         claimCount: 2,
         lastClaimUtcMs: 1787366500000,
+        recentClaimUtcMs: [1787366400000, 1787366500000],
     };
     state.monetization.pendingAdRequests.req_ad_1 = {
         requestId: 'req_ad_1',
@@ -225,7 +226,7 @@ test('invalid JSON, missing envelope fields and unsupported saveVersion are reje
     ]);
 
     const envelope = JSON.parse(serializeGameStateToSaveJson(await freshState(), metadata));
-    envelope.saveVersion = 3;
+    envelope.saveVersion = 4;
     const unsupported = deserializeGameStateFromSaveJson(JSON.stringify(envelope));
     assert.deepEqual(unsupported.diagnostics.map((diagnostic) => diagnostic.code), [
         'SAVE_UNSUPPORTED_VERSION',

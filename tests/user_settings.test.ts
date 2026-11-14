@@ -72,7 +72,7 @@ test('settings stay out of the save: no schema, GameState or command change; the
         assert.doesNotMatch(source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''), /from\s+['"](cc|\.\.\/(state|domain|persistence|runtime|economy|progression)\/)/, rel);
     }
     const { CURRENT_SAVE_VERSION } = await imp('assets/scripts/persistence/index.ts');
-    assert.equal(CURRENT_SAVE_VERSION, 2, 'AUT-052 changes no save schema');
+    assert.equal(CURRENT_SAVE_VERSION, 3, 'AUT-052 itself changed no save schema (v3 is AUT-MIG-001)');
     const { createFreshGameState } = await imp('assets/scripts/state/index.ts');
     assert.equal(createFreshGameState().settings.vibrationEnabled, false, 'the dormant save-level default is unchanged (the user settings default differs: vibration on)');
     const commands = fs.readFileSync(path.join(repoRoot, 'assets/scripts/domain/Commands.ts'), 'utf8');
