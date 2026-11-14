@@ -33,7 +33,7 @@ test('bootstrap loads the user settings BEFORE any UI is built, and builds the S
     assert.ok(start.indexOf('this.loadUserSettings();') < start.indexOf('this.createCoreHud();'), 'settings load before the HUD paints');
     assert.ok(start.indexOf('this.createPermanentUpgrades();') < start.indexOf('this.createSettings();'));
     assert.ok(start.indexOf('this.createSettings();') < start.indexOf('this.createOfflineReport();'), 'the offline report root stays the LAST Canvas child');
-    assert.match(start, /this\.sessionWiring = \{[^}]*settings \}/);
+    assert.match(start, /this\.sessionWiring = \{[^}]*settings, reboot \}/);
     // The load is synchronous and contained; later changes follow the store through its subscription.
     const load = methodBody(source, 'private loadUserSettings(): void {');
     assert.match(load, /new SettingsStore\(new CocosFileSystemPort\(\)/);
@@ -55,7 +55,7 @@ test('bootstrap loads the user settings BEFORE any UI is built, and builds the S
 
 test('the Settings root and the AI Upgrades root keep the offline report as the last Canvas child; the bootstrap keeps its command emitter wiring', () => {
     const source = read(BOOTSTRAP);
-    assert.equal((source.match(/commandEmitter =/g) ?? []).length, 4, 'settings add no command emitter');
+    assert.equal((source.match(/commandEmitter =/g) ?? []).length, 5, 'settings add no command emitter; AUT-RBT-001 adds one (the Reboot modal)');
     assert.doesNotMatch(methodBody(stripComments(source), 'private createSettings(): SettingsController {'), /commandEmitter|submit\(/);
 });
 
@@ -159,12 +159,12 @@ test('device: scenario, CLI (usage + seed command + options pass-through) and pa
     const cli = read('tools/device/cli.ts');
     assert.match(cli, /command === 'seed-aut052'/);
     assert.match(cli, /seed-aut052 \[--serial <id>\]/);
-    assert.match(cli, /aut051-short\|aut052\]/);
+    assert.match(cli, /aut051-short\|aut052\|rbt001\]/);
     // The AUT-050 omission must not repeat: the CLI hands expectSettings to the capture, and the capture hands it to the evaluator.
     assert.match(cli, /expectSettings: scenario\.expectSettings,/);
     const capture = read('tools/device/reveal_capture.ts');
     assert.match(capture, /readonly expectSettings\?: SettingsExpectation;/);
-    assert.match(capture, /expectSettings: options\.expectSettings \}\);/);
+    assert.match(capture, /expectSettings: options\.expectSettings, expectRebootUi: options\.expectRebootUi \}\);/);
     assert.match(capture, /if \(options\.expectSettings !== undefined\) checks\.push\(\.\.\.evaluateSettings\(events, options\.expectSettings\)\);/);
     assert.match(capture, /tapRect\('SettingsChip'\)/);
     assert.match(capture, /tapRect\('SettingsRow0'\)/);

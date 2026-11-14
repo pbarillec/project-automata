@@ -16,6 +16,7 @@ import { createAssemblyBatchViewModel, type AssemblyBatchViewModel } from './Ass
 import { createHudViewModel, type HudViewModel } from './HudViewModel.ts';
 import { createPermanentUpgradePanelViewModel, type PermanentUpgradePanelViewModel } from './PermanentUpgradePanelViewModel.ts';
 import { createProducerPanelViewModel, type ProducerPanelViewModel } from './ProducerPanelViewModel.ts';
+import { createRebootPanelViewModel, type RebootPanelViewModel } from './RebootPanelViewModel.ts';
 
 /** The authoritative persistent session (structurally `LifecycleSessionCoordinator`). */
 export interface FactoryWorldSessionPort {
@@ -63,6 +64,11 @@ export interface FactoryWorldPermanentUpgradeSink {
     refresh(viewModel: PermanentUpgradePanelViewModel): void;
 }
 
+/** AUT-RBT-001: the Reboot entry chip / confirmation modal, refreshed with every fresh snapshot (eligibility, reward, progress). */
+export interface FactoryWorldRebootSink {
+    refresh(viewModel: RebootPanelViewModel): void;
+}
+
 export type FactoryWorldErrorReporter = (context: string, error: unknown) => void;
 /** AUT-UI-001: observes every result the session returned for a submitted command (accepted or rejected). */
 export type FactoryWorldCommandResultReporter = (command: GameCommand, result: LifecycleCommandResult) => void;
@@ -82,6 +88,8 @@ export interface FactoryWorldStateBindingOptions {
     readonly assemblyBatch?: FactoryWorldAssemblyBatchSink | null;
     /** AUT-050: optional AI Upgrades sink. */
     readonly permanentUpgrades?: FactoryWorldPermanentUpgradeSink | null;
+    /** AUT-RBT-001: optional Reboot chip / modal sink. */
+    readonly reboot?: FactoryWorldRebootSink | null;
     /** AUT-GP-001: optional observer of the domain events fanned out (FactoryWorld passes a DEBUG diagnostic). */
     readonly observeDomainEvents?: (events: readonly DomainEvent[]) => void;
     /** Minimum active time between ordinary save requests from `tick` (the dirty policy still decides). */
@@ -125,6 +133,7 @@ export class FactoryWorldStateBinding {
     private readonly camera: FactoryWorldCameraSink | null;
     private readonly assemblyBatch: FactoryWorldAssemblyBatchSink | null;
     private readonly permanentUpgrades: FactoryWorldPermanentUpgradeSink | null;
+    private readonly reboot: FactoryWorldRebootSink | null;
     private readonly observeDomainEvents: ((events: readonly DomainEvent[]) => void) | null;
     private readonly reportError: FactoryWorldErrorReporter;
     private readonly reportCommandResult: FactoryWorldCommandResultReporter | null;
@@ -144,6 +153,7 @@ export class FactoryWorldStateBinding {
         this.camera = options.camera ?? null;
         this.assemblyBatch = options.assemblyBatch ?? null;
         this.permanentUpgrades = options.permanentUpgrades ?? null;
+        this.reboot = options.reboot ?? null;
         this.observeDomainEvents = options.observeDomainEvents ?? null;
         this.reportError = options.reportError ?? (() => undefined);
         this.reportCommandResult = options.reportCommandResult ?? null;
@@ -333,6 +343,7 @@ export class FactoryWorldStateBinding {
         this.panel?.refresh(createProducerPanelViewModel(this.configRepository, snapshot, this.selectedProducerId));
         this.assemblyBatch?.refresh(createAssemblyBatchViewModel(this.configRepository, snapshot, this.selectedProducerId));
         this.permanentUpgrades?.refresh(createPermanentUpgradePanelViewModel(this.configRepository, snapshot));
+        this.reboot?.refresh(createRebootPanelViewModel(this.configRepository, snapshot));
     }
 
     private guard(context: string, action: () => void): void {

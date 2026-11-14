@@ -255,6 +255,11 @@ test('template params match exactly what PresentationText supplies', async () =>
         'upgrades.effect.starts_automated': ['name'],
         'upgrades.effect.construction_cost': ['percent'],
         'upgrades.effect.major_requirement': ['percent'],
+        // AUT-RBT-001 Reboot chip / modal.
+        'reboot.chip': ['count'],
+        'reboot.reward': ['count'],
+        'reboot.civilization': ['from', 'to'],
+        'reboot.progress': ['percent'],
         // AUT-052 toasts (moved from MILESTONE_TEXT_TEMPLATES, identical wording).
         'toast.producer_milestone': ['name', 'level'],
         'toast.automation': ['name'],
@@ -332,6 +337,13 @@ test('every catalogue entry is reachable from the composition paths (no dead key
     const settingsVm = await imp('assets/scripts/presentation/SettingsViewModel.ts');
     const userSettings = await imp('assets/scripts/settings/UserSettings.ts');
     for (const on of [true, false]) settingsVm.createSettingsViewModel({ ...userSettings.DEFAULT_USER_SETTINGS, musicEnabled: on, sfxEnabled: on, vibrationEnabled: on }, catalogue);
+    // AUT-RBT-001 Reboot chip / modal: the plural and the singular reward, the progress and every list line.
+    const rebootVm = await imp('assets/scripts/presentation/RebootPanelViewModel.ts');
+    for (const reward of [1, 5]) {
+        const rebootState = stateModule.createFreshGameState();
+        rebootState.run.prestigePowerPeak = repository.getPrestigeConfig().p0PrestigePower * (reward === 1 ? 0.05 : 1.2);
+        assert.equal(rebootVm.createRebootPanelViewModel(repository, rebootState, catalogue).visible, true);
+    }
     assert.deepEqual(base.keys().filter((key) => !used.has(key)), []);
 });
 

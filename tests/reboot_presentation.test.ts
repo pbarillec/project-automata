@@ -497,7 +497,7 @@ test('AUT-049 DEBUG command file: rebootCivilization only with confirmed:true, a
     assert.match(body, /if \(DEBUG !== true \|\| !isDeviceDiagnosticsEnabled\(\)\) return;/, 'same DEBUG + diagnostics guard');
     assert.ok(body.indexOf('port.readText(DEBUG_COMMAND_FILE)') < body.indexOf('port.remove(DEBUG_COMMAND_FILE)'), 'read once, then deleted');
     assert.match(body, /binding\.submit\(request\.command\)/, 'through the normal binding.submit');
-    assert.equal((bootstrap.match(/binding\.submit\(/g) ?? []).length, 5, 'no extra submit site was added beyond the AUT-050 AI Upgrades emitter');
+    assert.equal((bootstrap.match(/binding\.submit\(/g) ?? []).length, 6, 'one more submit site: the AUT-RBT-001 Reboot modal emitter (after the AUT-050 AI Upgrades emitter)');
     for (const file of ['UiLayout.ts', 'CoreHudController.ts', 'CoreLoopActions.ts', 'HudViewModel.ts', 'ProducerPanelController.ts', 'RebootPresentationController.ts', 'RebootPresentation.ts']) {
         assert.doesNotMatch(presentation(file), /debug_command|DebugCommand|DEBUG_COMMAND/, `${file}: no player-facing Reboot trigger`);
         assert.doesNotMatch(code(file), /rebootCivilization/, `${file}: submits no Reboot command`);
@@ -558,7 +558,7 @@ test('AUT-049 diagnostics, scenarios and capture checks', async () => {
     const cli = read('tools/device/cli.ts');
     assert.match(cli, /command === 'seed-aut049'/);
     assert.match(cli, /seed-aut049 \[--variant reboot\|post\]/);
-    assert.match(cli, /aut048-era3-live\|aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\]/);
+    assert.match(cli, /aut048-era3-live\|aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\|rbt001\]/);
     assert.match(cli, /expectReboot: scenario\.expectReboot/);
     assert.match(read('package.json'), /"device:seed-aut049": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools\/device\/cli\.ts seed-aut049"/);
     const live = REVEAL_SCENARIOS.aut049;

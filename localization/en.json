@@ -120,6 +120,27 @@
     "settings.on": "ON",
     "settings.off": "OFF",
     "settings.language.en": "English",
-    "settings.close": "CLOSE"
+    "settings.close": "CLOSE",
+    "reboot.chip": "REBOOT +{count}",
+    "reboot.title": "REBOOT CIVILIZATION",
+    "reboot.reward": "+{count} AI CORES",
+    "reboot.reward_single": "+1 AI CORE",
+    "reboot.civilization": "Civilization #{from} to #{to}",
+    "reboot.progress": "Next AI Core {percent}%",
+    "reboot.resets_header": "RESETS",
+    "reboot.keeps_header": "KEEPS",
+    "reboot.reset.output": "Industrial Output",
+    "reboot.reset.producers": "Producers and levels",
+    "reboot.reset.breakthroughs": "Breakthroughs, automation",
+    "reboot.reset.era": "Era and Robots Built",
+    "reboot.reset.boosts": "Temporary boosts",
+    "reboot.keep.cores": "AI Cores",
+    "reboot.keep.upgrades": "Permanent AI upgrades",
+    "reboot.keep.civilization": "Civilization number",
+    "reboot.keep.records": "Records and statistics",
+    "reboot.keep.account": "Settings and purchases",
+    "reboot.confirm": "REBOOT",
+    "reboot.cancel": "CANCEL",
+    "reboot.failed": "Couldn't reboot. Try again."
   }
 }

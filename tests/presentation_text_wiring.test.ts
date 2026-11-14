@@ -98,7 +98,7 @@ test('FactoryWorldBootstrap assigns displayNames only in activateSessionBinding,
     assert.equal((source.match(/\.displayNames = /g) ?? []).length, 2);
     assert.doesNotMatch(methodBody(source, 'public start(): void {'), /displayNames/);
     // HUD, panel, the AUT-GP-001 Assembly batch Button and the AUT-050 AI Upgrades panel.
-    assert.equal((source.match(/commandEmitter =/g) ?? []).length, 4);
+    assert.equal((source.match(/commandEmitter =/g) ?? []).length, 5);
 });
 
 test('localization/ and PresentationText.ts are engine-free', async () => {

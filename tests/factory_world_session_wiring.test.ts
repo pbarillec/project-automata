@@ -46,7 +46,7 @@ test('inputs stay inert until the session is ready; then both command emitters r
     // AUT-GP-001: the Assembly batch Button is the third emitter.
     assert.deepEqual(emitters, ['hud', 'panel', 'batch']);
     // AUT-050: the AI Upgrades panel is the fourth emitter (it needs the submit result, so it returns the promise instead of `void`).
-    assert.equal((source.match(/commandEmitter =/g) || []).length, 4);
+    assert.equal((source.match(/commandEmitter =/g) || []).length, 5);
     const activate = methodBody(source, 'private activateSessionBinding(');
     assert.match(activate, /wiring\.hud\.commandEmitter = /);
     assert.match(activate, /wiring\.panel\.commandEmitter = /);

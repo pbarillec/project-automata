@@ -48,6 +48,7 @@ import { BoostPresentationController } from './BoostPresentationController';
 import { RebootPresentationController } from './RebootPresentationController';
 import { OfflineReportController, type OfflineReportShowReason } from './OfflineReportController';
 import { PermanentUpgradeController } from './PermanentUpgradeController';
+import { RebootController } from './RebootController';
 import { SettingsController } from './SettingsController';
 import { mapEventsToCues } from './AudioCueMapper.ts';
 import { SettingsStore, type SettingsEvent } from '../settings/SettingsStore.ts';
@@ -122,7 +123,9 @@ export class FactoryWorldBootstrap extends Component {
     /** AUT-INT-001: the persistent session binding; null until the save has loaded (inputs stay inert). */
     private binding: FactoryWorldStateBinding | null = null;
     private pendingBinding: { binding: FactoryWorldStateBinding; status: string; displayNames: DisplayNameSource } | null = null;
-    private sessionWiring: { hud: CoreHudController; panel: ProducerPanelController; batch: AssemblyBatchActionController; selection: ProducerSelectionController; presentation: PresentationController | null; offlineReport: OfflineReportController; permanentUpgrades: PermanentUpgradeController; settings: SettingsController } | null = null;
+    private sessionWiring: { hud: CoreHudController; panel: ProducerPanelController; batch: AssemblyBatchActionController; selection: ProducerSelectionController; presentation: PresentationController | null; offlineReport: OfflineReportController; permanentUpgrades: PermanentUpgradeController; settings: SettingsController; reboot: RebootController } | null = null;
+    /** AUT-RBT-001: set by the binding's pending-offline callback and consumed by the Reboot modal to tell "blocked" from "exception" (both return null). */
+    private rebootBlockedByPendingOffline = false;
     /** AUT-052: device preferences (own file, loaded before the first UI paint) and the silent audio / no-op haptics services that follow them. */
     private settingsStore: SettingsStore | null = null;
     private readonly audio: AudioService = new SilentAudioService();
@@ -180,6 +183,8 @@ export class FactoryWorldBootstrap extends Component {
         const permanentUpgrades = this.createPermanentUpgrades();
         // AUT-052: the Settings chip / panel also sit below the offline card root, which stays the LAST child of the Canvas.
         const settings = this.createSettings();
+        // AUT-RBT-001: the Reboot chip / modal sit below the offline card root too (created before it, so the offline card stays topmost).
+        const reboot = this.createReboot();
         const offlineReport = this.createOfflineReport();
         selection.onSelectionChanged = (producerId) => {
             panel.replaceSelection(producerId);
@@ -187,7 +192,7 @@ export class FactoryWorldBootstrap extends Component {
         };
         this.reportUiLayoutAfterSelection(selection);
         const presentation = site.getChildByName('PresentationAnchors')?.getComponent(PresentationController) ?? null;
-        this.sessionWiring = { hud, panel, batch, selection, presentation, offlineReport, permanentUpgrades, settings };
+        this.sessionWiring = { hud, panel, batch, selection, presentation, offlineReport, permanentUpgrades, settings, reboot };
         this.startPersistentSession(presentation);
     }
 
@@ -254,13 +259,15 @@ export class FactoryWorldBootstrap extends Component {
                 assemblyBatch: this.sessionWiring?.batch ?? null,
                 // AUT-050: the AI Upgrades chip / panel follows every fresh snapshot.
                 permanentUpgrades: this.sessionWiring?.permanentUpgrades ?? null,
+                // AUT-RBT-001: the Reboot chip / modal follows every fresh snapshot.
+                reboot: this.sessionWiring?.reboot ?? null,
                 observeDomainEvents: (events) => {
                     // AUT-052: presentation observes the events and asks the (silent) audio service for cues; the runtime knows nothing about audio.
                     for (const cue of mapEventsToCues(events)) this.audio.playSfx(cue);
                     if (isDeviceDiagnosticsEnabled()) this.emitAssemblyBatchEvents(events);
                 },
                 // AUT-051: a Reboot blocked by the pending offline report re-surfaces the card.
-                onRebootBlockedByPendingOffline: () => { this.sessionWiring?.offlineReport.reportRebootBlocked(); this.showOfflineReport('reboot_blocked'); },
+                onRebootBlockedByPendingOffline: () => { this.rebootBlockedByPendingOffline = true; this.sessionWiring?.offlineReport.reportRebootBlocked(); this.showOfflineReport('reboot_blocked'); },
             });
             this.pendingBinding = { binding, status: result.startup.status, displayNames: result.configRepository };
         }).catch((error: unknown) => {
@@ -282,6 +289,9 @@ export class FactoryWorldBootstrap extends Component {
         wiring.batch.commandEmitter = (command) => { void binding.submit(command); };
         // AUT-050: the AI Upgrades panel submits the existing purchasePermanentUpgrade command and observes the result (in-flight guard, failure note).
         wiring.permanentUpgrades.commandEmitter = (command) => binding.submit(command);
+        // AUT-RBT-001: the Reboot modal submits the confirmed rebootCivilization command and observes the result (in-flight guard, failure note).
+        wiring.reboot.commandEmitter = (command) => binding.submit(command);
+        wiring.reboot.consumeBlockedByPendingOffline = () => this.consumeRebootBlockedFlag();
         // AUT-051: the Offline Factory Report card collects through the session (binding), never through a GameCommand.
         wiring.offlineReport.collectEmitter = () => binding.collectOfflineReport();
         wiring.offlineReport.setNameSource(displayNames);
@@ -1087,6 +1097,34 @@ export class FactoryWorldBootstrap extends Component {
     }
 
     /**
+     * AUT-RBT-001 Reboot: a full-screen root (below the offline report root) holding the dim backdrop and a safe-area container for the modal;
+     * the entry chip is built by the controller under the HUD safe-area container, on the second line under the HUD band. Hidden by scale.
+     */
+    private createReboot(): RebootController {
+        const canvas = this.node.getChildByName('CoreHudCanvas');
+        if (!canvas) throw new Error('createUiRoot() must run before the Reboot modal is built.');
+        const stretched = (parent: Node, name: string): Node => {
+            const node = parent.getChildByName(name) ?? new Node(name);
+            node.parent = parent;
+            node.layer = Layers.Enum.UI_2D;
+            node.getComponent(UITransform) ?? node.addComponent(UITransform);
+            this.stretchWidget(node.getComponent(Widget) ?? node.addComponent(Widget));
+            return node;
+        };
+        const root = stretched(canvas, 'Reboot');
+        const backdrop = stretched(root, 'RebootBackdrop');
+        const safe = stretched(root, 'RebootSafeArea');
+        safe.getComponent(SafeArea) ?? safe.addComponent(SafeArea);
+        const controller = root.getComponent(RebootController) ?? root.addComponent(RebootController);
+        controller.backdropNode = backdrop;
+        controller.safeNode = safe;
+        controller.chipHost = this.uiSafeArea();
+        controller.screenRectOf = (node) => this.uiScreenRect(node);
+        controller.onLayoutChanged = (reason) => this.scheduleUiLayoutDiagnostics(reason);
+        return controller;
+    }
+
+    /**
      * AUT-052: loads `settings.json` (synchronously, contained: a failure gives the defaults) and applies it to the audio / haptics services.
      * Later changes made by the Settings panel go through `SettingsStore.update`, and this subscription applies them.
      */
@@ -1127,6 +1165,15 @@ export class FactoryWorldBootstrap extends Component {
         if (!wiring) return;
         const rebootCard = wiring.presentation?.milestonePresentation?.isRebootCardActive() === true;
         wiring.settings.setSuppressed(wiring.offlineReport.isVisible() || rebootCard);
+        // AUT-RBT-001: the Reboot chip is hidden (and an idle modal closed) while the offline report card or the Reboot title card is up.
+        wiring.reboot.setSuppressed(wiring.offlineReport.isVisible() || rebootCard);
+    }
+
+    /** AUT-RBT-001: true once after the binding reported a Reboot blocked by the pending offline report (then cleared). */
+    private consumeRebootBlockedFlag(): boolean {
+        const blocked = this.rebootBlockedByPendingOffline;
+        this.rebootBlockedByPendingOffline = false;
+        return blocked;
     }
 
     /** DEBUG: screen rectangle (bottom-left frame) of a UI node through the UI camera. */
@@ -1241,6 +1288,12 @@ export class FactoryWorldBootstrap extends Component {
         rects.SettingsPanel = settingsNodes?.panel ? rectOf(settingsNodes.panel) : null;
         rects.SettingsClose = settingsNodes?.close ? rectOf(settingsNodes.close) : null;
         settingsNodes?.rows.forEach((node, index) => { rects[`SettingsRow${index}`] = node ? rectOf(node) : null; });
+        // AUT-RBT-001: the Reboot chip, modal, REBOOT and CANCEL, only while shown / open (null otherwise).
+        const rebootNodes = this.sessionWiring?.reboot.getRectNodes() ?? null;
+        rects.RebootChip = rebootNodes?.chip ? rectOf(rebootNodes.chip) : null;
+        rects.RebootPanel = rebootNodes?.panel ? rectOf(rebootNodes.panel) : null;
+        rects.RebootConfirm = rebootNodes?.confirm ? rectOf(rebootNodes.confirm) : null;
+        rects.RebootCancel = rebootNodes?.cancel ? rectOf(rebootNodes.cancel) : null;
         const rowsOf = (card: Node | null, spec: UiCardSpec) => Object.fromEntries(spec.rows.map((row) => [row.key, rectOf(card?.getChildByName(row.key))]));
         const rows = { CoreHUD: rowsOf(hud, CORE_HUD_LAYOUT), ProducerPanel: rowsOf(panel, PRODUCER_PANEL_LAYOUT) };
         // AUT-UI-001: effective (post-SHRINK) font size of every non-empty label in design units; null while empty.
