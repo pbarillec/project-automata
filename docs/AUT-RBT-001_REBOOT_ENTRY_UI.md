@@ -51,3 +51,10 @@ Redraws happen only when a view signature changes (the sink fires about once per
 ## Not verified here (human / device)
 
 No gate build in this task. Rendering on device (legibility, fills, hexagon mark, column density, progress bar), real-tap behaviour of the Button hit rects, touch swallowing so camera / selection do not receive chip or modal taps, the chip under a Major toast, the `rbt001` capture itself, and subjective feel (is the confirmation clear and calm, is the chip discoverable) are pending review. The controller itself is `cc` code and is covered by source pins only.
+
+## Device evidence and visual QA (2026-11-14)
+
+DEBUG APK from 6f3d614 (gate label rbt001). `npm run device:reveal-capture -- --scenario rbt001` (`temp/reveal/rbt001-reboot-ui-2026-11-14T130059/`, 13 frames): 16/16 checks PASS, 0 errors. Real taps: chip "REBOOT +5" -> modal (+5 AI CORES, Civilization #1 to #2, Next AI Core 45%, 5 resets / 5 keeps, buttons 64 units) -> Cancel (no command, no sequence) -> chip -> Confirm: aiCoresGranted/civilizationChanged/rebootCompleted, saved, granted 5 == announced 5, modal closed with the AUT-049 sequence (1 sequence, 4 s, REBOOT / AI CORE ×5 / CIVILIZATION #2), chip and modal hidden, AI chip "AI x5"; after force-stop/relaunch: no chip, no sequence, AI x5 persisted.
+
+Vision QA (stills): PASS. Chip clear of HUD/SET/AI chips; modal centred, legible and unclipped; RESETS (dash) / KEEPS (dot) not colour-only; REBOOT cyan fill distinct from CANCEL outline; "RESET" never used as an action; no leftovers after the sequence; relaunch silent.
+Non-blocking POLISH: progress label tight above the columns; hero mark touches "+5"; column headers look off-centre vs the marker indent; chip is exactly the 64-unit minimum; "Breakthroughs, automation" is tightest against the column edge. Documented gap: no concrete permanent-benefit preview (GAME_DESIGN §12). Pending human: confirmation clarity/feel and chip discoverability.
