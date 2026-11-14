@@ -59,3 +59,7 @@ recording/pruning/cap, eligibility integration, backup recovery, and a v2-downgr
 ## Risk
 
 A v3 save cannot be read by older v2 builds (forward-version rejection); intended.
+
+## Verification (2026-11-14)
+
+`npm run check` PASS (1025 tests). Gate build of cf23403 (`--label mig001`) compiled; on the phone the upgraded APK launched and loaded an existing save (`session_state` `loaded_main`, `saveVersion` 3, 0 errors). A real device load of a genuine pre-existing v2 save file was NOT exercised (the device seeds are written by the current tooling at v3); v2 -> v3 migration is covered at unit level, including downgrading a real seeded save (`buildUi003SeededSave`) to v2 and loading it through the migration.
