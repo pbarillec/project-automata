@@ -47,3 +47,11 @@ New event `offline_report` (added to the `DeviceDiagnostics` allow-list): `{ pha
 ## Not verified here (human / device)
 
 Rendering on a real device (card legibility, backdrop dim, COLLECT feel), that the node-level touch swallowing blocks the camera / selection input exactly like the HUD, the tap-through of COLLECT on the Android build, and the device scenarios `aut051` / `aut051-reload` are not run in this task (no gate build). The "IO persisted" proof of the capture is a proxy (saved collect plus no card after the relaunch).
+
+## Device evidence and visual QA (2026-11-14)
+
+DEBUG APK from a5c910a (gate label aut051). Collect: `npm run device:reveal-capture -- --scenario aut051` (`temp/reveal/aut051-offline-report-2026-11-14T112915/`): all checks PASS, 0 errors; card shown on launch (+304K, Away 3h, explain line), Collect tapped, `collected_saved`, card hidden, 0 toast/camera/era/reboot events after the tap; after relaunch the original report is not re-granted (only a small genuine relaunch-gap report appears). Check fixed in b3e8735 (the first run failed only because the strict check treated the legitimate ~8 s relaunch-gap report as a failure). Reload: `--scenario aut051-reload` (`temp/reveal/aut051-offline-reload-2026-11-14T112937/`): force-stop before Collect, relaunch shows the same card (reward 303844 -> 304035): the D1 fix (pending absence start preserved across ordinary saves, no schema change) is proven on device.
+
+Vision QA (stills): PASS. Card centred clear of HUD/panel, hero reward largest, COLLECT 64 units amber, no white rectangles, no ad/x2 affordance, card gone and HUD IO increased after Collect, no fanfare.
+Non-blocking POLISH: explain line ~20 px above COLLECT; backdrop dim (alpha 150) leaves little factory context; small-number format "+217.8" vs "+304K" to confirm against formatCompactNumber; Next Goal change not evidenced (goal is level-based).
+Pending human / product: card feel and dismissal; whether sub-minute relaunch reports should be suppressed (minimum threshold = product/economy decision); D2 educational line repeats while a producer is manual (persisted first-return flag needs owner decision); copy needs Game Designer wording approval; backdrop touch-swallowing on device not verified from stills.
