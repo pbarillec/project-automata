@@ -8,6 +8,7 @@ import type {
     EntitlementService,
     EntitlementStatus,
 } from '../../services/EntitlementService';
+import type { PlatformOverlayTracker } from '../../services/PlatformOverlay';
 import type {
     PlatformAvailability,
     PlatformOperationResult,
@@ -25,6 +26,12 @@ import type {
     PurchaseResultStatus,
     PurchaseService,
 } from '../../services/PurchaseService';
+import type {
+    MockAdScriptStep,
+    MockCallRecord,
+    MockPurchaseScriptStep,
+} from './MockPlatformScript';
+import { MockCallGate, MockScriptQueue } from './MockPlatformScript.ts';
 
 interface MockRewardedPlacement {
     available?: boolean;
@@ -35,6 +42,8 @@ interface MockRewardedPlacement {
 export interface MockAdsServiceOptions {
     initialStatus?: PlatformServiceStatus;
     placements?: Record<string, MockRewardedPlacement>;
+    /** When provided, begin/end('rewarded_ad') is reported around every real show. */
+    overlay?: PlatformOverlayTracker;
 }
 
 function state(kind: PlatformServiceState['kind'], status: PlatformServiceStatus, reason?: string): PlatformServiceState {
@@ -52,10 +61,21 @@ function blockedResult(currentState: PlatformServiceState): PlatformOperationRes
 export class MockAdsService implements AdsService {
     private serviceState: PlatformServiceState;
     private readonly placements: Record<string, MockRewardedPlacement>;
+    private readonly overlay: PlatformOverlayTracker | undefined;
+    private readonly results = new Map<string, Promise<RewardedAdResult>>();
+
+    /** Ordered per-placement outcomes. When empty for a placement, option behaviour applies. */
+    public readonly script = new MockScriptQueue<MockAdScriptStep>();
+    /** Manual resolver for steps flagged `manual` (deterministic timeouts, no real timers). */
+    public readonly gate = new MockCallGate();
+    public readonly calls: MockCallRecord[] = [];
+    /** Every result handed to the caller, including simulated duplicate callbacks. */
+    public readonly deliveries: RewardedAdResult[] = [];
 
     public constructor(options: MockAdsServiceOptions = {}) {
         this.serviceState = state('ads', 'uninitialized');
         this.placements = { ...(options.placements ?? {}) };
+        this.overlay = options.overlay;
 
         if (options.initialStatus !== undefined && options.initialStatus !== 'uninitialized') {
             this.serviceState = state('ads', options.initialStatus);
@@ -63,6 +83,8 @@ export class MockAdsService implements AdsService {
     }
 
     public async initialize(): Promise<PlatformServiceState> {
+        this.calls.push({ service: 'ads', method: 'initialize' });
+
         if (this.serviceState.status === 'unavailable' || this.serviceState.status === 'failed') {
             return this.serviceState;
         }
@@ -77,6 +99,10 @@ export class MockAdsService implements AdsService {
 
     public setPlacement(placementId: RewardedPlacementId, placement: MockRewardedPlacement): void {
         this.placements[placementId] = placement;
+    }
+
+    public enqueueOutcomes(placementId: RewardedPlacementId, ...steps: MockAdScriptStep[]): void {
+        this.script.enqueue(placementId, ...steps);
     }
 
     public async getRewardedAvailability(placementId: RewardedPlacementId): Promise<PlatformAvailability> {
@@ -99,6 +125,7 @@ export class MockAdsService implements AdsService {
     }
 
     public async preloadRewarded(placementId: RewardedPlacementId): Promise<PlatformOperationResult> {
+        this.calls.push({ service: 'ads', method: 'preloadRewarded', key: placementId });
         const availability = await this.getRewardedAvailability(placementId);
 
         return {
@@ -109,28 +136,82 @@ export class MockAdsService implements AdsService {
         };
     }
 
-    public async showRewarded(request: RewardedAdRequest): Promise<RewardedAdResult> {
+    /**
+     * A requestId is single-use: the first result is memoized and any later call with the same
+     * requestId returns the same result flagged `duplicate: true` without side effects.
+     */
+    public showRewarded(request: RewardedAdRequest): Promise<RewardedAdResult> {
+        this.calls.push({
+            service: 'ads',
+            method: 'showRewarded',
+            requestId: request.requestId,
+            key: request.placementId,
+        });
+
+        const memoized = this.results.get(request.requestId);
+        if (memoized !== undefined) {
+            return memoized.then((first) => {
+                const replay: RewardedAdResult = { ...first, duplicate: true };
+                this.deliveries.push(replay);
+                return replay;
+            });
+        }
+
+        const pending = this.runShow(request);
+        this.results.set(request.requestId, pending);
+        return pending;
+    }
+
+    private async runShow(request: RewardedAdRequest): Promise<RewardedAdResult> {
         const availability = await this.getRewardedAvailability(request.placementId);
         if (!availability.available) {
-            return {
+            return this.deliver({
                 status: 'unavailable',
                 placementId: request.placementId,
                 requestId: request.requestId,
                 rewardVerified: false,
                 reason: availability.reason,
-            };
+            });
         }
 
         const placement = this.placements[request.placementId] ?? {};
-        const resultStatus = placement.showResult ?? 'rewarded';
+        const step = this.script.next(request.placementId);
+        const resultStatus = step?.outcome ?? placement.showResult ?? 'rewarded';
+        const reason = resultStatus === 'rewarded'
+            ? undefined
+            : step?.reason ?? placement.reason ?? `mock_rewarded_${resultStatus}`;
 
-        return {
+        const result: RewardedAdResult = {
             status: resultStatus,
             placementId: request.placementId,
             requestId: request.requestId,
             rewardVerified: resultStatus === 'rewarded',
-            reason: resultStatus === 'rewarded' ? undefined : placement.reason ?? `mock_rewarded_${resultStatus}`,
+            reason,
         };
+
+        if (resultStatus === 'unavailable') {
+            return this.deliver(result, step?.duplicateCallback === true);
+        }
+
+        this.overlay?.begin('rewarded_ad', request.requestId);
+        try {
+            if (step?.manual === true) {
+                await this.gate.hold(request.requestId);
+            }
+        } finally {
+            this.overlay?.end(request.requestId);
+        }
+
+        return this.deliver(result, step?.duplicateCallback === true);
+    }
+
+    private deliver(result: RewardedAdResult, duplicateCallback = false): RewardedAdResult {
+        this.deliveries.push(result);
+        if (duplicateCallback) {
+            this.deliveries.push({ ...result, duplicate: true });
+        }
+
+        return result;
     }
 }
 
@@ -138,16 +219,29 @@ export interface MockPurchaseServiceOptions {
     initialStatus?: PlatformServiceStatus;
     products?: ProductDetails[];
     purchaseResults?: Record<string, PurchaseResultStatus>;
+    /** When provided, begin/end('purchase_flow') is reported around every real purchase. */
+    overlay?: PlatformOverlayTracker;
 }
 
 export class MockPurchaseService implements PurchaseService {
     private serviceState: PlatformServiceState;
     private readonly products = new Map<ProductId, ProductDetails>();
     private readonly purchaseResults: Record<string, PurchaseResultStatus>;
+    private readonly overlay: PlatformOverlayTracker | undefined;
+    private readonly results = new Map<string, Promise<PurchaseResult>>();
+
+    /** Ordered per-product outcomes. When empty for a product, option behaviour applies. */
+    public readonly script = new MockScriptQueue<MockPurchaseScriptStep>();
+    /** Manual resolver for steps flagged `manual` (deterministic timeouts, no real timers). */
+    public readonly gate = new MockCallGate();
+    public readonly calls: MockCallRecord[] = [];
+    /** Every result handed to the caller, including simulated duplicate callbacks. */
+    public readonly deliveries: PurchaseResult[] = [];
 
     public constructor(options: MockPurchaseServiceOptions = {}) {
         this.serviceState = state('purchase', options.initialStatus ?? 'uninitialized');
         this.purchaseResults = { ...(options.purchaseResults ?? {}) };
+        this.overlay = options.overlay;
 
         for (const product of options.products ?? []) {
             this.products.set(product.productId, { ...product });
@@ -155,6 +249,8 @@ export class MockPurchaseService implements PurchaseService {
     }
 
     public async initialize(): Promise<PlatformServiceState> {
+        this.calls.push({ service: 'purchases', method: 'initialize' });
+
         if (this.serviceState.status === 'unavailable' || this.serviceState.status === 'failed') {
             return this.serviceState;
         }
@@ -167,7 +263,13 @@ export class MockPurchaseService implements PurchaseService {
         return this.serviceState;
     }
 
+    public enqueueOutcomes(productId: ProductId, ...steps: MockPurchaseScriptStep[]): void {
+        this.script.enqueue(productId, ...steps);
+    }
+
     public async queryProductDetails(productIds: ProductId[]): Promise<ProductDetailsResult> {
+        this.calls.push({ service: 'purchases', method: 'queryProductDetails' });
+
         if (this.serviceState.status !== 'ready') {
             return {
                 ok: false,
@@ -197,37 +299,91 @@ export class MockPurchaseService implements PurchaseService {
         };
     }
 
-    public async purchase(request: PurchaseRequest): Promise<PurchaseResult> {
+    /**
+     * A requestId is single-use: the first result (and its transactionId) is memoized and any
+     * later call with the same requestId returns it flagged `duplicate: true`.
+     */
+    public purchase(request: PurchaseRequest): Promise<PurchaseResult> {
+        this.calls.push({
+            service: 'purchases',
+            method: 'purchase',
+            requestId: request.requestId,
+            key: request.productId,
+        });
+
+        const memoized = this.results.get(request.requestId);
+        if (memoized !== undefined) {
+            return memoized.then((first) => {
+                const replay: PurchaseResult = { ...first, duplicate: true };
+                this.deliveries.push(replay);
+                return replay;
+            });
+        }
+
+        const pending = this.runPurchase(request);
+        this.results.set(request.requestId, pending);
+        return pending;
+    }
+
+    private async runPurchase(request: PurchaseRequest): Promise<PurchaseResult> {
         if (this.serviceState.status !== 'ready') {
-            return {
+            return this.deliver({
                 status: 'unavailable',
                 productId: request.productId,
                 requestId: request.requestId,
                 reason: this.serviceState.reason ?? this.serviceState.status,
-            };
+            });
         }
 
         if (!this.products.has(request.productId)) {
-            return {
+            return this.deliver({
                 status: 'failed',
                 productId: request.productId,
                 requestId: request.requestId,
                 reason: 'mock_product_missing',
-            };
+            });
         }
 
-        const resultStatus = this.purchaseResults[request.productId] ?? 'completed';
-
-        return {
+        const step = this.script.next(request.productId);
+        const resultStatus = step?.outcome ?? this.purchaseResults[request.productId] ?? 'completed';
+        const result: PurchaseResult = {
             status: resultStatus,
             productId: request.productId,
             requestId: request.requestId,
-            transactionId: resultStatus === 'completed' ? `mock-${request.requestId}` : undefined,
-            reason: resultStatus === 'completed' ? undefined : `mock_purchase_${resultStatus}`,
+            transactionId: resultStatus === 'completed'
+                ? step?.transactionId ?? `mock-${request.requestId}`
+                : undefined,
+            reason: resultStatus === 'completed' ? undefined : step?.reason ?? `mock_purchase_${resultStatus}`,
         };
+
+        if (resultStatus === 'unavailable') {
+            return this.deliver(result, step?.duplicateCallback === true);
+        }
+
+        this.overlay?.begin('purchase_flow', request.requestId);
+        try {
+            if (step?.manual === true) {
+                await this.gate.hold(request.requestId);
+            }
+        } finally {
+            this.overlay?.end(request.requestId);
+        }
+
+        return this.deliver(result, step?.duplicateCallback === true);
+    }
+
+    private deliver(result: PurchaseResult, duplicateCallback = false): PurchaseResult {
+        this.deliveries.push(result);
+        if (duplicateCallback) {
+            this.deliveries.push({ ...result, duplicate: true });
+        }
+
+        return result;
     }
 
     public async restorePurchases(): Promise<PlatformOperationResult> {
+        this.calls.push({ service: 'purchases', method: 'restorePurchases' });
+
         if (this.serviceState.status !== 'ready') {
             return blockedResult(this.serviceState);
         }
@@ -290,4 +446,3 @@ export class MockEntitlementService implements EntitlementService {
         return { ok: true, status: 'ready' };
     }
 }
-

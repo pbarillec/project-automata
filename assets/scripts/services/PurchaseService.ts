@@ -28,7 +28,9 @@ export type PurchaseResultStatus =
     | 'cancelled'
     | 'pending'
     | 'failed'
-    | 'unavailable';
+    | 'unavailable'
+    | 'timeout'
+    | 'already_owned';
 
 export interface PurchaseRequest {
     productId: ProductId;
@@ -42,6 +44,8 @@ export interface PurchaseResult {
     transactionId?: string;
     reason?: string;
     message?: string;
+    /** True when this is a replay of an already-delivered result for the same requestId. */
+    duplicate?: boolean;
 }
 
 export interface PurchaseService {

@@ -1,4 +1,4 @@
-export type PlatformServiceKind = 'ads' | 'purchase' | 'entitlement';
+export type PlatformServiceKind = 'ads' | 'purchase' | 'entitlement' | 'analytics';
 
 export type PlatformServiceStatus =
     | 'uninitialized'
