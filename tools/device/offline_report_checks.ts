@@ -1,0 +1,72 @@
+/**
+ * AUT-051 objective checks of the Offline Factory Report device capture (pure, unit-tested; used by `reveal_capture.ts`).
+ * The capture records `offline_report` DEBUG events; a synthetic `capture_marker` (phase `relaunch`) separates the first launch from the
+ * force-stop + relaunch WITHOUT reseeding.
+ */
+import type { ParsedDeviceEvent } from '../../assets/scripts/presentation/DeviceDiagnostics.ts';
+import { toRect } from './ui_geometry.ts';
+
+export type OfflineReportExpectation = 'collect' | 'reload';
+
+export interface OfflineTimelineEvent { readonly tMs: number; readonly event: ParsedDeviceEvent }
+export interface OfflineCheck { readonly id: string; readonly ok: boolean; readonly detail: string }
+
+/** Synthetic timeline marker the capture inserts where it force-stops and relaunches (never emitted by the app). */
+export const OFFLINE_RELAUNCH_MARKER_EVT = 'capture_marker';
+
+/** Relative reward difference allowed between the first launch and the relaunch (the absence grows by the relaunch gap). */
+export const OFFLINE_RELOAD_REWARD_TOLERANCE = 0.01;
+
+const AD_WORDS = /rewarded|x2|×2|\bads?\b|double/i;
+
+export function evaluateOfflineReport(events: readonly OfflineTimelineEvent[], expect: OfflineReportExpectation): OfflineCheck[] {
+    const markerIndex = events.findIndex((e) => e.event.evt === OFFLINE_RELAUNCH_MARKER_EVT);
+    const before = markerIndex < 0 ? events : events.slice(0, markerIndex);
+    const after = markerIndex < 0 ? [] : events.slice(markerIndex + 1);
+    const phaseOf = (list: readonly OfflineTimelineEvent[], phase: string) => list.filter((e) => e.event.evt === 'offline_report' && e.event.phase === phase);
+    const checks: OfflineCheck[] = [];
+    const shown = phaseOf(before, 'shown')[0];
+    const cardRect = toRect(shown?.event.cardRect);
+    const collectRect = toRect(shown?.event.collectRect);
+    const reward = Number(shown?.event.reward ?? 0);
+    checks.push({
+        id: 'offline_card_shown_on_launch',
+        ok: shown !== undefined && reward > 0,
+        detail: shown ? `t=${shown.tMs}ms reward=${reward} effectiveSeconds=${String(shown.event.effectiveSeconds)} explainShown=${String(shown.event.explainShown)}` : 'no offline_report shown',
+    });
+    checks.push({ id: 'offline_card_and_collect_rects', ok: cardRect !== null && collectRect !== null && collectRect.w > 0 && collectRect.h > 0, detail: JSON.stringify({ cardRect, collectRect }) });
+    checks.push({ id: 'offline_no_ad_affordance', ok: shown === undefined || !AD_WORDS.test(JSON.stringify(shown.event.texts ?? {})), detail: JSON.stringify(shown?.event.texts ?? null) });
+
+    if (expect === 'reload') {
+        const second = phaseOf(after, 'shown')[0];
+        const next = Number(second?.event.reward ?? 0);
+        const close = reward > 0 && Math.abs(next - reward) / reward <= OFFLINE_RELOAD_REWARD_TOLERANCE;
+        checks.push({ id: 'offline_report_reloaded_after_kill', ok: second !== undefined && close, detail: second ? `reward before=${reward} after=${next}` : 'no shown after the relaunch' });
+        const taps = phaseOf(events, 'collect_tapped').length;
+        checks.push({ id: 'offline_no_collect_in_reload', ok: taps === 0, detail: `${taps} collect_tapped` });
+        return checks;
+    }
+
+    const tapped = phaseOf(before, 'collect_tapped')[0];
+    checks.push({ id: 'offline_collect_tapped', ok: tapped !== undefined, detail: tapped ? `t=${tapped.tMs}ms` : 'collect not tapped' });
+    const result = phaseOf(before, 'collect_result')[0];
+    checks.push({
+        id: 'offline_collect_saved',
+        ok: result?.event.status === 'collected_saved' && result.event.saveOk === true,
+        detail: result ? `status=${String(result.event.status)} saveOk=${String(result.event.saveOk)}` : 'no collect_result',
+    });
+    const hidden = phaseOf(before, 'hidden')[0];
+    checks.push({ id: 'offline_card_hidden_after_collect', ok: hidden !== undefined, detail: hidden ? `t=${hidden.tMs}ms scale=${String(hidden.event.scale)}` : 'no hidden' });
+    const tapTime = tapped?.tMs ?? Number.POSITIVE_INFINITY;
+    const fanfare = before.filter((e) => e.tMs >= tapTime && (
+        (e.event.evt === 'milestone_presentation' && e.event.phase === 'toast_started')
+        || (e.event.evt === 'camera_focus' && e.event.phase === 'started')
+        || (e.event.evt === 'era_transition' && e.event.phase === 'title_started')
+        || (e.event.evt === 'reboot_presentation' && e.event.phase === 'sequence_started')));
+    checks.push({ id: 'offline_collect_no_fanfare', ok: fanfare.length === 0, detail: `${fanfare.length} toast / camera focus / era / reboot events after the tap` });
+    const shownAfter = phaseOf(after, 'shown').length;
+    const skippedAfter = phaseOf(after, 'skipped').length;
+    checks.push({ id: 'offline_no_card_after_relaunch', ok: markerIndex >= 0 && shownAfter === 0 && skippedAfter >= 1, detail: `${shownAfter} shown, ${skippedAfter} skipped after the relaunch` });
+    checks.push({ id: 'offline_collect_persisted', ok: result?.event.saveOk === true && markerIndex >= 0 && shownAfter === 0, detail: 'saved collect and no card (no re-grant) after the relaunch' });
+    return checks;
+}

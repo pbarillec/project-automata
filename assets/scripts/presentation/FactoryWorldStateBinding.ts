@@ -3,11 +3,13 @@ import type { GameCommand } from '../domain/Commands.ts';
 import type { DomainEvent } from '../domain/Events.ts';
 import type {
     LifecycleActiveClockAdvanceResult,
+    LifecycleCollectResult,
     LifecycleCommandResult,
     LifecycleRebootResult,
     LifecycleResumeResult,
     LifecycleSuspendResult,
 } from '../lifecycle/LifecycleSessionCoordinator.ts';
+import type { OfflinePreviewResult } from '../offline/index.ts';
 import type { GameState } from '../state/GameState.ts';
 import { createAssemblyBatchViewModel, type AssemblyBatchViewModel } from './AssemblyBatchViewModel.ts';
 import { createHudViewModel, type HudViewModel } from './HudViewModel.ts';
@@ -22,6 +24,10 @@ export interface FactoryWorldSessionPort {
     resume(): LifecycleResumeResult;
     /** AUT-049: the confirmed Reboot transaction (critical save, then the durable `rebootCompleted` event). Optional so minimal ports still work. */
     rebootCivilizationConfirmed?(): Promise<LifecycleRebootResult>;
+    /** AUT-051: the collectible offline preview the session keeps pending (null when none). Optional so minimal ports still work. */
+    getPendingOfflinePreview?(): OfflinePreviewResult | null;
+    /** AUT-051: the explicit, idempotent offline collection (critical save with the collection cursor). */
+    collectPendingOffline?(): Promise<LifecycleCollectResult>;
 }
 
 /** World automation presentation (structurally `PresentationController`). */
@@ -69,6 +75,8 @@ export interface FactoryWorldStateBindingOptions {
     readonly observeDomainEvents?: (events: readonly DomainEvent[]) => void;
     /** Minimum active time between ordinary save requests from `tick` (the dirty policy still decides). */
     readonly saveRequestIntervalSeconds?: number;
+    /** AUT-051: called when a Reboot was blocked by a pending offline report (FactoryWorld re-surfaces the card and emits a DEBUG event). */
+    readonly onRebootBlockedByPendingOffline?: () => void;
 }
 
 export interface FactoryWorldSessionSummary {
@@ -109,6 +117,7 @@ export class FactoryWorldStateBinding {
     private readonly reportError: FactoryWorldErrorReporter;
     private readonly reportCommandResult: FactoryWorldCommandResultReporter | null;
     private readonly saveRequestIntervalSeconds: number;
+    private readonly onRebootBlockedByPendingOffline: (() => void) | null;
     private selectedProducerId: string | null = null;
     private secondsSinceSaveRequest = 0;
     private tickInFlight = false;
@@ -126,6 +135,7 @@ export class FactoryWorldStateBinding {
         this.reportError = options.reportError ?? (() => undefined);
         this.reportCommandResult = options.reportCommandResult ?? null;
         this.saveRequestIntervalSeconds = options.saveRequestIntervalSeconds ?? FACTORY_WORLD_SAVE_REQUEST_INTERVAL_SECONDS;
+        this.onRebootBlockedByPendingOffline = options.onRebootBlockedByPendingOffline ?? null;
     }
 
     /** Initial state sync: rebuilds the world from the loaded state without replaying payoff events. */
@@ -189,7 +199,11 @@ export class FactoryWorldStateBinding {
     private async submitReboot(command: GameCommand): Promise<LifecycleCommandResult | null> {
         const reboot = await this.session.rebootCivilizationConfirmed!();
         // A pending offline report blocks the Reboot: nothing executed, nothing to fan out.
-        if (reboot.status === 'pending_offline_preview') return null;
+        if (reboot.status === 'pending_offline_preview') {
+            const blocked = this.onRebootBlockedByPendingOffline;
+            if (blocked) this.guard('reboot_blocked', blocked);
+            return null;
+        }
         const result: LifecycleCommandResult = { execution: reboot.execution, save: reboot.save };
         // `reboot_saved` carries the durable `rebootCompleted` event; `reboot_persistence_failed` still fans out the state change but never that event.
         if (result.execution.ok) this.fanOut(result.execution.events);
@@ -249,6 +263,31 @@ export class FactoryWorldStateBinding {
         }
         catch (error) {
             this.report('resume', error);
+            return null;
+        }
+    }
+
+    /** AUT-051: the pending collectible offline preview (null when none, when the port has no offline support, or on error). */
+    getPendingOfflinePreview(): OfflinePreviewResult | null {
+        let preview: OfflinePreviewResult | null = null;
+        this.guard('pending_offline', () => { preview = typeof this.session.getPendingOfflinePreview === 'function' ? this.session.getPendingOfflinePreview() : null; });
+        return preview;
+    }
+
+    /**
+     * AUT-051: collects the pending offline report through the session (idempotent). A collection that applied (durable or not) refreshes
+     * the HUD / panel views from the fresh snapshot; it emits no domain event, so no milestone / fanfare / camera beat can start.
+     * Returns null when the port has no offline support or the call threw.
+     */
+    async collectOfflineReport(): Promise<LifecycleCollectResult | null> {
+        try {
+            if (typeof this.session.collectPendingOffline !== 'function') return null;
+            const result = await this.session.collectPendingOffline();
+            if (result.status !== 'collect_failed' && result.status !== 'no_pending_preview') this.guard('collect_refresh', () => this.refreshViews(this.session.getStateSnapshot()));
+            return result;
+        }
+        catch (error) {
+            this.report('collect_offline', error);
             return null;
         }
     }

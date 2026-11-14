@@ -57,6 +57,15 @@
     "producer_panel.action": "{label} {cost}",
     "producer_panel.action.unavailable": "{label} {cost} • Unavailable",
     "producer_panel.assembly_batch.ready": "Launch batch +{payout}",
-    "producer_panel.assembly_batch.running": "Batch {percent}% • {seconds}s"
+    "producer_panel.assembly_batch.running": "Batch {percent}% • {seconds}s",
+    "offline.title": "FACTORY REPORT",
+    "offline.time_away": "Away {duration}",
+    "offline.cap_reached": "Offline limit {duration} reached",
+    "offline.reward": "+{value} Industrial Output",
+    "offline.robots": "+{count} Robots Built",
+    "offline.explain.manual": "Automated producers kept working. Not automated: {names}.",
+    "offline.explain.more": "{names} and {count} more",
+    "offline.collect": "COLLECT",
+    "offline.collect_failed": "Couldn't collect. Tap to try again."
   }
 }

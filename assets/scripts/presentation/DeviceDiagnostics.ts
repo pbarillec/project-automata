@@ -59,6 +59,8 @@ export const DEVICE_EVENT_TYPES = [
     'debug_command',
     // AUT-049: Reboot presentation (post-commit 4 s sequence): { phase: 'synced' | 'sequence_started' | 'phase' | 'sequence_finished' | 'duplicate_ignored' | 'focus_requested' | 'focus_skipped' | 'toast_started' | 'title_applied' | 'toast_finished', ... }.
     'reboot_presentation',
+    // AUT-051: Offline Factory Report card: { phase: 'shown' | 'refreshed' | 'collect_tapped' | 'collect_result' | 'hidden' | 'skipped' | 'reboot_blocked', status, effectiveSeconds, rawSeconds, capApplied, reward, robotsDelta, notAutomatedProducerIds, explainShown, cardRect, collectRect, scale, saveOk }.
+    'offline_report',
     // AUT-047: temporary boost presentation: { phase: 'synced' | 'started' | 'ended' | 'suspended' | 'resumed' | 'stopped' | 'settled' | 'effect_applied', ... } (effect_applied: anchorResolved, timeScale, plate / spark scale + worldPos).
     'boost_presentation',
     'error',

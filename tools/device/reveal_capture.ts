@@ -22,12 +22,14 @@ import { seedAut046 } from './seed_aut046.ts';
 import { seedAut047 } from './seed_aut047.ts';
 import { seedAut048, seedAut048Era3Live } from './seed_aut048.ts';
 import { seedAut049 } from './seed_aut049.ts';
+import { seedAut051 } from './seed_aut051.ts';
+import { OFFLINE_RELAUNCH_MARKER_EVT, evaluateOfflineReport, type OfflineReportExpectation } from './offline_report_checks.ts';
 import { seedUi003 } from './seed_ui003.ts';
 import { parseHudActions } from './scenarios/ui001_core_loop.ts';
-import { parseUiLayout, rectCentre } from './ui_geometry.ts';
+import { parseUiLayout, rectCentre, toRect } from './ui_geometry.ts';
 
 /** robot-line-build (AUT-048 Era II): tap the Robot Line zone (projected position), then the producer panel x1 button: both existing player tap paths. */
-export type RevealTrigger = 'none' | 'next-goal' | 'overclock' | 'robot-line-build';
+export type RevealTrigger = 'none' | 'next-goal' | 'overclock' | 'robot-line-build' | 'offline-collect';
 
 export interface RevealCaptureOptions {
     readonly label: string;
@@ -44,6 +46,8 @@ export interface RevealCaptureOptions {
     readonly expectEraTitle?: string;
     /** AUT-049: 'sequence' = the 4 s Reboot sequence must start / finish; 'silent' = a load with the persistent socket and NO sequence. */
     readonly expectReboot?: RebootExpectation;
+    /** AUT-051: 'collect' = tap COLLECT on the card, then force-stop + relaunch WITHOUT reseeding (no card, reward persisted); 'reload' = force-stop BEFORE Collect and relaunch (the card shows again with the same reward). */
+    readonly expectOfflineReport?: OfflineReportExpectation;
     /** AUT-UI-003: command types whose accepted `command_result` (ok) must be observed. */
     readonly expectCommands?: readonly string[];
     readonly preMs?: number;
@@ -71,7 +75,7 @@ export interface RevealCaptureResult {
 
 export const DEFAULT_REVEAL_EVENT_TYPES: readonly string[] = Object.freeze([
     'scene_ready', 'session_state', 'ui_layout', 'command_result', 'construction_state', 'camera_focus', 'reveal_state',
-    'milestone_presentation', 'era_transition', 'reboot_presentation', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'error',
+    'milestone_presentation', 'era_transition', 'reboot_presentation', 'offline_report', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'error',
 ]);
 
 /** A named live-reveal scenario: the seed (unbuilt variant), the producer whose construction must be observed and whether a camera focus is expected. */
@@ -89,6 +93,7 @@ export interface RevealScenario {
     readonly expectCommands?: readonly string[];
     readonly expectEraTitle?: string;
     readonly expectReboot?: RebootExpectation;
+    readonly expectOfflineReport?: OfflineReportExpectation;
 }
 
 export const DEFAULT_REVEAL_SCENARIO_ID = 'aut043';
@@ -111,6 +116,10 @@ export const REVEAL_SCENARIOS: Readonly<Record<string, RevealScenario>> = Object
     aut049: { id: 'aut049', label: 'aut049-reboot', seed: (d, pkg, act) => seedAut049(d, pkg, act, 'reboot'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 18_000, intervalMs: 300, expectCommands: ['rebootCivilization'], expectReboot: 'sequence' },
     // AUT-049: a post-Reboot save (Civilization #2, AI Cores): silent load, persistent relay socket, no sequence.
     'aut049-post': { id: 'aut049-post', label: 'aut049-post-reboot-socket', seed: (d, pkg, act) => seedAut049(d, pkg, act, 'post'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 400, expectReboot: 'silent' },
+    // AUT-051: Offline Factory Report. aut051: seeded 3 h absence (Assembly manual -> educational line), screenshot with the card, tap COLLECT at the reported rect, screenshot after, force-stop + relaunch WITHOUT reseeding (no card, reward persisted).
+    aut051: { id: 'aut051', label: 'aut051-offline-report', seed: (d, pkg, act) => seedAut051(d, pkg, act, 'first'), expectConstruction: null, expectFocus: false, trigger: 'offline-collect', durationMs: 4_000, intervalMs: 500, expectOfflineReport: 'collect' },
+    // AUT-051: the report survives a kill: launch with the seed, force-stop BEFORE Collect, relaunch without reseeding: the card shows again with the same (equivalent) reward.
+    'aut051-reload': { id: 'aut051-reload', label: 'aut051-offline-reload', seed: (d, pkg, act) => seedAut051(d, pkg, act, 'reload'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 4_000, intervalMs: 500, expectOfflineReport: 'reload' },
     'aut048-era3': { id: 'aut048-era3', label: 'aut048-era3-silent-load', seed: (d, pkg, act) => seedAut048(d, pkg, act, 'era3'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 400, expectEraTitle: 'none' },
 });
 
@@ -120,7 +129,7 @@ export function resolveRevealScenario(id: unknown): RevealScenario | null {
 }
 
 /** Objective checks over a timeline (pure, unit-tested). `tMs` is relative to the trigger (negative = before). */
-export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation }): RevealCheck[] {
+export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation }): RevealCheck[] {
     const checks: RevealCheck[] = [];
     const errors = events.filter((e) => e.event.evt === 'error');
     checks.push({ id: 'no_error_events', ok: errors.length === 0, detail: `${errors.length} error events` });
@@ -151,6 +160,7 @@ export function evaluateRevealTimeline(events: readonly TimelineEvent[], options
     }
     if (options.expectEraTitle !== undefined) checks.push(...evaluateEraTransition(events, options.expectEraTitle));
     if (options.expectReboot !== undefined) checks.push(...evaluateRebootPresentation(events, options.expectReboot));
+    if (options.expectOfflineReport !== undefined) checks.push(...evaluateOfflineReport(events, options.expectOfflineReport));
     return checks;
 }
 
@@ -308,6 +318,41 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
             }
         }
     }
+    // AUT-051: the Offline Factory Report drive (tap COLLECT / force-stop + relaunch without reseeding). The card is already up (the baseline frame shows it).
+    if (layout && options.expectOfflineReport) {
+        const display = pngSize(await driver.screencap());
+        const reloadWait = async (): Promise<void> => {
+            await collect(Date.now());
+            events.push({ tMs: Date.now() - t0, event: { v: 1, seq: 0, evt: OFFLINE_RELAUNCH_MARKER_EVT, phase: 'relaunch' } });
+            await driver.forceStop(packageName);
+            const relaunchCursor = stream.cursor;
+            await driver.launch(packageName, activity);
+            await stream.waitFor((e) => e.evt === 'ui_layout', relaunchCursor, options.layoutTimeoutMs ?? 60_000);
+            await sleep(options.preMs ?? 2_000);
+            await frame('post');
+        };
+        if (options.expectOfflineReport === 'collect') {
+            const shown = stream.allEvents().filter((e) => e.evt === 'offline_report' && e.phase === 'shown').pop();
+            const latestLayout = stream.allEvents().filter((e) => e.evt === 'ui_layout' && toRect((e.rects as Record<string, unknown> | undefined)?.OfflineReportCollect) !== null).pop();
+            const rect = toRect((latestLayout?.rects as Record<string, unknown> | undefined)?.OfflineReportCollect) ?? toRect(shown?.collectRect);
+            if (display && rect) {
+                const point = cocosToAdb(rectCentre(rect), { w: layout.screen.w, h: layout.screen.h }, display);
+                const tapCursor = stream.cursor;
+                t0 = Date.now();
+                await driver.tap(Math.round(point.x), Math.round(point.y));
+                triggered = true;
+                tapDetail = `tapped OfflineReportCollect at ${Math.round(point.x)},${Math.round(point.y)}`;
+                await stream.waitFor((e) => e.evt === 'offline_report' && e.phase === 'collect_result', tapCursor, 8_000);
+                await sleep(700);
+                await frame('post');
+                await reloadWait();
+            } else {
+                tapDetail = 'OfflineReportCollect rect or display size missing';
+            }
+        } else {
+            await reloadWait();
+        }
+    }
     const end = Date.now() + (options.durationMs ?? 9_000);
     while (Date.now() < end) {
         await frame(triggered ? 'post' : 'pre');
@@ -316,7 +361,7 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
     collect(Date.now());
     await driver.stopLogcat();
 
-    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot });
+    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport });
     checks.unshift({ id: 'ui_layout_ready', ok: layout !== null, detail: layout ? 'ui_layout received' : 'no ui_layout (app did not reach the HUD)' });
     if (trigger !== 'none') checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
     writeFileSync(path.join(outDir, 'timeline.json'), `${JSON.stringify({ label: options.label, frames, events, checks }, null, 2)}\n`);

@@ -16,6 +16,7 @@ import type {
     LoadGameMainResult,
     LoadGameRecoveredBackupResult,
     PersistenceCoordinator,
+    PersistenceSaveRequest,
     PersistenceSaveResult,
 } from '../persistence/index.ts';
 import {
@@ -190,11 +191,17 @@ export class LifecycleSessionCoordinator {
     private pendingOfflinePreview: OfflinePreviewResult | null;
     private openAbsenceBoundaryUtcIso: UtcTimestampIsoString | null = null;
     private lastClosedAbsenceUtcIso: UtcTimestampIsoString | null = null;
+    /**
+     * AUT-051 (D1): the absence-start cursor (the `savedAtUtc` the pending preview was measured from). While a preview is pending,
+     * every non-collect save keeps this value instead of stamping "now", so the uncollected reward survives a kill / relaunch.
+     */
+    private pendingAbsenceStartUtcIso: UtcTimestampIsoString | null;
 
     private constructor(
         options: LifecycleSessionCoordinatorOptions,
         state: GameState,
         pendingOfflinePreview: OfflinePreviewResult | null,
+        pendingAbsenceStartUtcIso: UtcTimestampIsoString | null = null,
     ) {
         this.configRepository = options.configRepository;
         this.persistence = options.persistence;
@@ -203,6 +210,7 @@ export class LifecycleSessionCoordinator {
         this.offlineConfig = options.offlineConfig;
         this.runtime = this.createRuntime(state);
         this.pendingOfflinePreview = pendingOfflinePreview;
+        this.pendingAbsenceStartUtcIso = pendingOfflinePreview === null ? null : pendingAbsenceStartUtcIso;
     }
 
     static async startup(options: LifecycleSessionCoordinatorOptions): Promise<LifecycleStartupResult> {
@@ -222,7 +230,13 @@ export class LifecycleSessionCoordinator {
                 currentUtcIso: options.timeService.nowUtcIso(),
                 config: options.offlineConfig,
             });
-        const session = new LifecycleSessionCoordinator(options, load.state, toPendingOfflinePreview(offlinePreview));
+        const pendingOfflinePreview = toPendingOfflinePreview(offlinePreview);
+        const session = new LifecycleSessionCoordinator(
+            options,
+            load.state,
+            pendingOfflinePreview,
+            pendingOfflinePreview === null ? null : load.envelope.savedAtUtc,
+        );
 
         return Object.freeze({
             ok: true as const,
@@ -251,7 +265,7 @@ export class LifecycleSessionCoordinator {
         if (execution.ok) {
             this.persistence.markDirty();
             if (options.requestOrdinarySave === true) {
-                save = await this.persistence.requestSave(this.runtime.getStateSnapshot(), {
+                save = await this.requestSave({
                     intent: 'ordinary',
                     reason: 'runtime_command',
                 });
@@ -267,7 +281,7 @@ export class LifecycleSessionCoordinator {
         if (runtime.execution.ok && runtime.execution.events.length > 0) {
             this.persistence.markDirty();
             if (options.requestOrdinarySave === true) {
-                save = await this.persistence.requestSave(this.runtime.getStateSnapshot(), {
+                save = await this.requestSave({
                     intent: 'ordinary',
                     reason: 'dirty_tick',
                 });
@@ -296,7 +310,7 @@ export class LifecycleSessionCoordinator {
         }
 
         this.persistence.markDirty();
-        const save = await this.persistence.requestSave(this.runtime.getStateSnapshot(), {
+        const save = await this.requestSave({
             intent: 'critical',
             reason: 'reboot',
         });
@@ -327,7 +341,7 @@ export class LifecycleSessionCoordinator {
         }
 
         this.persistence.markDirty();
-        const save = await this.persistence.requestSave(this.runtime.getStateSnapshot(), {
+        const save = await this.requestSave({
             intent: 'critical',
             reason: 'permanent_upgrade_purchase',
         });
@@ -350,7 +364,7 @@ export class LifecycleSessionCoordinator {
     async suspend(): Promise<LifecycleSuspendResult> {
         const boundary = this.lifecycleTime.recordSuspend();
         this.openAbsenceBoundaryUtcIso = boundary.persistedUtcTimestamp;
-        const save = await this.persistence.requestSave(this.runtime.getStateSnapshot(), {
+        const save = await this.requestSave({
             intent: 'critical',
             reason: 'suspend',
             savedAtUtcIso: boundary.persistedUtcTimestamp,
@@ -382,13 +396,15 @@ export class LifecycleSessionCoordinator {
             });
         }
 
+        const absenceStartUtcIso = this.openAbsenceBoundaryUtcIso;
         const offlinePreview = createOfflineProgressPreviewFromUtc(this.configRepository, this.runtime.getStateSnapshot(), {
-            persistedAtUtcIso: this.openAbsenceBoundaryUtcIso,
+            persistedAtUtcIso: absenceStartUtcIso,
             currentUtcIso: boundary.resumedAtUtc.iso,
             config: this.offlineConfig,
         });
         this.openAbsenceBoundaryUtcIso = null;
         this.pendingOfflinePreview = toPendingOfflinePreview(offlinePreview);
+        this.pendingAbsenceStartUtcIso = this.pendingOfflinePreview === null ? null : absenceStartUtcIso;
 
         return Object.freeze({
             status: 'preview_created' as const,
@@ -415,9 +431,10 @@ export class LifecycleSessionCoordinator {
 
         this.replaceRuntimeState(collect.state);
         this.pendingOfflinePreview = null;
+        this.pendingAbsenceStartUtcIso = null;
         this.lastClosedAbsenceUtcIso = collect.criticalSaveRequest.collectedThroughUtcIso;
 
-        const save = await this.persistence.requestSave(this.runtime.getStateSnapshot(), {
+        const save = await this.requestSave({
             intent: 'critical',
             reason: 'offline_collect',
             savedAtUtcIso: collect.criticalSaveRequest.collectedThroughUtcIso,
@@ -438,6 +455,20 @@ export class LifecycleSessionCoordinator {
             collect,
             save,
         });
+    }
+
+    /**
+     * AUT-051 (D1): every save goes through here. While an offline preview is pending, anything except the collect save keeps the
+     * absence-start cursor as `savedAtUtc`; the collect save (and saves with no pending preview) behave exactly as before.
+     */
+    private requestSave(request: PersistenceSaveRequest): Promise<PersistenceSaveResult> {
+        const preserve = this.pendingOfflinePreview !== null
+            && this.pendingAbsenceStartUtcIso !== null
+            && request.reason !== 'offline_collect';
+        return this.persistence.requestSave(
+            this.runtime.getStateSnapshot(),
+            preserve ? { ...request, savedAtUtcIso: this.pendingAbsenceStartUtcIso! } : request,
+        );
     }
 
     getLastClosedAbsenceUtcIso(): UtcTimestampIsoString | null {

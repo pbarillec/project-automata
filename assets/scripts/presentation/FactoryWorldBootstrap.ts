@@ -46,6 +46,7 @@ import { EraEnvironmentVisualController } from './EraEnvironmentVisualController
 import { MilestonePresentationController } from './MilestonePresentationController';
 import { BoostPresentationController } from './BoostPresentationController';
 import { RebootPresentationController } from './RebootPresentationController';
+import { OfflineReportController, type OfflineReportShowReason } from './OfflineReportController';
 import { REBOOT_CORE_EULER_DEG, REBOOT_SOCKET, socketRingBars } from './RebootPresentation.ts';
 import { milestoneToastTopOffset } from './MilestoneToastLayout.ts';
 import { MILESTONE_ACCENT_RGB, producerZoneName } from './MilestoneFeedback.ts';
@@ -111,7 +112,7 @@ export class FactoryWorldBootstrap extends Component {
     /** AUT-INT-001: the persistent session binding; null until the save has loaded (inputs stay inert). */
     private binding: FactoryWorldStateBinding | null = null;
     private pendingBinding: { binding: FactoryWorldStateBinding; status: string; displayNames: DisplayNameSource } | null = null;
-    private sessionWiring: { hud: CoreHudController; panel: ProducerPanelController; batch: AssemblyBatchActionController; selection: ProducerSelectionController; presentation: PresentationController | null } | null = null;
+    private sessionWiring: { hud: CoreHudController; panel: ProducerPanelController; batch: AssemblyBatchActionController; selection: ProducerSelectionController; presentation: PresentationController | null; offlineReport: OfflineReportController } | null = null;
     private saveRootPath = '';
     private lifecycleHooksRegistered = false;
     /** AUT-R-036: frames left before the DEBUG `ui_layout` diagnostic (0 = none scheduled). */
@@ -158,13 +159,14 @@ export class FactoryWorldBootstrap extends Component {
         this.createMilestonePresentation(site);
         this.createBoostPresentation(site);
         this.createRebootPresentation(site);
+        const offlineReport = this.createOfflineReport();
         selection.onSelectionChanged = (producerId) => {
             panel.replaceSelection(producerId);
             this.binding?.onSelectionChanged(producerId);
         };
         this.reportUiLayoutAfterSelection(selection);
         const presentation = site.getChildByName('PresentationAnchors')?.getComponent(PresentationController) ?? null;
-        this.sessionWiring = { hud, panel, batch, selection, presentation };
+        this.sessionWiring = { hud, panel, batch, selection, presentation, offlineReport };
         this.startPersistentSession(presentation);
     }
 
@@ -229,6 +231,8 @@ export class FactoryWorldBootstrap extends Component {
                 // AUT-GP-001: the Assembly batch Button follows the same snapshots and selection as the panel.
                 assemblyBatch: this.sessionWiring?.batch ?? null,
                 observeDomainEvents: isDeviceDiagnosticsEnabled() ? (events) => this.emitAssemblyBatchEvents(events) : undefined,
+                // AUT-051: a Reboot blocked by the pending offline report re-surfaces the card.
+                onRebootBlockedByPendingOffline: () => { this.sessionWiring?.offlineReport.reportRebootBlocked(); this.showOfflineReport('reboot_blocked'); },
             });
             this.pendingBinding = { binding, status: result.startup.status, displayNames: result.configRepository };
         }).catch((error: unknown) => {
@@ -248,6 +252,9 @@ export class FactoryWorldBootstrap extends Component {
         wiring.hud.commandEmitter = (command) => { void binding.submit(command); };
         wiring.panel.commandEmitter = (command) => { void binding.submit(command); };
         wiring.batch.commandEmitter = (command) => { void binding.submit(command); };
+        // AUT-051: the Offline Factory Report card collects through the session (binding), never through a GameCommand.
+        wiring.offlineReport.collectEmitter = () => binding.collectOfflineReport();
+        wiring.offlineReport.setNameSource(displayNames);
         if (wiring.presentation?.milestonePresentation) wiring.presentation.milestonePresentation.setNameSource(displayNames);
         if (!this.lifecycleHooksRegistered) {
             game.on(Game.EVENT_HIDE, this.onGameHide, this);
@@ -255,6 +262,7 @@ export class FactoryWorldBootstrap extends Component {
             this.lifecycleHooksRegistered = true;
         }
         this.emitSessionState('ready', status, null, binding.describe().autoFeederOwned);
+        this.showOfflineReport('startup');
         this.runDebugCommandFile(binding);
         // DEBUG-only (emitDeviceEvent is a no-op unless enabled from DEBUG): the restored automation state.
         const payoff = wiring.presentation?.firstAutomationPresentation?.getSnapshot() ?? null;
@@ -302,6 +310,15 @@ export class FactoryWorldBootstrap extends Component {
         const resumedState = binding.getStateSnapshot();
         if (resumedState) this.sessionWiring?.presentation?.boostPresentation?.resume(resumedState);
         this.emitSessionState('resumed', result?.status ?? 'resume_error', null, binding.describe().autoFeederOwned);
+        this.showOfflineReport('resumed');
+    }
+
+    /** AUT-051: shows / refreshes the Offline Factory Report card from the session's pending preview (a non-collectible preview shows nothing). */
+    private showOfflineReport(reason: OfflineReportShowReason): void {
+        const binding = this.binding;
+        const offlineReport = this.sessionWiring?.offlineReport;
+        if (!binding || !offlineReport) return;
+        offlineReport.show(binding.getPendingOfflinePreview(), reason);
     }
 
     /** DEBUG-only `session_state` diagnostic (no-op unless diagnostics were enabled from DEBUG). */
@@ -953,6 +970,43 @@ export class FactoryWorldBootstrap extends Component {
         return node.getComponent(AssemblyBatchActionController) ?? node.addComponent(AssemblyBatchActionController);
     }
 
+    /**
+     * AUT-051 Offline Factory Report: a full-screen root as the LAST child of the Canvas (above the HUD, the panel and the toast band), holding the
+     * full-screen dim backdrop and a safe-area container the controller builds the card in. Hidden by scale (0) until a collectible report exists.
+     */
+    private createOfflineReport(): OfflineReportController {
+        const canvas = this.node.getChildByName('CoreHudCanvas');
+        if (!canvas) throw new Error('createUiRoot() must run before the offline report is built.');
+        const stretched = (parent: Node, name: string): Node => {
+            const node = parent.getChildByName(name) ?? new Node(name);
+            node.parent = parent;
+            node.layer = Layers.Enum.UI_2D;
+            node.getComponent(UITransform) ?? node.addComponent(UITransform);
+            this.stretchWidget(node.getComponent(Widget) ?? node.addComponent(Widget));
+            return node;
+        };
+        const root = stretched(canvas, 'OfflineReport');
+        const backdrop = stretched(root, 'OfflineBackdrop');
+        const safe = stretched(root, 'OfflineSafeArea');
+        safe.getComponent(SafeArea) ?? safe.addComponent(SafeArea);
+        const controller = root.getComponent(OfflineReportController) ?? root.addComponent(OfflineReportController);
+        controller.backdropNode = backdrop;
+        controller.safeNode = safe;
+        controller.screenRectOf = (node) => this.uiScreenRect(node);
+        controller.onLayoutChanged = (reason) => this.scheduleUiLayoutDiagnostics(reason);
+        return controller;
+    }
+
+    /** DEBUG: screen rectangle (bottom-left frame) of a UI node through the UI camera. */
+    private uiScreenRect(node: Node): UiRect | null {
+        const uiCamera = this.node.getChildByName('CoreHudCanvas')?.getChildByName('UICamera')?.getComponent(Camera) ?? null;
+        const box = node.getComponent(UITransform)?.getBoundingBoxToWorld();
+        if (!uiCamera || !box) return null;
+        const a = uiCamera.worldToScreen(new Vec3(box.xMin, box.yMin, 0), new Vec3());
+        const b = uiCamera.worldToScreen(new Vec3(box.xMax, box.yMax, 0), new Vec3());
+        return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
+    }
+
     private uiSafeArea(): Node {
         const container = this.node.getChildByName('CoreHudCanvas')?.getChildByName('UiSafeArea');
         if (!container) throw new Error('createUiRoot() must run before the HUD and the panel are built.');
@@ -1038,6 +1092,10 @@ export class FactoryWorldBootstrap extends Component {
         // AUT-GP-001: the batch Button rect only while it is shown (null when hidden).
         const batchNode = panel?.getChildByName(ASSEMBLY_BATCH_ACTION_KEY) ?? null;
         rects[ASSEMBLY_BATCH_ACTION_KEY] = batchNode?.active ? rectOf(batchNode) : null;
+        // AUT-051: the Offline Factory Report card and its COLLECT Button, only while the card is shown (null otherwise).
+        const offlineNodes = this.sessionWiring?.offlineReport.getRectNodes() ?? null;
+        rects.OfflineReportCard = offlineNodes?.card ? rectOf(offlineNodes.card) : null;
+        rects.OfflineReportCollect = offlineNodes?.collect ? rectOf(offlineNodes.collect) : null;
         const rowsOf = (card: Node | null, spec: UiCardSpec) => Object.fromEntries(spec.rows.map((row) => [row.key, rectOf(card?.getChildByName(row.key))]));
         const rows = { CoreHUD: rowsOf(hud, CORE_HUD_LAYOUT), ProducerPanel: rowsOf(panel, PRODUCER_PANEL_LAYOUT) };
         // AUT-UI-001: effective (post-SHRINK) font size of every non-empty label in design units; null while empty.

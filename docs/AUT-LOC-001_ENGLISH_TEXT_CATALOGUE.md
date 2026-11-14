@@ -184,3 +184,7 @@ Sample outputs:
 
 On-device legibility of the strings is not checked here: the HUD and panel are not yet
 visible on the landscape build (AUT-R-036). Wording approval rests with the Game Designer.
+
+## AUT-051 additions
+
+AUT-051 added 9 `offline.*` keys for the Offline Factory Report card (`offline.title`, `offline.time_away`, `offline.cap_reached`, `offline.reward`, `offline.robots`, `offline.explain.manual`, `offline.explain.more`, `offline.collect`, `offline.collect_failed`), composed by the pure `presentation/OfflineReportText.ts`. `localization/en.json` now holds 64 entries (the 51-entry table above predates the Assembly batch, Overclock and AUT-051 keys). The placeholder and no-dead-key tests in `tests/presentation_text.test.ts` cover them.

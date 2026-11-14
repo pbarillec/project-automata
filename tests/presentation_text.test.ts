@@ -234,6 +234,13 @@ test('template params match exactly what PresentationText supplies', async () =>
         'producer_panel.action.unavailable': ['label', 'cost'],
         'producer_panel.assembly_batch.ready': ['payout'],
         'producer_panel.assembly_batch.running': ['percent', 'seconds'],
+        // AUT-051 Offline Factory Report.
+        'offline.time_away': ['duration'],
+        'offline.cap_reached': ['duration'],
+        'offline.reward': ['value'],
+        'offline.robots': ['count'],
+        'offline.explain.manual': ['names'],
+        'offline.explain.more': ['names', 'count'],
     };
     for (const key of base.keys()) {
         assert.deepEqual(extractPlaceholders(base.template(key)).sort(), (expected[key] ?? []).slice().sort(), key);
@@ -271,6 +278,14 @@ test('every catalogue entry is reachable from the composition paths (no dead key
     text.formatPanelTexts({ selectedProducerId: 'fabricator', displayNameKey: 'producer.fabricator.name', level: 1, productionPerSecondFormatted: '0', milestone: { state: 'next', nextThreshold: 10, levelsRemaining: 9, benefit: null }, actions: null }, catalogue);
     // AUT-GP-001 Assembly batch captions.
     for (const state of ['ready', 'running', 'hidden']) text.formatAssemblyBatchText({ state, progress: 0.4, remainingSeconds: 9, payoutFormatted: '90' }, catalogue);
+    // AUT-051 Offline Factory Report: every offline.* key (cap, robots, educational with and without overflow, retry line).
+    const offline = await imp('assets/scripts/presentation/OfflineReportText.ts');
+    const offlineVm = await imp('assets/scripts/presentation/OfflineReportViewModel.ts');
+    const producerIds = repository.listProducers().map((item) => item.id);
+    for (const ids of [[], producerIds.slice(0, 2), producerIds.slice(0, 4)]) {
+        offline.formatOfflineReportTexts({ ...offlineVm.HIDDEN_OFFLINE_REPORT_VIEW_MODEL, visible: true, effectiveSeconds: 12_000, capApplied: true, capSeconds: 28_800, reward: 1_200_000, robotsDelta: 3, showRobotsRow: true, notAutomatedProducerIds: ids, explainShown: true }, repository, catalogue);
+    }
+    offline.formatOfflineCollectFailed(catalogue);
     assert.deepEqual(base.keys().filter((key) => !used.has(key)), []);
 });
 
