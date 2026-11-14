@@ -18,6 +18,7 @@ import { createFreshGameState, type GameState } from '../../assets/scripts/state
 import { loadGameConfigFromSources } from '../../assets/scripts/config/ConfigLoader.ts';
 import { getEmbeddedEconomyConfigSources } from '../../assets/scripts/config/EmbeddedEconomyConfig.ts';
 import { DEBUG_COMMAND_FILE } from '../../assets/scripts/presentation/DebugCommandFile.ts';
+import { DEBUG_ADS_FILE } from '../../assets/scripts/presentation/DebugAdsScriptFile.ts';
 import type { SessionDeviceDriver } from './driver.ts';
 import { SAVE_FILE_NAMES } from './scenarios/int001_session_persistence.ts';
 
@@ -61,7 +62,7 @@ export async function seedAut051(driver: SessionDeviceDriver, packageName: strin
     await driver.forceStop(packageName);
     const filesDir = `${await driver.appDataDirectory(packageName)}/files/`;
     // Stale saves (main / backup / temp) and any debug command from a previous capture must never leak into the seeded run.
-    await driver.removeAppFiles(packageName, [...SAVE_FILE_NAMES, DEBUG_COMMAND_FILE].map((name) => `${filesDir}${name}`));
+    await driver.removeAppFiles(packageName, [...SAVE_FILE_NAMES, DEBUG_COMMAND_FILE, DEBUG_ADS_FILE].map((name) => `${filesDir}${name}`));
     await driver.writeAppFile(packageName, `${filesDir}save_main.json`, buildAut051SeededSave(variant, now().getTime()));
     await driver.launch(packageName, activity);
     return filesDir;

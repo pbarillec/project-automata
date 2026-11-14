@@ -8,6 +8,7 @@
  * Requires the FactoryWorld DEBUG APK (run-as).
  */
 import { DEBUG_COMMAND_FILE } from '../../assets/scripts/presentation/DebugCommandFile.ts';
+import { DEBUG_ADS_FILE } from '../../assets/scripts/presentation/DebugAdsScriptFile.ts';
 import { SETTINGS_FILE, SETTINGS_TEMP_FILE } from '../../assets/scripts/settings/SettingsStore.ts';
 import type { SessionDeviceDriver } from './driver.ts';
 import { buildAut050SeededSave } from './seed_aut050.ts';
@@ -22,7 +23,7 @@ export function buildAut052SeededSave(nowMs: number): string {
 export async function seedAut052(driver: SessionDeviceDriver, packageName: string, activity: string, now: () => Date = () => new Date()): Promise<string> {
     await driver.forceStop(packageName);
     const filesDir = `${await driver.appDataDirectory(packageName)}/files/`;
-    await driver.removeAppFiles(packageName, [...SAVE_FILE_NAMES, DEBUG_COMMAND_FILE, SETTINGS_FILE, SETTINGS_TEMP_FILE].map((name) => `${filesDir}${name}`));
+    await driver.removeAppFiles(packageName, [...SAVE_FILE_NAMES, DEBUG_COMMAND_FILE, DEBUG_ADS_FILE, SETTINGS_FILE, SETTINGS_TEMP_FILE].map((name) => `${filesDir}${name}`));
     await driver.writeAppFile(packageName, `${filesDir}save_main.json`, buildAut052SeededSave(now().getTime()));
     await driver.launch(packageName, activity);
     return filesDir;

@@ -1,4 +1,5 @@
 import type { LifecycleCollectResult } from '../lifecycle/LifecycleSessionCoordinator.ts';
+import type { OfflineDoubleFlowResult } from './OfflineDoubleFlow.ts';
 import type { OfflinePreviewResult } from '../offline/index.ts';
 
 /**
@@ -99,6 +100,31 @@ export type OfflineCollectOutcome =
     | 'keep_retry'
     /** The session had no pending preview (already collected / stale card): close the card. */
     | 'close_stale';
+
+/** What the card does with the Offline Double (rewarded x2) flow result (AUT-055). */
+export type OfflineDoubleCardOutcome =
+    /** The doubled reward was granted (durable or not): close the card. */
+    | 'close'
+    /** No bonus was granted (ad closed / failed / unavailable / not verified / ineligible): keep the card and COLLECT, show the calm note. */
+    | 'keep_not_granted'
+    /** The session had no pending preview any more (collected meanwhile): close like close_stale. */
+    | 'close_stale'
+    /** Unexpected error: keep the card, show the retry line (keep_retry). */
+    | 'keep_retry';
+
+export function resolveOfflineDoubleOutcome(result: OfflineDoubleFlowResult | null): OfflineDoubleCardOutcome {
+    switch (result) {
+        case 'granted':
+            return 'close';
+        case 'not_granted':
+            return 'keep_not_granted';
+        case 'stale':
+            return 'close_stale';
+        case 'error':
+        default:
+            return 'keep_retry';
+    }
+}
 
 export function resolveOfflineCollectOutcome(result: LifecycleCollectResult | null): OfflineCollectOutcome {
     if (result === null) return 'keep_retry';

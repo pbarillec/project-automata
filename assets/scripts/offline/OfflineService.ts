@@ -119,6 +119,15 @@ export interface OfflineCriticalSaveRequest {
     readonly collectedThroughUtcIso: UtcTimestampIsoString;
     readonly industrialOutputReward: number;
     readonly robotsBuiltDelta: number;
+    /** AUT-055: present only when a bonus multiplier (> 1) was applied by this collect. */
+    readonly rewardMultiplier?: number;
+    /** AUT-055: industrial output granted by this collect after withheld settlements and the multiplier; present only with a bonus multiplier. */
+    readonly grantedIndustrialOutput?: number;
+}
+
+export interface OfflineCollectOptions {
+    /** Finite and >= 1. Default 1 (the free reward). Multiplies the applied IO reward only. */
+    readonly rewardMultiplier?: number;
 }
 
 export interface OfflineCollectSuccessResult {
@@ -249,7 +258,9 @@ export function collectOfflineProgress(
     repository: GameConfigRepository,
     state: GameState,
     input: OfflineProgressClockInput | OfflineProgressUtcInput | { readonly preview: OfflinePreviewResult },
+    options: OfflineCollectOptions = {},
 ): OfflineCollectResult {
+    const rewardMultiplier = options.rewardMultiplier ?? 1;
     const preview = 'preview' in input
         ? input.preview
         : 'timeService' in input
@@ -272,9 +283,19 @@ export function collectOfflineProgress(
         };
     }
 
+    if (typeof rewardMultiplier !== 'number' || !Number.isFinite(rewardMultiplier) || rewardMultiplier < 1) {
+        const reason = 'Offline reward multiplier must be a finite number >= 1.';
+        return {
+            status: 'invalid_config',
+            preview: { ...preview, status: 'invalid_config', reason },
+            reason,
+        };
+    }
+
     const draft = cloneGameState(state);
+    let grantedIndustrialOutput = 0;
     try {
-        applyOfflineReward(draft, preview);
+        grantedIndustrialOutput = applyOfflineReward(draft, preview, rewardMultiplier);
         assertValidGameState(draft);
     }
     catch (error) {
@@ -290,6 +311,7 @@ export function collectOfflineProgress(
         collectedThroughUtcIso: preview.currentUtcIso,
         industrialOutputReward: preview.totalIndustrialOutputReward,
         robotsBuiltDelta: preview.robotsBuiltDelta,
+        ...(rewardMultiplier === 1 ? {} : { rewardMultiplier, grantedIndustrialOutput }),
     });
 
     if (preview.status === 'no_reward') {
@@ -406,8 +428,17 @@ function calculateOfflineRobotsBuiltDelta(
     return calculateRobotsBuiltFromRobotLineElapsedSeconds(robotLineLevel, effectiveOfflineSeconds * efficiency);
 }
 
-function applyOfflineReward(draft: GameState, preview: OfflinePreviewReadyResult | OfflineNoRewardPreviewResult): void {
-    const industrialOutputReward = clampNegativeZero(preview.totalIndustrialOutputReward - applyAssistedBatchSettlements(draft, preview));
+/**
+ * Applies the reward and returns the industrial output granted. `multiplier` (AUT-055) scales only the
+ * applied IO reward, after the withheld assisted-batch subtraction; robots and assisted timers are never multiplied.
+ */
+function applyOfflineReward(
+    draft: GameState,
+    preview: OfflinePreviewReadyResult | OfflineNoRewardPreviewResult,
+    multiplier: number,
+): number {
+    const normalReward = clampNegativeZero(preview.totalIndustrialOutputReward - applyAssistedBatchSettlements(draft, preview));
+    const industrialOutputReward = multiplier === 1 ? normalReward : normalReward * multiplier;
     if (industrialOutputReward > 0) {
         draft.run.industrialOutput = addFinite(
             draft.run.industrialOutput,
@@ -433,6 +464,8 @@ function applyOfflineReward(draft: GameState, preview: OfflinePreviewReadyResult
         draft.lifetime.robotsBuilt = addFinite(draft.lifetime.robotsBuilt, preview.robotsBuiltDelta, 'lifetime.robotsBuilt');
         resolveCrossedRobotsBuiltThresholds(previousRobotsBuilt, draft.run.robotsBuilt);
     }
+
+    return industrialOutputReward > 0 ? industrialOutputReward : 0;
 }
 
 /**

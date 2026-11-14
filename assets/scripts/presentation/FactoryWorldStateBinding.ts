@@ -3,12 +3,15 @@ import type { GameCommand } from '../domain/Commands.ts';
 import type { DomainEvent } from '../domain/Events.ts';
 import type {
     LifecycleActiveClockAdvanceResult,
+    LifecycleBonusCollectResult,
     LifecycleCollectResult,
     LifecycleCommandResult,
+    LifecycleOfflineDoubleOffer,
     LifecyclePermanentUpgradePurchaseResult,
     LifecycleRebootResult,
     LifecycleResumeResult,
     LifecycleSuspendResult,
+    OfflineDoubleAdProof,
 } from '../lifecycle/LifecycleSessionCoordinator.ts';
 import type { OfflinePreviewResult } from '../offline/index.ts';
 import type { GameState } from '../state/GameState.ts';
@@ -31,6 +34,10 @@ export interface FactoryWorldSessionPort {
     getPendingOfflinePreview?(): OfflinePreviewResult | null;
     /** AUT-051: the explicit, idempotent offline collection (critical save with the collection cursor). */
     collectPendingOffline?(): Promise<LifecycleCollectResult>;
+    /** AUT-055: the Offline Double (rewarded x2) offer for the pending preview (null without one). Optional so minimal ports still work. */
+    getOfflineDoubleOffer?(): LifecycleOfflineDoubleOffer | null;
+    /** AUT-055: the atomic, exactly-once x2 collection from a verified rewarded-ad proof. Optional so minimal ports still work. */
+    collectPendingOfflineWithRewardedBonus?(proof: OfflineDoubleAdProof): Promise<LifecycleBonusCollectResult>;
     /** AUT-050: the permanent-upgrade purchase transaction (in-memory commit, then a critical save). Optional so minimal ports still work. */
     purchasePermanentUpgrade?(upgradeId: string): Promise<LifecyclePermanentUpgradePurchaseResult>;
 }
@@ -323,6 +330,31 @@ export class FactoryWorldStateBinding {
         }
         catch (error) {
             this.report('collect_offline', error);
+            return null;
+        }
+    }
+
+    /** AUT-055: the Offline Double offer (null when none, when the port has no support, or on error). */
+    getOfflineDoubleOffer(): LifecycleOfflineDoubleOffer | null {
+        let offer: LifecycleOfflineDoubleOffer | null = null;
+        this.guard('offline_double_offer', () => { offer = typeof this.session.getOfflineDoubleOffer === 'function' ? this.session.getOfflineDoubleOffer() : null; });
+        return offer;
+    }
+
+    /**
+     * AUT-055: collects the pending offline report with the verified rewarded x2 bonus (same guard / refresh / report pattern as
+     * `collectOfflineReport`). A collection that applied (granted or not durably saved) refreshes the HUD / panel views; a bonus_not_granted
+     * changes nothing. Returns null when the port has no support or the call threw.
+     */
+    async collectOfflineReportWithBonus(proof: OfflineDoubleAdProof): Promise<LifecycleBonusCollectResult | null> {
+        try {
+            if (typeof this.session.collectPendingOfflineWithRewardedBonus !== 'function') return null;
+            const result = await this.session.collectPendingOfflineWithRewardedBonus(proof);
+            if (result.status !== 'collect_failed' && result.status !== 'no_pending_preview' && result.status !== 'bonus_not_granted') this.guard('collect_bonus_refresh', () => this.refreshViews(this.session.getStateSnapshot()));
+            return result;
+        }
+        catch (error) {
+            this.report('collect_offline_bonus', error);
             return null;
         }
     }

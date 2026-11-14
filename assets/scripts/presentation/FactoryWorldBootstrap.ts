@@ -67,6 +67,11 @@ import { FirstRobotPresentationController, ROBOT_BAY_LAMP_OFF_NODE_NAME, ROBOT_B
 import { ASSEMBLY_FOUNDATION_SLAB, assemblyLocal, FIRST_ROBOT_REVEAL_TARGET, ROBOT_BAY_LAMP } from './AssemblySliceLayout.ts';
 import { CocosFileSystemPort } from '../app/CocosFileSystemPort';
 import { DEBUG_COMMAND_FILE, parseDebugCommandFile } from './DebugCommandFile.ts';
+import { DEBUG_ADS_FILE, parseDebugAdsScriptFile, type DebugAdsScript } from './DebugAdsScriptFile.ts';
+import { createBuildAdsService } from './BuildPlatformServices.ts';
+import { OfflineDoubleFlow } from './OfflineDoubleFlow.ts';
+import { OFFLINE_DOUBLE_CLAIM_KEY } from '../monetization/RewardedEligibility.ts';
+import type { AdsService } from '../services/AdsService';
 import { bootstrapGameSession } from '../lifecycle/GameSessionBootstrap.ts';
 import { FileSaveStorage } from '../persistence/FileSaveStorage.ts';
 import { DefaultTimeService } from '../time/DefaultTimeService.ts';
@@ -123,6 +128,8 @@ export class FactoryWorldBootstrap extends Component {
     /** AUT-INT-001: the persistent session binding; null until the save has loaded (inputs stay inert). */
     private binding: FactoryWorldStateBinding | null = null;
     private pendingBinding: { binding: FactoryWorldStateBinding; status: string; displayNames: DisplayNameSource } | null = null;
+    /** AUT-055: the build-selected rewarded-ad provider (mock in DEBUG, no-op otherwise). */
+    private offlineAds: AdsService | null = null;
     private sessionWiring: { hud: CoreHudController; panel: ProducerPanelController; batch: AssemblyBatchActionController; selection: ProducerSelectionController; presentation: PresentationController | null; offlineReport: OfflineReportController; permanentUpgrades: PermanentUpgradeController; settings: SettingsController; reboot: RebootController } | null = null;
     /** AUT-RBT-001: set by the binding's pending-offline callback and consumed by the Reboot modal to tell "blocked" from "exception" (both return null). */
     private rebootBlockedByPendingOffline = false;
@@ -238,6 +245,8 @@ export class FactoryWorldBootstrap extends Component {
             consumeDomainEvents: (snapshot, events) => presentation.consumeDomainEvents(snapshot, events),
         } : null;
         const cameraController = this.cameraController();
+        // AUT-055: the rewarded-ad provider is chosen at build time: a mock only in DEBUG builds, otherwise the no-op (x2 hidden). The DEBUG script is read once.
+        this.offlineAds = createBuildAdsService(DEBUG === true, this.readDebugAdsScript());
         bootstrapGameSession({ storage, timeService: new DefaultTimeService() }).then((result) => {
             if (!result.startup.ok) {
                 this.emitSessionState('load_failed', result.startup.status, null, false);
@@ -276,6 +285,26 @@ export class FactoryWorldBootstrap extends Component {
         });
     }
 
+    /**
+     * DEBUG / capture-only (AUT-055): reads `debug_ads.json` ONCE, deletes it and returns the allow-listed rewarded-ad script for the mock provider.
+     * Guarded by `DEBUG === true` AND enabled device diagnostics, so release builds never read it.
+     */
+    private readDebugAdsScript(): DebugAdsScript | undefined {
+        if (DEBUG !== true || !isDeviceDiagnosticsEnabled()) return undefined;
+        try {
+            const port = new CocosFileSystemPort();
+            const text = port.readText(DEBUG_ADS_FILE);
+            if (text === undefined) return undefined;
+            port.remove(DEBUG_ADS_FILE);
+            const script = parseDebugAdsScriptFile(text);
+            emitDeviceEvent('offline_double', { phase: 'script', accepted: script !== null, steps: script?.offlineDouble ?? [], duplicateCallback: script?.duplicateCallback ?? false });
+            return script ?? undefined;
+        } catch (error) {
+            this.reportSessionError('debug_ads', error);
+            return undefined;
+        }
+    }
+
     private activateSessionBinding(binding: FactoryWorldStateBinding, status: string, displayNames: DisplayNameSource): void {
         const wiring = this.sessionWiring;
         if (!wiring) return;
@@ -295,6 +324,20 @@ export class FactoryWorldBootstrap extends Component {
         // AUT-051: the Offline Factory Report card collects through the session (binding), never through a GameCommand.
         wiring.offlineReport.collectEmitter = () => binding.collectOfflineReport();
         wiring.offlineReport.setNameSource(displayNames);
+        // AUT-055: the rewarded x2 flow (ad result -> session proof -> atomic collect, all through the binding).
+        const offlineAds = this.offlineAds;
+        if (offlineAds) {
+            wiring.offlineReport.doubleFlow = new OfflineDoubleFlow({
+                ads: offlineAds,
+                session: {
+                    getOfflineDoubleOffer: () => binding.getOfflineDoubleOffer(),
+                    collectPendingOfflineWithRewardedBonus: (proof) => binding.collectOfflineReportWithBonus(proof),
+                },
+                now: () => Date.now(),
+                onChange: () => wiring.offlineReport.onDoubleChanged(),
+                onDiagnostic: (phase, payload) => emitDeviceEvent('offline_double', { phase, ...payload }),
+            });
+        }
         if (wiring.presentation?.milestonePresentation) wiring.presentation.milestonePresentation.setNameSource(displayNames);
         if (!this.lifecycleHooksRegistered) {
             game.on(Game.EVENT_HIDE, this.onGameHide, this);
@@ -302,6 +345,11 @@ export class FactoryWorldBootstrap extends Component {
             this.lifecycleHooksRegistered = true;
         }
         this.emitSessionState('ready', status, null, binding.describe().autoFeederOwned);
+        // AUT-055 DEBUG: the persisted Offline Double claim history at session ready (proves a granted claim survived a relaunch).
+        if (isDeviceDiagnosticsEnabled()) {
+            const claim = binding.getStateSnapshot()?.monetization.rewardedClaims[OFFLINE_DOUBLE_CLAIM_KEY];
+            emitDeviceEvent('offline_double', { phase: 'claims', claimCount: claim?.claimCount ?? 0, claimsInWindow: claim?.recentClaimUtcMs.length ?? 0 });
+        }
         this.showOfflineReport('startup');
         this.runDebugCommandFile(binding);
         // DEBUG-only (emitDeviceEvent is a no-op unless enabled from DEBUG): the restored automation state.
@@ -1275,6 +1323,8 @@ export class FactoryWorldBootstrap extends Component {
         const offlineNodes = this.sessionWiring?.offlineReport.getRectNodes() ?? null;
         rects.OfflineReportCard = offlineNodes?.card ? rectOf(offlineNodes.card) : null;
         rects.OfflineReportCollect = offlineNodes?.collect ? rectOf(offlineNodes.collect) : null;
+        // AUT-055: the COLLECT x2 action, only while offered (null otherwise).
+        rects.OfflineReportDouble = offlineNodes?.double ? rectOf(offlineNodes.double) : null;
         // AUT-050: the AI Upgrades chip, panel, tabs, CLOSE and buy buttons, only while shown / open (null otherwise).
         const upgradeNodes = this.sessionWiring?.permanentUpgrades.getRectNodes() ?? null;
         rects.PermanentUpgradeChip = upgradeNodes?.chip ? rectOf(upgradeNodes.chip) : null;

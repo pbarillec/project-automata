@@ -457,7 +457,7 @@ test('AUT-048 device tooling: npm script, cli usage, scenarios, capture checks (
     const cli = read('tools/device/cli.ts');
     assert.match(cli, /command === 'seed-aut048'/);
     assert.match(cli, /seed-aut048 \[--variant era2\|era3\]/);
-    assert.match(cli, /aut048\|aut048-era3\|aut048-era3-live\|aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\|rbt001\]/);
+    assert.match(cli, /aut048\|aut048-era3\|aut048-era3-live\|aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\|rbt001\|aut055-success\|aut055-closed\|aut055-failed\|aut055-ineligible\]/);
     assert.match(cli, /robot-line-build/);
     assert.match(cli, /expectEraTitle: scenario\.expectEraTitle/);
     const two = REVEAL_SCENARIOS.aut048;
@@ -547,7 +547,7 @@ test('AUT-048 live Era III capture: seed writes save + debug command (stale one 
         launch: async () => { calls.push('launch'); },
     };
     await seedAut048Era3Live(driver as never, 'pkg', 'act');
-    assert.deepEqual(calls, ['forceStop', 'remove:save_main.json,save_backup.json,save_temp.json,debug_command.json', 'write:save_main.json', 'write:debug_command.json', 'launch'], 'command file is written before the launch, after the save');
+    assert.deepEqual(calls, ['forceStop', 'remove:save_main.json,save_backup.json,save_temp.json,debug_command.json,debug_ads.json', 'write:save_main.json', 'write:debug_command.json', 'launch'], 'command file is written before the launch, after the save');
     assert.equal(written['debug_command.json'], buildAut048LiveCommandFile());
     const plain: string[] = [];
     await seedAut048({ ...driver, removeAppFiles: async (_pkg: string, paths: string[]) => { plain.push(...paths.map((p) => p.split('/').pop()!)); } } as never, 'pkg', 'act', 'era3');

@@ -11,6 +11,7 @@ export {
 export type {
     OfflineAssistedBatchSettlement,
     OfflineCollectFailureResult,
+    OfflineCollectOptions,
     OfflineCollectInvalidResult,
     OfflineCollectNoRewardResult,
     OfflineCollectResult,

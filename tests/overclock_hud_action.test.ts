@@ -210,7 +210,7 @@ test('AUT-UI-003 device tooling: ui003 scenario, overclock trigger, seed command
     const cli = read('tools/device/cli.ts');
     assert.match(cli, /command === 'seed-ui003'/);
     assert.match(cli, /seed-ui003 \[--serial <id>\]/);
-    assert.match(cli, /aut046\|aut047\|ui003\|aut048\|aut048-era3\|aut048-era3-live\|aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\|rbt001\]/);
+    assert.match(cli, /aut046\|aut047\|ui003\|aut048\|aut048-era3\|aut048-era3-live\|aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\|rbt001\|aut055-success\|aut055-closed\|aut055-failed\|aut055-ineligible\]/);
     assert.match(cli, /--trigger next-goal\|overclock\|robot-line-build\|none/);
     assert.match(cli, /expectCommands: scenario\.expectCommands/);
     const capture = read('tools/device/reveal_capture.ts');

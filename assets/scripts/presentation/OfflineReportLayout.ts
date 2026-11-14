@@ -30,8 +30,22 @@ export const OFFLINE_REPORT_COLLECT_HEIGHT = 64;
 export const OFFLINE_REPORT_COLLECT_FONT_SIZE = 30;
 export const OFFLINE_REPORT_MIN_COLLECT_HEIGHT = 64;
 export const OFFLINE_REPORT_MIN_COLLECT_FONT_SIZE = 28;
-/** The card stays at or under this share of the screen height (design units). */
-export const OFFLINE_REPORT_MAX_HEIGHT_RATIO = 0.3;
+/**
+ * AUT-055: the optional COLLECT x2 (rewarded ad) action below COLLECT: secondary, outlined cyan, at least 64 design units tall
+ * (76 with its small "Rewarded Ad" tag line). The card grows by gap + height (88) when it is shown.
+ */
+export const OFFLINE_REPORT_DOUBLE_HEIGHT = 76;
+export const OFFLINE_REPORT_DOUBLE_GAP = 12;
+export const OFFLINE_REPORT_MIN_DOUBLE_HEIGHT = 64;
+export const OFFLINE_REPORT_DOUBLE_FONT_SIZE = 30;
+export const OFFLINE_REPORT_DOUBLE_TAG_FONT_SIZE = 22;
+/** Thickness of the cyan outline (two fillRects: cyan outer, pill-dark inner; never stroke()). */
+export const OFFLINE_REPORT_DOUBLE_OUTLINE = 3;
+/**
+ * The card stays at or under this share of the screen height (design units). AUT-055: raised from 0.30 (the worst-case card with the
+ * x2 action is 438 design units = 0.342 of the 1280-unit design height; 0.35 is the smallest round value that holds on every screen).
+ */
+export const OFFLINE_REPORT_MAX_HEIGHT_RATIO = 0.35;
 export const OFFLINE_REPORT_ACCENT_HEIGHT = 3;
 export const OFFLINE_REPORT_BACKDROP_ALPHA = 150;
 
@@ -63,6 +77,8 @@ export interface OfflineReportRowFlags {
     readonly robots: boolean;
     /** The note slot (educational line, or the retry line after a failed collect). */
     readonly note: boolean;
+    /** AUT-055: the COLLECT x2 (rewarded ad) action below COLLECT; omitted (card shrinks) when absent. */
+    readonly x2?: boolean;
 }
 
 export interface OfflineReportLocalRect {
@@ -85,6 +101,8 @@ export interface OfflineReportCardLayout {
     readonly height: number;
     readonly rows: readonly OfflineReportRowLayout[];
     readonly collect: OfflineReportLocalRect & { readonly fontSize: number };
+    /** AUT-055: the COLLECT x2 action rect (below COLLECT), or null when hidden. */
+    readonly double: (OfflineReportLocalRect & { readonly fontSize: number; readonly tagFontSize: number }) | null;
     /** Thin amber accent bar along the top edge of the card. */
     readonly accent: OfflineReportLocalRect;
 }
@@ -100,7 +118,9 @@ function isRowShown(key: OfflineReportRowKey, flags: OfflineReportRowFlags): boo
 export function resolveOfflineReportCardLayout(flags: OfflineReportRowFlags): OfflineReportCardLayout {
     const shown = OFFLINE_REPORT_ROWS.filter((row) => isRowShown(row.key, flags));
     const contentHeight = shown.reduce((sum, row) => sum + row.gapBefore + row.height, 0);
-    const height = OFFLINE_REPORT_PADDING_Y * 2 + contentHeight + OFFLINE_REPORT_COLLECT_GAP + OFFLINE_REPORT_COLLECT_HEIGHT;
+    const doubleShown = flags.x2 === true;
+    const doubleExtra = doubleShown ? OFFLINE_REPORT_DOUBLE_GAP + OFFLINE_REPORT_DOUBLE_HEIGHT : 0;
+    const height = OFFLINE_REPORT_PADDING_Y * 2 + contentHeight + OFFLINE_REPORT_COLLECT_GAP + OFFLINE_REPORT_COLLECT_HEIGHT + doubleExtra;
     const rowWidth = OFFLINE_REPORT_CARD_WIDTH - OFFLINE_REPORT_PADDING_X * 2;
     let top = height / 2 - OFFLINE_REPORT_PADDING_Y;
     const rows: OfflineReportRowLayout[] = [];
@@ -111,13 +131,23 @@ export function resolveOfflineReportCardLayout(flags: OfflineReportRowFlags): Of
     }
     const collect = Object.freeze({
         x: 0,
-        y: -height / 2 + OFFLINE_REPORT_PADDING_Y + OFFLINE_REPORT_COLLECT_HEIGHT / 2,
+        y: -height / 2 + OFFLINE_REPORT_PADDING_Y + doubleExtra + OFFLINE_REPORT_COLLECT_HEIGHT / 2,
         w: rowWidth,
         h: OFFLINE_REPORT_COLLECT_HEIGHT,
         fontSize: OFFLINE_REPORT_COLLECT_FONT_SIZE,
     });
+    const double = doubleShown
+        ? Object.freeze({
+            x: 0,
+            y: -height / 2 + OFFLINE_REPORT_PADDING_Y + OFFLINE_REPORT_DOUBLE_HEIGHT / 2,
+            w: rowWidth,
+            h: OFFLINE_REPORT_DOUBLE_HEIGHT,
+            fontSize: OFFLINE_REPORT_DOUBLE_FONT_SIZE,
+            tagFontSize: OFFLINE_REPORT_DOUBLE_TAG_FONT_SIZE,
+        })
+        : null;
     const accent = Object.freeze({ x: 0, y: height / 2 - OFFLINE_REPORT_ACCENT_HEIGHT / 2, w: OFFLINE_REPORT_CARD_WIDTH, h: OFFLINE_REPORT_ACCENT_HEIGHT });
-    return Object.freeze({ width: OFFLINE_REPORT_CARD_WIDTH, height, rows: Object.freeze(rows), collect, accent });
+    return Object.freeze({ width: OFFLINE_REPORT_CARD_WIDTH, height, rows: Object.freeze(rows), collect, double, accent });
 }
 
 /**
@@ -134,6 +164,8 @@ export interface OfflineReportScreenRects {
     readonly backdrop: UiRect;
     readonly card: UiRect;
     readonly collect: UiRect;
+    /** AUT-055: the COLLECT x2 rect, or null when the action is hidden. */
+    readonly double: UiRect | null;
     readonly rows: Readonly<Record<string, UiRect>>;
     readonly factoryBand: UiRect;
 }
@@ -142,7 +174,7 @@ export interface OfflineReportScreenRects {
 export function computeOfflineReportRects(
     screenPx: { w: number; h: number },
     safeAreaPx: UiRect = { x: 0, y: 0, w: screenPx.w, h: screenPx.h },
-    flags: OfflineReportRowFlags = { capReached: true, robots: true, note: true },
+    flags: OfflineReportRowFlags = { capReached: true, robots: true, note: true, x2: false },
 ): OfflineReportScreenRects {
     if (!(screenPx.w > 0 && screenPx.h > 0)) throw new RangeError('screen size must be positive');
     const layout = resolveOfflineReportCardLayout(flags);
@@ -163,6 +195,7 @@ export function computeOfflineReportRects(
         backdrop: { x: 0, y: 0, w: screenPx.w, h: screenPx.h },
         card: toScreen({ x: 0, y: 0, w: layout.width, h: layout.height }),
         collect: toScreen(layout.collect),
+        double: layout.double === null ? null : toScreen(layout.double),
         rows,
         factoryBand: ui.factoryBand,
     };

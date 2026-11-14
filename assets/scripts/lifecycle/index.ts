@@ -14,12 +14,15 @@ export type {
 
 export type {
     LifecycleActiveClockAdvanceResult,
+    LifecycleBonusCollectResult,
+    LifecycleBonusNotGrantedResult,
     LifecycleCollectDurabilityFailureResult,
     LifecycleCollectDurableResult,
     LifecycleCollectInvalidResult,
     LifecycleCollectNoPendingResult,
     LifecycleCollectResult,
     LifecycleCommandResult,
+    LifecycleOfflineDoubleOffer,
     LifecyclePermanentUpgradeDurabilityFailureResult,
     LifecyclePermanentUpgradeDurableResult,
     LifecyclePermanentUpgradePurchaseResult,
@@ -39,4 +42,6 @@ export type {
     LifecycleStartupStatus,
     LifecycleStartupSuccessResult,
     LifecycleSuspendResult,
+    OfflineDoubleAdProof,
+    OfflineDoubleNotGrantedReason,
 } from './LifecycleSessionCoordinator.ts';

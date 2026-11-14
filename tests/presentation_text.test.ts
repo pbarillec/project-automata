@@ -241,6 +241,7 @@ test('template params match exactly what PresentationText supplies', async () =>
         'offline.robots': ['count'],
         'offline.explain.manual': ['names'],
         'offline.explain.more': ['names', 'count'],
+        'offline.double.button': ['value'],
         // AUT-050 AI Upgrades.
         'upgrades.chip': ['count'],
         'upgrades.balance': ['count'],
@@ -314,6 +315,9 @@ test('every catalogue entry is reachable from the composition paths (no dead key
     }
     offline.formatOfflineReportTexts({ ...offlineVm.HIDDEN_OFFLINE_REPORT_VIEW_MODEL, visible: true, effectiveSeconds: 12_000, reward: 5, robotsDelta: 1, showRobotsRow: true }, repository, catalogue);
     offline.formatOfflineCollectFailed(catalogue);
+    // AUT-055 Offline Double: the x2 label (with the projected total), its tag, and the calm "no bonus" note.
+    offline.formatOfflineDoubleTexts(2_400_000, catalogue);
+    offline.formatOfflineDoubleNotGranted(catalogue);
     // AUT-050 AI Upgrades: a fresh post-Reboot meta (locked rows resolve "Needs ..."), then a maxed row ("MAX").
     const upgrades = await imp('assets/scripts/presentation/PermanentUpgradePanelViewModel.ts');
     for (const ranks of [{}, { optimized_fabrication: 3 }]) {

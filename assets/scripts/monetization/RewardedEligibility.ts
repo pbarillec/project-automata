@@ -34,6 +34,15 @@ export const OFFLINE_DOUBLE_RULES: RewardedEligibilityRules = Object.freeze({
     maxClaimsPerRolling24h: 3,
 });
 
+/** AUT-055: MONETIZATION section 4 multiplier applied to the offline reward by a verified rewarded ad. */
+export const OFFLINE_DOUBLE_MULTIPLIER = 2.0;
+
+/**
+ * AUT-055: the stored `monetization.rewardedClaims` key and the ad placement id for Offline Double.
+ * (The short id 'offline_double' is used only by evaluateOfflineDoubleEligibility.)
+ */
+export const OFFLINE_DOUBLE_CLAIM_KEY = 'rewarded.offline_double';
+
 export const EXTENDED_OVERCLOCK_RULES: RewardedEligibilityRules = Object.freeze({
     maxClaimsPerRolling24h: 3,
     minimumIntervalMinutes: 60,

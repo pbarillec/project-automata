@@ -25,6 +25,8 @@ import { seedAut049 } from './seed_aut049.ts';
 import { seedAut050 } from './seed_aut050.ts';
 import { seedAut051 } from './seed_aut051.ts';
 import { seedAut052 } from './seed_aut052.ts';
+import { seedAut055 } from './seed_aut055.ts';
+import { OFFLINE_DOUBLE_RELAUNCH_MARKER_EVT, evaluateOfflineDouble, type OfflineDoubleExpectation } from './offline_double_checks.ts';
 import { seedRbt001 } from './seed_rbt001.ts';
 import { REBOOT_UI_RELAUNCH_MARKER_EVT, evaluateRebootUi, type RebootUiExpectation } from './reboot_ui_checks.ts';
 import { SETTINGS_RELAUNCH_MARKER_EVT, evaluateSettings, type SettingsExpectation } from './settings_checks.ts';
@@ -54,6 +56,8 @@ export interface RevealCaptureOptions {
     readonly expectReboot?: RebootExpectation;
     /** AUT-051: 'collect' = tap COLLECT on the card, then force-stop + relaunch WITHOUT reseeding (no card, reward persisted); 'reload' = force-stop BEFORE Collect and relaunch (the card shows again with the same reward). */
     readonly expectOfflineReport?: OfflineReportExpectation;
+    /** AUT-055: 'success' = REAL tap on COLLECT x2 (mock ad rewarded): exactly 2x, claim persisted across a relaunch; 'closed' / 'failed' = no bonus, the card stays, the free COLLECT pays the normal reward; 'ineligible' = no x2 action, only COLLECT. */
+    readonly expectOfflineDouble?: OfflineDoubleExpectation;
     /** AUT-050: 'purchase' = tap the AI chip, open the panel, buy an affordable row with a real tap, switch tab, force-stop + relaunch WITHOUT reseeding (balance / rank persisted). */
     readonly expectPermanentUpgrades?: PermanentUpgradeExpectation;
     /** AUT-052: 'toggle_persist' = tap the Settings chip, open the panel, toggle Music OFF with a real tap, close, force-stop + relaunch WITHOUT reseeding (the file survives), toggle it back ON, close. */
@@ -87,7 +91,7 @@ export interface RevealCaptureResult {
 
 export const DEFAULT_REVEAL_EVENT_TYPES: readonly string[] = Object.freeze([
     'scene_ready', 'session_state', 'ui_layout', 'command_result', 'construction_state', 'camera_focus', 'reveal_state',
-    'milestone_presentation', 'era_transition', 'reboot_presentation', 'offline_report', 'permanent_upgrades', 'reboot_ui', 'settings', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'error',
+    'milestone_presentation', 'era_transition', 'reboot_presentation', 'offline_report', 'offline_double', 'permanent_upgrades', 'reboot_ui', 'settings', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'error',
 ]);
 
 /** A named live-reveal scenario: the seed (unbuilt variant), the producer whose construction must be observed and whether a camera focus is expected. */
@@ -106,6 +110,7 @@ export interface RevealScenario {
     readonly expectEraTitle?: string;
     readonly expectReboot?: RebootExpectation;
     readonly expectOfflineReport?: OfflineReportExpectation;
+    readonly expectOfflineDouble?: OfflineDoubleExpectation;
     readonly expectPermanentUpgrades?: PermanentUpgradeExpectation;
     readonly expectSettings?: SettingsExpectation;
     readonly expectRebootUi?: RebootUiExpectation;
@@ -143,6 +148,11 @@ export const REVEAL_SCENARIOS: Readonly<Record<string, RevealScenario>> = Object
     'aut051-reload': { id: 'aut051-reload', label: 'aut051-offline-reload', seed: (d, pkg, act) => seedAut051(d, pkg, act, 'reload'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 4_000, intervalMs: 500, expectOfflineReport: 'reload' },
     // AUT-RBT-001: Reboot entry + confirmation UI. Seed: Civilization #1, reward 5 AI Cores, progress ~45%, no debug command. REAL taps: chip -> modal -> CANCEL -> chip -> REBOOT -> frames through the 4 s sequence -> force-stop + relaunch WITHOUT reseeding.
     rbt001: { id: 'rbt001', label: 'rbt001-reboot-ui', seed: (d, pkg, act) => seedRbt001(d, pkg, act), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectRebootUi: 'confirm_flow' },
+    // AUT-055: Offline Double (rewarded x2, MOCK ad). The seed writes the DEBUG-only debug_ads.json (read once) with the scripted ad outcome. trigger 'none': the drive uses REAL taps at the rects `ui_layout` reports.
+    'aut055-success': { id: 'aut055-success', label: 'aut055-double-success', seed: (d, pkg, act) => seedAut055(d, pkg, act, 'ready', 'rewarded'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectOfflineDouble: 'success' },
+    'aut055-closed': { id: 'aut055-closed', label: 'aut055-double-closed', seed: (d, pkg, act) => seedAut055(d, pkg, act, 'ready', 'closed'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectOfflineDouble: 'closed' },
+    'aut055-failed': { id: 'aut055-failed', label: 'aut055-double-failed', seed: (d, pkg, act) => seedAut055(d, pkg, act, 'ready', 'failed'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectOfflineDouble: 'failed' },
+    'aut055-ineligible': { id: 'aut055-ineligible', label: 'aut055-double-ineligible', seed: (d, pkg, act) => seedAut055(d, pkg, act, 'short_ineligible'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectOfflineDouble: 'ineligible' },
     'aut048-era3': { id: 'aut048-era3', label: 'aut048-era3-silent-load', seed: (d, pkg, act) => seedAut048(d, pkg, act, 'era3'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 400, expectEraTitle: 'none' },
 });
 
@@ -152,7 +162,7 @@ export function resolveRevealScenario(id: unknown): RevealScenario | null {
 }
 
 /** Objective checks over a timeline (pure, unit-tested). `tMs` is relative to the trigger (negative = before). */
-export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation; expectSettings?: SettingsExpectation; expectRebootUi?: RebootUiExpectation }): RevealCheck[] {
+export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectOfflineDouble?: OfflineDoubleExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation; expectSettings?: SettingsExpectation; expectRebootUi?: RebootUiExpectation }): RevealCheck[] {
     const checks: RevealCheck[] = [];
     const errors = events.filter((e) => e.event.evt === 'error');
     checks.push({ id: 'no_error_events', ok: errors.length === 0, detail: `${errors.length} error events` });
@@ -184,6 +194,7 @@ export function evaluateRevealTimeline(events: readonly TimelineEvent[], options
     if (options.expectEraTitle !== undefined) checks.push(...evaluateEraTransition(events, options.expectEraTitle));
     if (options.expectReboot !== undefined) checks.push(...evaluateRebootPresentation(events, options.expectReboot));
     if (options.expectOfflineReport !== undefined) checks.push(...evaluateOfflineReport(events, options.expectOfflineReport));
+    if (options.expectOfflineDouble !== undefined) checks.push(...evaluateOfflineDouble(events, options.expectOfflineDouble));
     if (options.expectPermanentUpgrades !== undefined) checks.push(...evaluatePermanentUpgrades(events, options.expectPermanentUpgrades));
     if (options.expectSettings !== undefined) checks.push(...evaluateSettings(events, options.expectSettings));
     if (options.expectRebootUi !== undefined) checks.push(...evaluateRebootUi(events, options.expectRebootUi));
@@ -378,6 +389,80 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
         } else if (options.expectOfflineReport === 'reload') {
             await reloadWait();
         }
+    }
+    // AUT-055: the Offline Double drive: REAL taps at the rects `ui_layout` reports (COLLECT x2, then the free COLLECT when no bonus was granted).
+    if (layout && options.expectOfflineDouble) {
+        const display = pngSize(await driver.screencap());
+        const screenSize = { w: layout.screen.w, h: layout.screen.h };
+        const rectIn = (event: Record<string, unknown> | undefined, name: string) => toRect((event?.rects as Record<string, unknown> | undefined)?.[name]);
+        const latestRect = (name: string) => rectIn(stream.allEvents().filter((e) => e.evt === 'ui_layout' && rectIn(e, name) !== null).pop(), name);
+        const waitRect = async (name: string, waitMs = 8_000) => {
+            const until = Date.now() + waitMs;
+            while (latestRect(name) === null && Date.now() < until) await sleep(200);
+            return latestRect(name);
+        };
+        const tapAt = async (rect: { x: number; y: number; w: number; h: number } | null): Promise<string | null> => {
+            if (!display || !rect) return null;
+            const point = cocosToAdb(rectCentre(rect), screenSize, display);
+            await driver.tap(Math.round(point.x), Math.round(point.y));
+            return `${Math.round(point.x)},${Math.round(point.y)}`;
+        };
+        const relaunch = async (): Promise<void> => {
+            collect(Date.now());
+            events.push({ tMs: Date.now() - t0, event: { v: 1, seq: 0, evt: OFFLINE_DOUBLE_RELAUNCH_MARKER_EVT, phase: 'relaunch' } });
+            await driver.forceStop(packageName);
+            const relaunchCursor = stream.cursor;
+            await driver.launch(packageName, activity);
+            await stream.waitFor((e) => e.evt === 'ui_layout', relaunchCursor, options.layoutTimeoutMs ?? 60_000);
+            await sleep(options.preMs ?? 2_000);
+            await frame('post');
+        };
+        const tapFreeCollect = async (freshAfterCursor: number | null): Promise<string | null> => {
+            // After a not-granted result the card re-lays out: wait for the fresh layout before reading the COLLECT rect.
+            if (freshAfterCursor !== null) await stream.waitFor((e) => e.evt === 'ui_layout' && e.reason === 'offline_double_result', freshAfterCursor, 5_000);
+            await sleep(300);
+            const rect = await waitRect('OfflineReportCollect');
+            const collectCursor = stream.cursor;
+            const at = await tapAt(rect);
+            if (at) await stream.waitFor((e) => e.evt === 'offline_report' && e.phase === 'collect_result', collectCursor, 8_000);
+            return at;
+        };
+        const details: string[] = [];
+        if (options.expectOfflineDouble === 'ineligible') {
+            await waitRect('OfflineReportCollect');
+            await sleep(700);
+            await frame('post');
+            t0 = Date.now();
+            const at = await tapFreeCollect(null);
+            if (at) { triggered = true; details.push(`tapped OfflineReportCollect at ${at} (no x2 action)`); await sleep(700); await frame('post'); }
+            else details.push('OfflineReportCollect rect or display size missing');
+        } else {
+            const doubleRect = await waitRect('OfflineReportDouble');
+            await sleep(700);
+            await frame('post');
+            const tapCursor = stream.cursor;
+            t0 = Date.now();
+            const at = await tapAt(doubleRect);
+            if (at) {
+                triggered = true;
+                details.push(`tapped OfflineReportDouble at ${at}`);
+                await stream.waitFor((e) => e.evt === 'offline_double' && (e.phase === 'granted' || e.phase === 'not_granted'), tapCursor, 10_000);
+                await sleep(700);
+                await frame('post');
+                if (options.expectOfflineDouble === 'success') {
+                    await relaunch();
+                } else {
+                    const collectAt = await tapFreeCollect(tapCursor);
+                    details.push(collectAt ? `then tapped the free OfflineReportCollect at ${collectAt}` : 'free COLLECT rect missing');
+                    await sleep(700);
+                    await frame('post');
+                    await relaunch();
+                }
+            } else {
+                details.push('OfflineReportDouble rect or display size missing');
+            }
+        }
+        tapDetail = details.join('; ');
     }
     // AUT-050: the AI Upgrades drive: real taps at the rects `ui_layout` reports (chip, buy, tab), then force-stop + relaunch without reseeding.
     if (layout && options.expectPermanentUpgrades) {
@@ -582,9 +667,9 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
     collect(Date.now());
     await driver.stopLogcat();
 
-    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport, expectPermanentUpgrades: options.expectPermanentUpgrades, expectSettings: options.expectSettings, expectRebootUi: options.expectRebootUi });
+    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport, expectOfflineDouble: options.expectOfflineDouble, expectPermanentUpgrades: options.expectPermanentUpgrades, expectSettings: options.expectSettings, expectRebootUi: options.expectRebootUi });
     checks.unshift({ id: 'ui_layout_ready', ok: layout !== null, detail: layout ? 'ui_layout received' : 'no ui_layout (app did not reach the HUD)' });
-    if (options.expectPermanentUpgrades || options.expectSettings || options.expectRebootUi) checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
+    if (options.expectPermanentUpgrades || options.expectSettings || options.expectRebootUi || options.expectOfflineDouble) checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
     if (trigger !== 'none') checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
     writeFileSync(path.join(outDir, 'timeline.json'), `${JSON.stringify({ label: options.label, frames, events, checks }, null, 2)}\n`);
     writeFileSync(path.join(outDir, 'summary.md'), renderRevealSummary(options.label, frames, events, checks));

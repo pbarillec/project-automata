@@ -558,7 +558,7 @@ test('AUT-049 diagnostics, scenarios and capture checks', async () => {
     const cli = read('tools/device/cli.ts');
     assert.match(cli, /command === 'seed-aut049'/);
     assert.match(cli, /seed-aut049 \[--variant reboot\|post\]/);
-    assert.match(cli, /aut048-era3-live\|aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\|rbt001\]/);
+    assert.match(cli, /aut048-era3-live\|aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\|rbt001\|aut055-success\|aut055-closed\|aut055-failed\|aut055-ineligible\]/);
     assert.match(cli, /expectReboot: scenario\.expectReboot/);
     assert.match(read('package.json'), /"device:seed-aut049": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools\/device\/cli\.ts seed-aut049"/);
     const live = REVEAL_SCENARIOS.aut049;
@@ -577,11 +577,11 @@ test('AUT-049 diagnostics, scenarios and capture checks', async () => {
         launch: async () => { calls.push('launch'); },
     };
     await seedAut049(driver as never, 'pkg', 'act', 'reboot');
-    assert.deepEqual(calls, ['forceStop', 'remove:save_main.json,save_backup.json,save_temp.json,debug_command.json', 'write:save_main.json', 'write:debug_command.json', 'launch']);
+    assert.deepEqual(calls, ['forceStop', 'remove:save_main.json,save_backup.json,save_temp.json,debug_command.json,debug_ads.json', 'write:save_main.json', 'write:debug_command.json', 'launch']);
     assert.equal(written['debug_command.json'], buildAut049LiveCommandFile());
     calls.length = 0;
     await seedAut049(driver as never, 'pkg', 'act', 'post');
-    assert.deepEqual(calls, ['forceStop', 'remove:save_main.json,save_backup.json,save_temp.json,debug_command.json', 'write:save_main.json', 'launch'], 'the post seed writes no command and removes a stale one');
+    assert.deepEqual(calls, ['forceStop', 'remove:save_main.json,save_backup.json,save_temp.json,debug_command.json,debug_ads.json', 'write:save_main.json', 'launch'], 'the post seed writes no command and removes a stale one');
 
     const ev = (tMs: number, evt: string, fields: Record<string, unknown>): TimelineEvent => ({ tMs, event: { evt, ...fields } as TimelineEvent['event'] });
     const good: TimelineEvent[] = [

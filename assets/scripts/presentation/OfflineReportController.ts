@@ -6,15 +6,18 @@ import {
     OFFLINE_REPORT_ACCENT_HEIGHT,
     OFFLINE_REPORT_COLORS,
     OFFLINE_REPORT_CARD_WIDTH,
+    OFFLINE_REPORT_DOUBLE_OUTLINE,
     offlineReportCardCenterOffsetY,
     resolveOfflineReportCardLayout,
     type OfflineReportCardLayout,
 } from './OfflineReportLayout.ts';
-import { formatOfflineCollectFailed, formatOfflineReportTexts, type OfflineReportTexts } from './OfflineReportText.ts';
+import type { OfflineDoubleFlow, OfflineDoubleFlowResult } from './OfflineDoubleFlow.ts';
+import { formatOfflineCollectFailed, formatOfflineDoubleNotGranted, formatOfflineDoubleTexts, formatOfflineReportTexts, type OfflineReportTexts } from './OfflineReportText.ts';
 import {
     HIDDEN_OFFLINE_REPORT_VIEW_MODEL,
     createOfflineReportViewModel,
     resolveOfflineCollectOutcome,
+    resolveOfflineDoubleOutcome,
     type OfflineReportViewModel,
 } from './OfflineReportViewModel.ts';
 import type { DisplayNameSource } from './PresentationText.ts';
@@ -25,7 +28,7 @@ const { ccclass } = _decorator;
 export type OfflineReportCollectEmitter = () => Promise<LifecycleCollectResult | null>;
 export type OfflineReportShowReason = 'startup' | 'resumed' | 'reboot_blocked';
 
-/** Alpha of the COLLECT fill / label while a collection is in flight (the debounce is visible, never a node.active toggle). */
+/** Alpha of the COLLECT / COLLECT x2 fill and label while a collection / ad is in flight (the debounce is visible, never a node.active toggle). */
 const COLLECT_IN_FLIGHT_ALPHA = 110;
 
 /**
@@ -35,8 +38,9 @@ const COLLECT_IN_FLIGHT_ALPHA = 110;
  *
  * Visibility is scale-based (never `node.active`). A full-screen dim backdrop swallows every touch while the card is visible
  * (no tap-outside dismiss); only COLLECT acts. COLLECT is a Button on its own child node whose hit rect is the drawn rect. A failed
- * collect keeps the card and shows the retry line; a durable or not-durable collection closes it. No reward-multiplier
- * affordance exists here (deferred to a later task). Nothing in this file computes or mutates economy state.
+ * collect keeps the card and shows the retry line; a durable or not-durable collection closes it. AUT-055: when the
+ * doubleFlow offers it (player eligible AND ad available) a secondary COLLECT x2 (Rewarded Ad) action sits below COLLECT; the free
+ * COLLECT is never reduced or blocked by it. Nothing in this file computes or mutates economy state.
  *
  * The bootstrap creates the root (full screen, last child of the Canvas) with the `backdropNode` (full screen) and the
  * `safeNode` (safe-area container) and assigns them before the first `show`.
@@ -50,6 +54,8 @@ export class OfflineReportController extends Component {
     public screenRectOf: ((node: Node) => UiRect | null) | null = null;
     /** Called after the card appears / changes so the bootstrap can report a fresh `ui_layout`. */
     public onLayoutChanged: ((reason: string) => void) | null = null;
+    /** AUT-055: the rewarded x2 flow (assigned by the bootstrap when the session is ready); null hides the x2 action. */
+    public doubleFlow: OfflineDoubleFlow | null = null;
 
     private nameSource: DisplayNameSource | null = null;
     private built = false;
@@ -57,6 +63,7 @@ export class OfflineReportController extends Component {
     private inFlight = false;
     private autoCollecting = false;
     private retryShown = false;
+    private notGrantedShown = false;
     private viewModel: OfflineReportViewModel = HIDDEN_OFFLINE_REPORT_VIEW_MODEL;
     private texts: OfflineReportTexts | null = null;
     private layout: OfflineReportCardLayout | null = null;
@@ -66,6 +73,10 @@ export class OfflineReportController extends Component {
     private collectNode: Node | null = null;
     private collectGraphics: Graphics | null = null;
     private collectLabel: Label | null = null;
+    private doubleNode: Node | null = null;
+    private doubleGraphics: Graphics | null = null;
+    private doubleLabel: Label | null = null;
+    private doubleTagLabel: Label | null = null;
     private labels = new Map<string, Label>();
     private drawnBackdropKey = '';
 
@@ -87,8 +98,17 @@ export class OfflineReportController extends Component {
         return this.visible;
     }
 
-    public getRectNodes(): { card: Node | null; collect: Node | null } {
-        return { card: this.visible ? this.cardNode : null, collect: this.visible ? this.collectNode : null };
+    public getRectNodes(): { card: Node | null; collect: Node | null; double: Node | null } {
+        return {
+            card: this.visible ? this.cardNode : null,
+            collect: this.visible ? this.collectNode : null,
+            double: this.visible && this.isDoubleShown() ? this.doubleNode : null,
+        };
+    }
+
+    /** AUT-055: true while the x2 action is part of the visible card (player eligible AND ad available). */
+    private isDoubleShown(): boolean {
+        return this.visible && this.doubleFlow !== null && this.doubleFlow.getState().offer === true;
     }
 
     /**
@@ -110,12 +130,29 @@ export class OfflineReportController extends Component {
         const wasVisible = this.visible;
         this.viewModel = viewModel;
         this.texts = formatOfflineReportTexts(viewModel, this.nameSource);
-        if (!wasVisible) this.retryShown = false;
+        if (!wasVisible) { this.retryShown = false; this.notGrantedShown = false; }
         this.visible = true;
         this.render();
         this.node.setScale(1, 1, 1);
         this.emitReport(wasVisible ? 'refreshed' : 'shown', { reason, status: preview?.status ?? 'none' });
         this.onLayoutChanged?.(wasVisible ? 'offline_report_refreshed' : 'offline_report_shown');
+        void this.refreshDouble();
+    }
+
+    /** AUT-055: re-reads the x2 offer (eligibility + ad availability); the card grows / shrinks when it changes. */
+    private async refreshDouble(): Promise<void> {
+        const flow = this.doubleFlow;
+        if (!flow) return;
+        const before = this.isDoubleShown();
+        try { await flow.refreshOffer(); } catch { /* the free COLLECT never depends on the ad flow */ }
+        if (!this.visible) return;
+        this.render();
+        if (this.isDoubleShown() !== before) this.onLayoutChanged?.('offline_double_offer');
+    }
+
+    /** AUT-055: the flow's state changed (in-flight toggled / offer refreshed). */
+    public onDoubleChanged(): void {
+        if (this.visible) this.render();
     }
 
     /**
@@ -142,6 +179,7 @@ export class OfflineReportController extends Component {
         this.visible = false;
         this.inFlight = false;
         this.retryShown = false;
+        this.notGrantedShown = false;
         this.hideScale();
         this.emitReport('hidden', { reason });
         this.onLayoutChanged?.('offline_report_hidden');
@@ -156,6 +194,31 @@ export class OfflineReportController extends Component {
         this.render();
         this.emitReport('collect_tapped', {});
         void emitter().then((result) => this.onCollectResult(result), () => this.onCollectResult(null));
+    }
+
+    /** COLLECT x2 Button handler: shows the rewarded ad through the flow. Inert while hidden, not offered, or already in flight. */
+    public onDoublePressed(): void {
+        const flow = this.doubleFlow;
+        if (!this.visible || !flow) return;
+        const state = flow.getState();
+        if (!state.offer || state.inFlight) return;
+        this.notGrantedShown = false;
+        this.emitReport('double_tapped', {});
+        void flow.start().then((result) => this.onDoubleResult(result), () => this.onDoubleResult('error'));
+    }
+
+    private onDoubleResult(result: OfflineDoubleFlowResult | null): void {
+        if (result === null) return;
+        const outcome = resolveOfflineDoubleOutcome(result);
+        this.emitReport('double_result', { result, outcome });
+        if (outcome === 'close') { this.hide('double_granted'); return; }
+        if (outcome === 'close_stale') { this.hide('close_stale'); return; }
+        if (outcome === 'keep_not_granted') this.notGrantedShown = true;
+        else this.retryShown = true;
+        if (this.visible) {
+            this.render();
+            this.onLayoutChanged?.('offline_double_result');
+        }
     }
 
     private onCollectResult(result: LifecycleCollectResult | null): void {
@@ -208,6 +271,11 @@ export class OfflineReportController extends Component {
         card.on(Node.EventType.TOUCH_CANCEL, this.swallowTouch, this);
         this.cardNode = card;
         for (const key of ['title', 'timeAway', 'capReached', 'reward', 'robots', 'note']) this.labels.set(key, this.makeLabel(card, `Offline_${key}`));
+        this.buildCollectNode(card);
+        this.buildDoubleNode(card);
+    }
+
+    private buildCollectNode(card: Node): void {
         const collect = new Node('OfflineCollectAction');
         collect.layer = Layers.Enum.UI_2D;
         collect.parent = card;
@@ -229,6 +297,37 @@ export class OfflineReportController extends Component {
         handler.handler = 'onCollectPressed';
         button.clickEvents = [handler];
         this.collectNode = collect;
+    }
+
+    /** AUT-055: the COLLECT x2 Button node: outlined cyan Graphics (two fillRects), a cyan label and a small tag label, hit rect = drawn rect. */
+    private buildDoubleNode(card: Node): void {
+        const node = new Node('OfflineDoubleAction');
+        node.layer = Layers.Enum.UI_2D;
+        node.parent = card;
+        node.addComponent(UITransform);
+        const fill = new Node('OfflineDoubleFill');
+        fill.layer = Layers.Enum.UI_2D;
+        fill.parent = node;
+        fill.addComponent(UITransform);
+        this.doubleGraphics = fill.addComponent(Graphics);
+        const labelNode = new Node('OfflineDoubleLabel');
+        labelNode.layer = Layers.Enum.UI_2D;
+        labelNode.parent = node;
+        labelNode.addComponent(UITransform);
+        this.doubleLabel = this.configureLabel(labelNode.addComponent(Label), false);
+        const tagNode = new Node('OfflineDoubleTag');
+        tagNode.layer = Layers.Enum.UI_2D;
+        tagNode.parent = node;
+        tagNode.addComponent(UITransform);
+        this.doubleTagLabel = this.configureLabel(tagNode.addComponent(Label), false);
+        const button = node.addComponent(Button);
+        const handler = new EventHandler();
+        handler.target = this.node;
+        handler.component = 'OfflineReportController';
+        handler.handler = 'onDoublePressed';
+        button.clickEvents = [handler];
+        node.setScale(0, 0, 0);
+        this.doubleNode = node;
     }
 
     private makeLabel(parent: Node, name: string): Label {
@@ -253,8 +352,11 @@ export class OfflineReportController extends Component {
     private render(): void {
         const texts = this.texts;
         if (!texts || !this.cardNode) return;
-        const note = this.retryShown ? formatOfflineCollectFailed() : texts.explain;
-        const layout = resolveOfflineReportCardLayout({ capReached: texts.capReached !== null, robots: texts.robots !== null, note: note !== null });
+        // D11: one note slot shared by the retry line, the calm "no bonus" line and the educational line.
+        const note = this.retryShown ? formatOfflineCollectFailed() : this.notGrantedShown ? formatOfflineDoubleNotGranted() : texts.explain;
+        const doubleState = this.doubleFlow?.getState() ?? null;
+        const doubleShown = doubleState !== null && doubleState.offer === true;
+        const layout = resolveOfflineReportCardLayout({ capReached: texts.capReached !== null, robots: texts.robots !== null, note: note !== null, x2: doubleShown });
         this.layout = layout;
         const colors = OFFLINE_REPORT_COLORS;
         this.cardNode.getComponent(UITransform)!.setContentSize(layout.width, layout.height);
@@ -271,7 +373,7 @@ export class OfflineReportController extends Component {
             capReached: { text: texts.capReached, color: colors.cyan },
             reward: { text: texts.reward, color: colors.amber },
             robots: { text: texts.robots, color: colors.text },
-            note: { text: note, color: this.retryShown ? colors.cyan : colors.secondary },
+            note: { text: note, color: this.retryShown || this.notGrantedShown ? colors.cyan : colors.secondary },
         };
         for (const [key, label] of this.labels) {
             const row = layout.rows.find((item) => item.key === key);
@@ -289,6 +391,47 @@ export class OfflineReportController extends Component {
             label.color = new Color(value.color.r, value.color.g, value.color.b, value.color.a);
         }
         this.renderCollect(layout, texts.collect);
+        this.renderDouble(layout, doubleShown ? formatOfflineDoubleTexts(doubleState.projectedReward) : null, doubleState !== null && doubleState.inFlight);
+    }
+
+    /** AUT-055: draws / hides the COLLECT x2 action (scale-based visibility; two fillRects, never stroke()). */
+    private renderDouble(layout: OfflineReportCardLayout, texts: { readonly button: string; readonly tag: string } | null, inFlight: boolean): void {
+        const node = this.doubleNode;
+        const rect = layout.double;
+        if (!node) return;
+        if (!rect || !texts) {
+            node.setScale(0, 0, 0);
+            return;
+        }
+        const colors = OFFLINE_REPORT_COLORS;
+        node.setScale(1, 1, 1);
+        node.setPosition(new Vec3(rect.x, rect.y, 0));
+        node.getComponent(UITransform)!.setContentSize(rect.w, rect.h);
+        node.getChildByName('OfflineDoubleFill')!.getComponent(UITransform)!.setContentSize(rect.w, rect.h);
+        const alpha = inFlight ? COLLECT_IN_FLIGHT_ALPHA : 255;
+        const fill = this.doubleGraphics!;
+        fill.clear();
+        fill.fillColor = new Color(colors.cyan.r, colors.cyan.g, colors.cyan.b, alpha);
+        fill.fillRect(-rect.w / 2, -rect.h / 2, rect.w, rect.h);
+        const inset = OFFLINE_REPORT_DOUBLE_OUTLINE;
+        fill.fillColor = new Color(colors.pill.r, colors.pill.g, colors.pill.b, 255);
+        fill.fillRect(-rect.w / 2 + inset, -rect.h / 2 + inset, rect.w - inset * 2, rect.h - inset * 2);
+        const tagHeight = rect.tagFontSize + 4;
+        const mainHeight = rect.h - inset * 2 - tagHeight - 4;
+        const main = this.doubleLabel!;
+        main.node.setPosition(new Vec3(0, rect.h / 2 - inset - 2 - mainHeight / 2, 0));
+        main.node.getComponent(UITransform)!.setContentSize(rect.w - 24, mainHeight);
+        main.fontSize = rect.fontSize;
+        main.lineHeight = mainHeight;
+        main.string = texts.button;
+        main.color = new Color(colors.cyan.r, colors.cyan.g, colors.cyan.b, alpha);
+        const tag = this.doubleTagLabel!;
+        tag.node.setPosition(new Vec3(0, -rect.h / 2 + inset + 2 + tagHeight / 2, 0));
+        tag.node.getComponent(UITransform)!.setContentSize(rect.w - 24, tagHeight);
+        tag.fontSize = rect.tagFontSize;
+        tag.lineHeight = tagHeight;
+        tag.string = texts.tag;
+        tag.color = new Color(colors.secondary.r, colors.secondary.g, colors.secondary.b, alpha);
     }
 
     private renderCollect(layout: OfflineReportCardLayout, caption: string): void {
@@ -345,6 +488,9 @@ export class OfflineReportController extends Component {
             retryShown: this.retryShown,
             cardRect: this.visible && this.cardNode && rectOf ? rectOf(this.cardNode) : null,
             collectRect: this.visible && this.collectNode && rectOf ? rectOf(this.collectNode) : null,
+            doubleShown: this.isDoubleShown(),
+            doubleRect: this.isDoubleShown() && this.doubleNode && rectOf ? rectOf(this.doubleNode) : null,
+            notGrantedShown: this.notGrantedShown,
             scale: this.node.scale.x,
             collectFontSize: this.collectLabel?.fontSize ?? null,
             texts: this.texts,

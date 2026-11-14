@@ -22,6 +22,7 @@ import { getEmbeddedEconomyConfigSources } from '../../assets/scripts/config/Emb
 import type { SessionDeviceDriver } from './driver.ts';
 import { SAVE_FILE_NAMES } from './scenarios/int001_session_persistence.ts';
 import { DEBUG_COMMAND_FILE } from '../../assets/scripts/presentation/DebugCommandFile.ts';
+import { DEBUG_ADS_FILE } from '../../assets/scripts/presentation/DebugAdsScriptFile.ts';
 import { buildAut042SeededState } from './seed_aut042.ts';
 import { buildAut044SeededState } from './seed_aut044.ts';
 
@@ -55,7 +56,7 @@ export async function seedAut048(driver: SessionDeviceDriver, packageName: strin
     await driver.forceStop(packageName);
     const filesDir = `${await driver.appDataDirectory(packageName)}/files/`;
     // A stale debug command from a previous live capture must never fire on a plain seed.
-    await driver.removeAppFiles(packageName, [...SAVE_FILE_NAMES, DEBUG_COMMAND_FILE].map((name) => `${filesDir}${name}`));
+    await driver.removeAppFiles(packageName, [...SAVE_FILE_NAMES, DEBUG_COMMAND_FILE, DEBUG_ADS_FILE].map((name) => `${filesDir}${name}`));
     await driver.writeAppFile(packageName, `${filesDir}save_main.json`, buildAut048SeededSave(variant, now().getTime()));
     await driver.launch(packageName, activity);
     return filesDir;
@@ -73,7 +74,7 @@ export function buildAut048LiveCommandFile(): string {
 export async function seedAut048Era3Live(driver: SessionDeviceDriver, packageName: string, activity: string, now: () => Date = () => new Date()): Promise<string> {
     await driver.forceStop(packageName);
     const filesDir = `${await driver.appDataDirectory(packageName)}/files/`;
-    await driver.removeAppFiles(packageName, [...SAVE_FILE_NAMES, DEBUG_COMMAND_FILE].map((name) => `${filesDir}${name}`));
+    await driver.removeAppFiles(packageName, [...SAVE_FILE_NAMES, DEBUG_COMMAND_FILE, DEBUG_ADS_FILE].map((name) => `${filesDir}${name}`));
     await driver.writeAppFile(packageName, `${filesDir}save_main.json`, buildAut048SeededSave('era3', now().getTime()));
     await driver.writeAppFile(packageName, `${filesDir}${DEBUG_COMMAND_FILE}`, buildAut048LiveCommandFile());
     await driver.launch(packageName, activity);

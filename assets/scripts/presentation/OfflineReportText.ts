@@ -69,6 +69,19 @@ export function formatOfflineReportTexts(viewModel: OfflineReportViewModel, name
     });
 }
 
+/** AUT-055: the COLLECT x2 label ("COLLECT ×2 — {projected total}") and its small tag line ("Rewarded Ad"). Display only. */
+export function formatOfflineDoubleTexts(projectedReward: number, catalogue: TextCatalogue = getDefaultTextCatalogue()): { readonly button: string; readonly tag: string } {
+    return Object.freeze({
+        button: catalogue.resolveText('offline.double.button', { value: formatCompactNumber(projectedReward) }),
+        tag: catalogue.resolveText('offline.double.tag'),
+    });
+}
+
+/** AUT-055: calm (never red) note after an ad that granted no bonus; the free COLLECT stays available. */
+export function formatOfflineDoubleNotGranted(catalogue: TextCatalogue = getDefaultTextCatalogue()): string {
+    return catalogue.resolveText('offline.double.not_granted');
+}
+
 /** Secondary line shown after a failed collect (the card stays and Collect remains available). */
 export function formatOfflineCollectFailed(catalogue: TextCatalogue = getDefaultTextCatalogue()): string {
     return catalogue.resolveText('offline.collect_failed');

@@ -1,5 +1,12 @@
 import type { GameConfigRepository } from '../config/ConfigLoader.ts';
 import type { DomainEvent, GameCommand } from '../domain/index.ts';
+import { getRewardedClaimHistory, recordRewardedClaim } from '../monetization/RewardedClaimHistory.ts';
+import {
+    OFFLINE_DOUBLE_CLAIM_KEY,
+    OFFLINE_DOUBLE_MULTIPLIER,
+    evaluateOfflineDoubleEligibility,
+    type RewardedEligibilityResult,
+} from '../monetization/RewardedEligibility.ts';
 import {
     collectOfflineProgress,
     createOfflineProgressPreviewFromUtc,
@@ -29,6 +36,7 @@ import {
 } from '../runtime/index.ts';
 import type { GameState } from '../state/GameState.ts';
 import { cloneGameState } from '../state/StateClone.ts';
+import { assertValidGameState } from '../state/StateValidation.ts';
 import type {
     LifecycleResumeBoundary,
     LifecycleSuspendBoundary,
@@ -46,6 +54,43 @@ export interface LifecycleSessionCoordinatorOptions {
     readonly persistence: PersistenceCoordinator;
     readonly timeService: TimeService;
     readonly offlineConfig?: Partial<OfflineProgressConfig>;
+    /**
+     * AUT-055: request-id idempotency guard for the rewarded Offline Double (structurally a RewardClaimLedger).
+     * Defaults to an internal in-memory set.
+     */
+    readonly rewardClaimLedger?: { tryConsume(requestId: string): boolean };
+}
+
+/**
+ * AUT-055: structural proof of a rewarded ad result (shape-compatible with the ad provider's result type;
+ * declared locally so the lifecycle layer stays free of any ad-provider import).
+ */
+export interface OfflineDoubleAdProof {
+    readonly requestId: string;
+    readonly placementId: string;
+    readonly status: string;
+    readonly rewardVerified: boolean;
+    readonly duplicate?: boolean;
+}
+
+export interface LifecycleOfflineDoubleOffer {
+    readonly eligibility: RewardedEligibilityResult;
+    readonly multiplier: number;
+    /** Display only: multiplier x the preview's total reward. The collect grants multiplier x the applied reward. */
+    readonly projectedReward: number;
+}
+
+export type OfflineDoubleNotGrantedReason =
+    | 'not_rewarded'
+    | 'not_verified'
+    | 'duplicate'
+    | 'wrong_placement'
+    | 'ineligible'
+    | 'bad_request_id';
+
+export interface LifecycleBonusNotGrantedResult {
+    readonly status: 'bonus_not_granted';
+    readonly reason: OfflineDoubleNotGrantedReason;
 }
 
 export interface LifecycleStartupSuccessResult {
@@ -129,6 +174,13 @@ export type LifecycleCollectResult =
     | LifecycleCollectDurableResult
     | LifecycleCollectDurabilityFailureResult;
 
+export type LifecycleBonusCollectResult =
+    | LifecycleCollectNoPendingResult
+    | LifecycleCollectInvalidResult
+    | (LifecycleCollectDurableResult & { readonly bonusGranted: boolean })
+    | (LifecycleCollectDurabilityFailureResult & { readonly bonusGranted: boolean })
+    | LifecycleBonusNotGrantedResult;
+
 export interface LifecycleRebootPendingOfflineResult {
     readonly status: 'pending_offline_preview';
     readonly offlinePreview: OfflinePreviewResult;
@@ -187,6 +239,7 @@ export class LifecycleSessionCoordinator {
     private readonly timeService: TimeService;
     private readonly lifecycleTime: LifecycleTimeTracker;
     private readonly offlineConfig: Partial<OfflineProgressConfig> | undefined;
+    private readonly rewardClaimLedger: { tryConsume(requestId: string): boolean };
     private runtime: GameRuntime;
     private pendingOfflinePreview: OfflinePreviewResult | null;
     private openAbsenceBoundaryUtcIso: UtcTimestampIsoString | null = null;
@@ -208,6 +261,7 @@ export class LifecycleSessionCoordinator {
         this.timeService = options.timeService;
         this.lifecycleTime = new LifecycleTimeTracker(options.timeService);
         this.offlineConfig = options.offlineConfig;
+        this.rewardClaimLedger = options.rewardClaimLedger ?? createLocalRequestLedger();
         this.runtime = this.createRuntime(state);
         this.pendingOfflinePreview = pendingOfflinePreview;
         this.pendingAbsenceStartUtcIso = pendingOfflinePreview === null ? null : pendingAbsenceStartUtcIso;
@@ -413,6 +467,99 @@ export class LifecycleSessionCoordinator {
         });
     }
 
+    /** AUT-055: the Offline Double offer for the pending preview, or null without one. Display/eligibility only; no side effects. */
+    getOfflineDoubleOffer(): LifecycleOfflineDoubleOffer | null {
+        const pending = this.pendingOfflinePreview;
+        if (pending === null || pending.status !== 'preview_ready') {
+            return null;
+        }
+
+        return Object.freeze({
+            eligibility: this.evaluateOfflineDoubleEligibility(pending, this.runtime.getStateSnapshot()),
+            multiplier: OFFLINE_DOUBLE_MULTIPLIER,
+            projectedReward: OFFLINE_DOUBLE_MULTIPLIER * pending.totalIndustrialOutputReward,
+        });
+    }
+
+    /**
+     * AUT-055: collects the pending offline reward with the rewarded x2 bonus, exactly once and atomically
+     * (reward + claim record + one critical save). A bad proof / ineligible / replayed request never collects
+     * and never changes state: the free collect stays available.
+     */
+    async collectPendingOfflineWithRewardedBonus(proof: OfflineDoubleAdProof): Promise<LifecycleBonusCollectResult> {
+        const pending = this.pendingOfflinePreview;
+        if (pending === null) {
+            return Object.freeze({ status: 'no_pending_preview' as const });
+        }
+
+        const proofReason = readProofFailure(proof);
+        if (proofReason !== null) {
+            return notGranted(proofReason);
+        }
+
+        const snapshot = this.runtime.getStateSnapshot();
+        if (!this.evaluateOfflineDoubleEligibility(pending, snapshot).eligible) {
+            return notGranted('ineligible');
+        }
+
+        if (!this.rewardClaimLedger.tryConsume(proof.requestId)) {
+            return notGranted('duplicate');
+        }
+
+        const collect = collectOfflineProgress(
+            this.configRepository,
+            snapshot,
+            { preview: pending },
+            { rewardMultiplier: OFFLINE_DOUBLE_MULTIPLIER },
+        );
+        if (collect.status === 'invalid_time' || collect.status === 'invalid_config' || collect.status === 'failure') {
+            return Object.freeze({
+                status: 'collect_failed' as const,
+                collect,
+            });
+        }
+
+        try {
+            const nowUtcMs = this.timeService.nowUtc().unixMilliseconds;
+            collect.state.monetization.rewardedClaims[OFFLINE_DOUBLE_CLAIM_KEY] = recordRewardedClaim(
+                collect.state,
+                OFFLINE_DOUBLE_CLAIM_KEY,
+                nowUtcMs,
+            );
+            assertValidGameState(collect.state);
+        }
+        catch {
+            // Fail closed: the claim cannot be recorded, so grant only the normal reward.
+            const fallback = await this.collectPendingOffline();
+            return fallback.status === 'collected_saved'
+                || fallback.status === 'no_reward_saved'
+                || fallback.status === 'collected_persistence_failed'
+                || fallback.status === 'no_reward_persistence_failed'
+                ? Object.freeze({ ...fallback, bonusGranted: false })
+                : fallback;
+        }
+
+        const result = await this.commitCollect(collect);
+        return Object.freeze({ ...result, bonusGranted: true });
+    }
+
+    private evaluateOfflineDoubleEligibility(pending: OfflinePreviewResult, state: GameState): RewardedEligibilityResult {
+        let nowUtcMs = Number.NaN;
+        try {
+            nowUtcMs = this.timeService.nowUtc().unixMilliseconds;
+        }
+        catch {
+            nowUtcMs = Number.NaN;
+        }
+
+        return evaluateOfflineDoubleEligibility({
+            nowUtcMs,
+            hasCollectibleReport: true,
+            effectiveOfflineSeconds: pending.effectiveOfflineSeconds,
+            claimTimestampsUtcMs: getRewardedClaimHistory(state, OFFLINE_DOUBLE_CLAIM_KEY),
+        });
+    }
+
     async collectPendingOffline(): Promise<LifecycleCollectResult> {
         const pending = this.pendingOfflinePreview;
         if (pending === null) {
@@ -429,6 +576,12 @@ export class LifecycleSessionCoordinator {
             });
         }
 
+        return this.commitCollect(collect);
+    }
+
+    private async commitCollect(
+        collect: OfflineCollectSuccessResult | OfflineCollectNoRewardResult,
+    ): Promise<LifecycleCollectDurableResult | LifecycleCollectDurabilityFailureResult> {
         this.replaceRuntimeState(collect.state);
         this.pendingOfflinePreview = null;
         this.pendingAbsenceStartUtcIso = null;
@@ -482,6 +635,42 @@ export class LifecycleSessionCoordinator {
     private createRuntime(state: GameState): GameRuntime {
         return new GameRuntime(this.configRepository, state, { timeService: this.timeService });
     }
+}
+
+function createLocalRequestLedger(): { tryConsume(requestId: string): boolean } {
+    const consumed = new Set<string>();
+    return {
+        tryConsume(requestId: string): boolean {
+            if (consumed.has(requestId)) {
+                return false;
+            }
+            consumed.add(requestId);
+            return true;
+        },
+    };
+}
+
+function notGranted(reason: OfflineDoubleNotGrantedReason): LifecycleBonusNotGrantedResult {
+    return Object.freeze({ status: 'bonus_not_granted' as const, reason });
+}
+
+function readProofFailure(proof: OfflineDoubleAdProof | null | undefined): OfflineDoubleNotGrantedReason | null {
+    if (proof === null || proof === undefined || proof.status !== 'rewarded') {
+        return 'not_rewarded';
+    }
+    if (proof.rewardVerified !== true) {
+        return 'not_verified';
+    }
+    if (proof.duplicate === true) {
+        return 'duplicate';
+    }
+    if (proof.placementId !== OFFLINE_DOUBLE_CLAIM_KEY) {
+        return 'wrong_placement';
+    }
+    if (typeof proof.requestId !== 'string' || proof.requestId.trim().length === 0) {
+        return 'bad_request_id';
+    }
+    return null;
 }
 
 function mapLoadStatus(status: LoadGameMainResult['status'] | LoadGameRecoveredBackupResult['status'] | LoadGameFreshResult['status']): LifecycleStartupStatus {

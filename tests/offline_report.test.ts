@@ -202,7 +202,7 @@ test('text: the educational line names at most two producers, then "and N more";
     assert.equal(vm.OFFLINE_REPORT_MAX_NAMED_PRODUCERS, 2);
 });
 
-test('text: every offline.* key lives in en.json and in the embedded catalogue; the catalogue holds 139 entries (118 + 21 AUT-RBT-001 reboot.* keys)', async () => {
+test('text: every offline.* key lives in en.json and in the embedded catalogue; the catalogue holds 142 entries (139 + 3 AUT-055 offline.double.* keys)', async () => {
     const { localization } = await modules();
     const parsed = JSON.parse(await read('localization/en.json'));
     const keys = ['offline.title', 'offline.time_away', 'offline.cap_reached', 'offline.reward', 'offline.robots', 'offline.robot_single', 'offline.explain.manual', 'offline.explain.more', 'offline.collect', 'offline.collect_failed'];
@@ -212,7 +212,7 @@ test('text: every offline.* key lives in en.json and in the embedded catalogue; 
         assert.ok(embedded.has(key), `${key} embedded`);
         assert.equal(embedded.template(key), parsed.entries[key]);
     }
-    assert.equal(Object.keys(parsed.entries).length, 139);
+    assert.equal(Object.keys(parsed.entries).length, 142);
 });
 
 // ---------------------------------------------------------------- layout
@@ -230,6 +230,10 @@ const FLAG_SETS = [
     { capReached: false, robots: false, note: false },
     { capReached: false, robots: true, note: true },
     { capReached: true, robots: false, note: false },
+    // AUT-055: the COLLECT x2 action (card grows by 88 design units) in the worst case and the smallest case.
+    { capReached: true, robots: true, note: true, x2: true },
+    { capReached: false, robots: false, note: false, x2: true },
+    { capReached: false, robots: true, note: true, x2: false },
 ];
 
 for (const screen of SCREENS) {
@@ -248,6 +252,17 @@ for (const screen of SCREENS) {
             }
             assert.ok(r.card.h <= screen.h * layout.OFFLINE_REPORT_MAX_HEIGHT_RATIO, `${where}: card height ${r.card.h} <= 30% of ${screen.h}`);
             assert.ok(r.collect.h / r.scale >= layout.OFFLINE_REPORT_MIN_COLLECT_HEIGHT - 1e-9, `${where}: COLLECT >= 64 design units`);
+            if (flags.x2 === true) {
+                const d = r.double!;
+                assert.ok(d !== null, `${where}: x2 rect present`);
+                assert.ok(d.h / r.scale >= layout.OFFLINE_REPORT_MIN_DOUBLE_HEIGHT - 1e-9, `${where}: x2 >= 64 design units`);
+                assert.ok(ui.rectContains(r.card, d, 1e-6), `${where}: x2 inside the card`);
+                assert.equal(ui.rectsOverlap(r.collect, d), false, `${where}: x2 does not overlap COLLECT`);
+                assert.ok(d.y + d.h <= r.collect.y + 1e-6, `${where}: x2 below COLLECT`);
+                assert.ok(r.collect.h / r.scale >= 64 && layout.OFFLINE_REPORT_COLLECT_FONT_SIZE >= layout.OFFLINE_REPORT_MIN_COLLECT_FONT_SIZE, `${where}: COLLECT stays >= 64 / font >= 28`);
+            } else {
+                assert.equal(r.double, null, `${where}: no x2 rect when hidden`);
+            }
             assert.ok(r.card.w / r.scale >= 620 && r.card.w / r.scale <= 680, `${where}: width 620..680`);
             assert.deepEqual(r.backdrop, { x: 0, y: 0, w: screen.w, h: screen.h });
             // Centred between the HUD band and the panel.
@@ -283,6 +298,26 @@ test('layout: pure card layout invariants (rows omitted not blank, COLLECT size 
     for (const row of full.rows) if (row !== reward) assert.ok(reward.fontSize > row.fontSize, 'the reward is the largest text');
     assert.ok(full.collect.fontSize < reward.fontSize);
     assert.equal(layout.offlineReportCardCenterOffsetY(), (ui.cardHeight(ui.PRODUCER_PANEL_LAYOUT) - ui.cardHeight(ui.CORE_HUD_LAYOUT)) / 2);
+});
+
+test('layout: x2 action grows the card by exactly gap + height; the card ratio is the smallest passing value', async () => {
+    const { layout } = await modules();
+    const withX2 = layout.resolveOfflineReportCardLayout({ capReached: true, robots: true, note: true, x2: true });
+    const without = layout.resolveOfflineReportCardLayout({ capReached: true, robots: true, note: true, x2: false });
+    assert.equal(withX2.height - without.height, 88);
+    assert.equal(without.double, null);
+    assert.equal(withX2.height, 438);
+    assert.equal(withX2.double.h, 76);
+    assert.equal(withX2.double.fontSize, 30);
+    assert.equal(withX2.double.tagFontSize, 22);
+    assert.ok(withX2.double.tagFontSize >= 22 - 1e-9);
+    // x2 sits at the bottom, COLLECT directly above it with the 12-unit gap, COLLECT keeps its size and font.
+    assert.ok(Math.abs((withX2.collect.y - withX2.collect.h / 2) - (withX2.double.y + withX2.double.h / 2) - layout.OFFLINE_REPORT_DOUBLE_GAP) < 1e-9);
+    assert.equal(withX2.collect.h, 64);
+    assert.equal(withX2.collect.fontSize, 30);
+    // 438 / 1280 = 0.3422: 0.35 is the smallest round ratio that holds on every screen (and 0.34 would fail).
+    assert.ok(438 / 1280 <= layout.OFFLINE_REPORT_MAX_HEIGHT_RATIO && 438 / 1280 > 0.34);
+    assert.equal(layout.OFFLINE_REPORT_MAX_HEIGHT_RATIO, 0.35);
 });
 
 test('layout: colours follow the AUT-046/048/049 language (graphite pill, off-white, amber reward, cyan secondary, never red)', async () => {
@@ -685,7 +720,8 @@ test('source pins: the controller uses Graphics fills and scale visibility, no n
     assert.doesNotMatch(source, /addComponent\(Sprite\)/);
     assert.doesNotMatch(source, /\.active\s*=/);
     assert.doesNotMatch(source, /\bactive:\s*(true|false)/);
-    assert.doesNotMatch(source, /rewarded|AdsService|\bads?\b|double|x2|×2/i);
+    // AUT-055 deliberately adds the COLLECT x2 action: the controller still never touches the ad provider (the flow does, injected).
+    assert.doesNotMatch(source, /AdsService|MockAdsService|NoOpAdsService|showRewarded|getRewardedAvailability|\bads?\b/i);
     assert.doesNotMatch(source, /'COLLECT'|FACTORY REPORT|Industrial Output|Robots Built|Couldn/);
     assert.doesNotMatch(source, /uiBlockerNodes/);
     assert.match(source, /Label\.Overflow\.SHRINK/);
@@ -812,7 +848,7 @@ test('device: scenarios, CLI usage and package script are registered', async () 
     const cli = await read('tools/device/cli.ts');
     assert.match(cli, /command === 'seed-aut051'/);
     assert.match(cli, /seed-aut051 \[--variant first\|compact\|cap\|reload\|short\]/);
-    assert.match(cli, /aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\|rbt001\]/);
+    assert.match(cli, /aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\|rbt001\|aut055-success\|aut055-closed\|aut055-failed\|aut055-ineligible\]/);
     const short = REVEAL_SCENARIOS['aut051-short'];
     assert.equal(short.trigger, 'none');
     assert.equal(short.expectOfflineReport, 'short');
