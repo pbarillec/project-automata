@@ -67,3 +67,7 @@ Owner decision with Game Designer semantics: an offline absence under 60 seconds
 - Device tooling: seed variant `short` (about 30 s away) and scenario `aut051-short` (checks: no card event, one `auto_collected` with `collected_saved` and `saveOk`, no COLLECT tap). The hours-based variants (`first`, `compact`, `cap`, `reload`) still show cards. The relaunch gap in `aut051` (about 8 s) is now silent: `offline_relaunch_gap_silent` expects no card after the relaunch.
 - `docs/MONETIZATION.md` `minimumOfflineMinutes: 30` is a different concept (rewarded x2 eligibility, a later task) and is unchanged.
 - Not run here: the device scenarios (no gate build in this task).
+
+### AUT-051b device evidence (2026-11-14)
+
+DEBUG APK from a071827 (gate label aut051b). `aut051-short` (30 s absence): no card, `auto_collected` `collected_saved`; `aut051` (3 h): card with the refined copy ("Automated producers kept working. Manual: Assembly Station."), Collect saved, relaunch gap silent, original report not re-granted; `aut051-reload`: same card after kill before Collect. All checks PASS, 0 errors. Frame `temp/reveal/aut051-offline-report-2026-11-14T114917/frames/000-baseline.png` reviewed: card layout unchanged, explain line wraps to two lines above COLLECT, nothing clipped.
