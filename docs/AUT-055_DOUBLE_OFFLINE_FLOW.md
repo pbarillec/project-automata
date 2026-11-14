@@ -66,3 +66,9 @@ reused as is; `assertValidGameState` accepts the claim state).
 - The em dash in `COLLECT ×2 — {value}` must be checked on a device font; fall back to `-` in `en.json` if it does not render.
 - Whether the card with the x2 action reads well (composition, contrast, outline, label fit) and how the ad round trip feels are NOT verified by the
   automated checks (device capture + visual review pending).
+
+## Device evidence and visual QA (2026-11-14)
+
+DEBUG APK from 266c43f (gate label aut055; capture-check fix e7f288e). Scenarios (all PASS, 0 errors): `aut055-success` (`temp/reveal/aut055-double-success-2026-11-14T135103/`): real tap on COLLECT x2 -> rewarded verified -> granted exactly 2x base (303856.76 -> 607713.53), multiplier 2, saved, claimCount 1, card closed, claim persisted after relaunch, no card after relaunch; x2 rect 76 design units, inside the card, below COLLECT. `aut055-closed` / `aut055-failed`: card stays, calm note, free COLLECT gives the normal reward, no claim recorded. `aut055-ineligible` (20 min absence): no x2 rect. `aut051` regression PASS. The first success run failed two capture checks (tMs vs event-time mix for geometry; 1e-9 tolerance vs 2-decimal rounding), fixed in e7f288e; game behaviour was correct.
+
+Vision QA (stills): PASS. Free COLLECT clearly primary; x2 secondary outlined cyan with a small "Rewarded Ad" tag, em dash and x glyphs render; card centred in the safe area; HUD 609K after success (~2x the normal 305K); calm cyan not-granted note; ineligible card identical to AUT-051. Non-blocking POLISH: "Rewarded Ad" tag tight to the bottom border; the aut051 baseline now shows an x2 button on an eligible device (the "no ad affordance" check means the free path has no ad requirement; reword in a later pass). Unverified: real ad SDK, feel/pacing of the hand-off, whether the x2 looks too promotional on small phones.
