@@ -64,3 +64,10 @@ New allow-listed event `settings`: `{ phase: chip_shown | chip_hidden | opened |
 ## Not verified here (human / device)
 
 Real rendering of the chip (gear polygon, "SET" legibility), panel density and pill legibility on a device, real-tap behaviour of the row Button hit rects on Android, that touch swallowing keeps the camera and selection from receiving taps on the chip / panel, a Major / era / Reboot card passing over the chip, the `aut052` capture itself (no gate build in this task), and any audio / haptics behaviour (none ships). Subjective feel is pending human review. Copy ("Settings", "SET", "Music", "SFX", "Vibration", "Language", "ON", "OFF", "English") needs Game Designer wording approval.
+
+## Device evidence and visual QA (2026-11-14)
+
+DEBUG APK from 0407d04 (gate label aut052). `npm run device:reveal-capture -- --scenario aut052` (`temp/reveal/aut052-settings-2026-11-14T122944/`, 10 frames): all checks PASS, 0 errors. Real taps: SET chip -> panel (4 rows) -> Music OFF (saved) -> close -> force-stop/relaunch without reseeding: `settings_loaded` source=file with music off -> toggled back on -> close. Chip clear of the AI chip, 0 missing_text.
+
+Vision QA (stills): PASS. SET chip (clean procedural gear) clear of HUD/AI chip, >=64 tall; panel centred with dimmed backdrop; rows 72 units with text+fill ON/OFF (not colour-only); Language row dim/informational; CLOSE large; no blank rectangles; persisted OFF visible after relaunch; no regressions.
+Non-blocking POLISH: "English" value low contrast; panel frame has only a cyan top rule; gear small/duller than the AI chip mark; ON/OFF pill small inside the row. Unverified: backdrop touch-swallowing, toast cards passing over the chip, audio/haptics (none ships). Copy wording still needs Game Designer approval.
