@@ -21,6 +21,7 @@ import { loadGameConfigFromSources } from '../../assets/scripts/config/ConfigLoa
 import { getEmbeddedEconomyConfigSources } from '../../assets/scripts/config/EmbeddedEconomyConfig.ts';
 import type { SessionDeviceDriver } from './driver.ts';
 import { SAVE_FILE_NAMES } from './scenarios/int001_session_persistence.ts';
+import { DEBUG_COMMAND_FILE } from '../../assets/scripts/presentation/DebugCommandFile.ts';
 import { buildAut042SeededState } from './seed_aut042.ts';
 import { buildAut044SeededState } from './seed_aut044.ts';
 
@@ -53,8 +54,28 @@ export function buildAut048SeededSave(variant: Aut048SeedVariant, nowMs: number)
 export async function seedAut048(driver: SessionDeviceDriver, packageName: string, activity: string, variant: Aut048SeedVariant, now: () => Date = () => new Date()): Promise<string> {
     await driver.forceStop(packageName);
     const filesDir = `${await driver.appDataDirectory(packageName)}/files/`;
-    await driver.removeAppFiles(packageName, SAVE_FILE_NAMES.map((name) => `${filesDir}${name}`));
+    // A stale debug command from a previous live capture must never fire on a plain seed.
+    await driver.removeAppFiles(packageName, [...SAVE_FILE_NAMES, DEBUG_COMMAND_FILE].map((name) => `${filesDir}${name}`));
     await driver.writeAppFile(packageName, `${filesDir}save_main.json`, buildAut048SeededSave(variant, now().getTime()));
+    await driver.launch(packageName, activity);
+    return filesDir;
+}
+
+/** Delay after the session is ready before the DEBUG command fires (the capture takes its baseline frame about 2 s after the layout). */
+export const AUT048_LIVE_COMMAND_DELAY_MS = 6000;
+
+/** The DEBUG-only command file of the live Era III capture: the normal Advanced Robotics purchase (the era goal has no HUD action by design). */
+export function buildAut048LiveCommandFile(): string {
+    return JSON.stringify({ command: { type: 'purchaseBreakthrough', breakthroughId: 'advanced_robotics' }, delayMs: AUT048_LIVE_COMMAND_DELAY_MS });
+}
+
+/** Era III live capture seed: the era3 save plus `debug_command.json` (read once by the DEBUG APK after the session is ready), then launch. */
+export async function seedAut048Era3Live(driver: SessionDeviceDriver, packageName: string, activity: string, now: () => Date = () => new Date()): Promise<string> {
+    await driver.forceStop(packageName);
+    const filesDir = `${await driver.appDataDirectory(packageName)}/files/`;
+    await driver.removeAppFiles(packageName, [...SAVE_FILE_NAMES, DEBUG_COMMAND_FILE].map((name) => `${filesDir}${name}`));
+    await driver.writeAppFile(packageName, `${filesDir}save_main.json`, buildAut048SeededSave('era3', now().getTime()));
+    await driver.writeAppFile(packageName, `${filesDir}${DEBUG_COMMAND_FILE}`, buildAut048LiveCommandFile());
     await driver.launch(packageName, activity);
     return filesDir;
 }

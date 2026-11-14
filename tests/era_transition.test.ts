@@ -19,7 +19,8 @@ import * as T from '../assets/scripts/presentation/MilestoneTier.ts';
 import { MilestonePresentationViewModel } from '../assets/scripts/presentation/MilestonePresentationViewModel.ts';
 import { EraEnvironmentViewModel } from '../assets/scripts/presentation/EraEnvironmentViewModel.ts';
 import { ERA_ENV_CYAN } from '../assets/scripts/presentation/EraEnvironmentLayout.ts';
-import { AUT048_SEED_VARIANTS, buildAut048SeededSave, buildAut048SeededState, isAut048SeedVariant } from '../tools/device/seed_aut048.ts';
+import * as D from '../assets/scripts/presentation/DebugCommandFile.ts';
+import { AUT048_LIVE_COMMAND_DELAY_MS, AUT048_SEED_VARIANTS, buildAut048LiveCommandFile, buildAut048SeededSave, buildAut048SeededState, isAut048SeedVariant, seedAut048, seedAut048Era3Live } from '../tools/device/seed_aut048.ts';
 import { ROBOT_LINE_CONSTRUCTION_COST } from '../tools/device/seed_aut042.ts';
 import { ARC_CONSTRUCTION_COST } from '../tools/device/seed_aut044.ts';
 import { DEFAULT_REVEAL_EVENT_TYPES, REVEAL_SCENARIOS, evaluateEraTransition, evaluateRevealTimeline, type TimelineEvent } from '../tools/device/reveal_capture.ts';
@@ -446,7 +447,7 @@ test('AUT-048 device tooling: npm script, cli usage, scenarios, capture checks (
     const cli = read('tools/device/cli.ts');
     assert.match(cli, /command === 'seed-aut048'/);
     assert.match(cli, /seed-aut048 \[--variant era2\|era3\]/);
-    assert.match(cli, /aut048\|aut048-era3\]/);
+    assert.match(cli, /aut048\|aut048-era3\|aut048-era3-live\]/);
     assert.match(cli, /robot-line-build/);
     assert.match(cli, /expectEraTitle: scenario\.expectEraTitle/);
     const two = REVEAL_SCENARIOS.aut048;
@@ -476,4 +477,89 @@ test('AUT-048 device tooling: npm script, cli usage, scenarios, capture checks (
     const timeline = evaluateRevealTimeline(good, { expectConstruction: null, expectFocus: false, triggered: true, frameCount: 10, expectEraTitle: 'automated_factory' });
     assert.ok(timeline.some((c) => c.id === 'era_title_started'), 'wired into the timeline evaluation');
     assert.equal(evaluateRevealTimeline(good, { expectConstruction: null, expectFocus: false, triggered: true, frameCount: 10 }).some((c) => c.id.startsWith('era_')), false, 'other scenarios are unaffected');
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// DEBUG-only Era III capture trigger (debug_command.json)
+
+test('AUT-048 DEBUG command file: allow-listed purchaseBreakthrough only, bounded delay, anything else ignored', () => {
+    assert.equal(D.DEBUG_COMMAND_FILE, 'debug_command.json');
+    assert.deepEqual(D.parseDebugCommandFile(buildAut048LiveCommandFile()), { command: { type: 'purchaseBreakthrough', breakthroughId: 'advanced_robotics' }, delayMs: AUT048_LIVE_COMMAND_DELAY_MS });
+    assert.equal(D.parseDebugCommandFile(undefined), null);
+    assert.equal(D.parseDebugCommandFile('not json'), null);
+    for (const bad of [
+        { command: { type: 'rebootCivilization' } },
+        { command: { type: 'manualProduce' } },
+        { command: { type: 'purchaseBreakthrough', breakthroughId: '../x' } },
+        { command: { type: 'purchaseBreakthrough' } },
+        { command: 'purchaseBreakthrough' },
+        [],
+        null,
+    ]) assert.equal(D.parseDebugCommandFile(JSON.stringify(bad)), null, JSON.stringify(bad));
+    assert.equal(D.parseDebugCommandFile(JSON.stringify({ command: { type: 'purchaseBreakthrough', breakthroughId: 'a' }, delayMs: 999999 }))?.delayMs, D.DEBUG_COMMAND_MAX_DELAY_MS);
+    assert.equal(D.parseDebugCommandFile(JSON.stringify({ command: { type: 'purchaseBreakthrough', breakthroughId: 'a' }, delayMs: -5 }))?.delayMs, 0);
+    assert.doesNotMatch(code('DebugCommandFile.ts'), /from '\x63c|GameCommand|commandEmitter/, 'pure parser, no engine, no command submission');
+    const meta = JSON.parse(presentation('DebugCommandFile.ts.meta'));
+    assert.match(meta.uuid, /^a0480000-0000-4000-8000-\d{12}$/);
+    assert.notEqual(meta.uuid, JSON.parse(presentation('EraTransition.ts.meta')).uuid);
+});
+
+test('AUT-048 DEBUG command guard: read once after ready, only when DEBUG and diagnostics are on, through the normal submit path; no HUD / UiLayout / scene change', () => {
+    const bootstrap = presentation('FactoryWorldBootstrap.ts');
+    const body = bootstrap.slice(bootstrap.indexOf('private runDebugCommandFile('), bootstrap.indexOf('private onGameHide('));
+    assert.match(body, /if \(DEBUG !== true \|\| !isDeviceDiagnosticsEnabled\(\)\) return;/, 'DEBUG guard first');
+    assert.ok(body.indexOf('port.readText(DEBUG_COMMAND_FILE)') < body.indexOf('port.remove(DEBUG_COMMAND_FILE)'), 'read, then deleted: fires once');
+    assert.ok(body.indexOf('port.remove(DEBUG_COMMAND_FILE)') < body.indexOf('parseDebugCommandFile(text)'), 'deleted even when the content is rejected');
+    assert.match(body, /binding\.submit\(request\.command\)/, 'the normal command path');
+    assert.doesNotMatch(body, /state\.run|runtime|execute\(|\.save|writeText/, 'no state write, no direct runtime call, no save write');
+    assert.match(bootstrap, /import \{ DEBUG \} from 'cc\/env';/);
+    const activate = bootstrap.slice(bootstrap.indexOf('private activateSessionBinding('), bootstrap.indexOf('private runDebugCommandFile('));
+    assert.match(activate, /this\.runDebugCommandFile\(binding\);/, 'after binding.init() and the emitters exist (session ready)');
+    assert.ok(activate.indexOf('binding.init()') < activate.indexOf('this.runDebugCommandFile(binding)'));
+    assert.ok(activate.indexOf('wiring.hud.commandEmitter') < activate.indexOf('this.runDebugCommandFile(binding)'));
+    assert.equal((bootstrap.match(/DEBUG_COMMAND_FILE/g) ?? []).length, 3, 'import + the one guarded reader (read, remove)');
+    assert.ok((DEVICE_EVENT_TYPES as readonly string[]).includes('debug_command'));
+    for (const file of ['UiLayout.ts', 'CoreHudController.ts', 'CoreLoopActions.ts', 'HudViewModel.ts', 'ProducerPanelController.ts']) {
+        assert.doesNotMatch(presentation(file), /debug_command|DebugCommand|DEBUG_COMMAND/, `${file}: no player-facing path`);
+    }
+    assert.doesNotMatch(read('assets/scenes/factory/FactoryWorld.scene'), /debug_command|DebugCommand/);
+    for (const file of ['MilestonePresentationController.ts', 'PresentationController.ts', 'RobotPopulationController.ts', 'EraTransition.ts']) assert.doesNotMatch(presentation(file), /DEBUG_COMMAND_FILE/);
+});
+
+test('AUT-048 live Era III capture: seed writes save + debug command (stale one removed first), scenario expects command_result, one ROBOTICS COMPLEX ONLINE card, finish <= 3.5 s, focus decision, fade', async () => {
+    const calls: string[] = [];
+    const written: Record<string, string> = {};
+    const driver = {
+        forceStop: async () => { calls.push('forceStop'); },
+        appDataDirectory: async () => '/data/data/pkg',
+        removeAppFiles: async (_pkg: string, paths: string[]) => { calls.push(`remove:${paths.map((p) => p.split('/').pop()).join(',')}`); },
+        writeAppFile: async (_pkg: string, file: string, text: string) => { calls.push(`write:${file.split('/').pop()}`); written[file.split('/').pop()!] = text; },
+        launch: async () => { calls.push('launch'); },
+    };
+    await seedAut048Era3Live(driver as never, 'pkg', 'act');
+    assert.deepEqual(calls, ['forceStop', 'remove:save_main.json,save_backup.json,save_temp.json,debug_command.json', 'write:save_main.json', 'write:debug_command.json', 'launch'], 'command file is written before the launch, after the save');
+    assert.equal(written['debug_command.json'], buildAut048LiveCommandFile());
+    const plain: string[] = [];
+    await seedAut048({ ...driver, removeAppFiles: async (_pkg: string, paths: string[]) => { plain.push(...paths.map((p) => p.split('/').pop()!)); } } as never, 'pkg', 'act', 'era3');
+    assert.ok(plain.includes('debug_command.json'), 'a plain seed removes a stale debug command');
+    const live = REVEAL_SCENARIOS['aut048-era3-live'];
+    assert.deepEqual([live.trigger, live.expectEraTitle, live.expectCommands, live.expectConstruction], ['none', 'robotics_complex', ['purchaseBreakthrough'], null]);
+    assert.ok((live.durationMs ?? 0) >= AUT048_LIVE_COMMAND_DELAY_MS + 6000, 'the capture outlasts delay + card + 3.0 s');
+    const ev = (tMs: number, evt: string, fields: Record<string, unknown>): TimelineEvent => ({ tMs, event: { evt, ...fields } as TimelineEvent['event'] });
+    const good: TimelineEvent[] = [
+        ev(100, 'era_transition', { phase: 'synced', eraId: 'automated_factory' }),
+        ev(6000, 'command_result', { ok: true, command: { type: 'purchaseBreakthrough', breakthroughId: 'advanced_robotics' } }),
+        ev(6050, 'era_environment_state', { phase: 'transition_started', eraId: 'robotics_complex' }),
+        ev(6450, 'era_transition', { phase: 'title_started', eraId: 'robotics_complex', title: 'ROBOTICS COMPLEX ONLINE' }),
+        ev(6450, 'era_transition', { phase: 'focus_skipped', eraId: 'robotics_complex', reason: 'on_centre' }),
+        ev(9450, 'era_transition', { phase: 'title_finished', eraId: 'robotics_complex', elapsedSeconds: 3.0 }),
+    ];
+    const options = { expectConstruction: null, expectFocus: false, triggered: false, frameCount: 20, expectEraTitle: live.expectEraTitle, expectCommands: live.expectCommands };
+    const checks = evaluateRevealTimeline(good, options);
+    assert.ok(checks.every((c) => c.ok), JSON.stringify(checks.filter((c) => !c.ok)));
+    assert.ok(checks.some((c) => c.id === 'command_purchaseBreakthrough_ok'));
+    const noCommand = evaluateRevealTimeline(good.filter((e) => e.event.evt !== 'command_result'), options);
+    assert.ok(noCommand.some((c) => !c.ok && c.id === 'command_purchaseBreakthrough_ok'));
+    const doubled = evaluateRevealTimeline([...good, ev(7000, 'era_transition', { phase: 'title_started', eraId: 'robotics_complex' })], options);
+    assert.ok(doubled.some((c) => !c.ok && c.id === 'era_title_only_for_expected_era'), 'exactly one card');
 });

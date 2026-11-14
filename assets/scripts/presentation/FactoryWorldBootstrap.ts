@@ -52,6 +52,7 @@ import { ROBOT_LINE_FOUNDATION_SLAB, ROBOT_LINE_LAMP_IDS, ROBOT_LINE_LAMPS, ROBO
 import { FirstRobotPresentationController, ROBOT_BAY_LAMP_OFF_NODE_NAME, ROBOT_BAY_LAMP_ON_NODE_NAME } from './FirstRobotPresentationController';
 import { ASSEMBLY_FOUNDATION_SLAB, assemblyLocal, FIRST_ROBOT_REVEAL_TARGET, ROBOT_BAY_LAMP } from './AssemblySliceLayout.ts';
 import { CocosFileSystemPort } from '../app/CocosFileSystemPort';
+import { DEBUG_COMMAND_FILE, parseDebugCommandFile } from './DebugCommandFile.ts';
 import { bootstrapGameSession } from '../lifecycle/GameSessionBootstrap.ts';
 import { FileSaveStorage } from '../persistence/FileSaveStorage.ts';
 import { DefaultTimeService } from '../time/DefaultTimeService.ts';
@@ -251,9 +252,34 @@ export class FactoryWorldBootstrap extends Component {
             this.lifecycleHooksRegistered = true;
         }
         this.emitSessionState('ready', status, null, binding.describe().autoFeederOwned);
+        this.runDebugCommandFile(binding);
         // DEBUG-only (emitDeviceEvent is a no-op unless enabled from DEBUG): the restored automation state.
         const payoff = wiring.presentation?.firstAutomationPresentation?.getSnapshot() ?? null;
         emitDeviceEvent('reveal_state', { phase: 'synced', source: 'session', automated: payoff?.activityIndicatorVisible === true, focusRequested: false });
+    }
+
+    /**
+     * DEBUG / capture-only (AUT-048 follow-up): reads `debug_command.json` ONCE after the session is ready, deletes it, and submits the
+     * allow-listed command through the same `binding.submit` path the HUD uses. Guarded by `DEBUG === true` AND enabled device
+     * diagnostics, so release builds never read it. No HUD / scene / gameplay path.
+     */
+    private runDebugCommandFile(binding: FactoryWorldStateBinding): void {
+        if (DEBUG !== true || !isDeviceDiagnosticsEnabled()) return;
+        try {
+            const port = new CocosFileSystemPort();
+            const text = port.readText(DEBUG_COMMAND_FILE);
+            if (text === undefined) return;
+            port.remove(DEBUG_COMMAND_FILE);
+            const request = parseDebugCommandFile(text);
+            if (!request) { emitDeviceEvent('debug_command', { phase: 'ignored' }); return; }
+            emitDeviceEvent('debug_command', { phase: 'scheduled', command: request.command, delayMs: request.delayMs });
+            this.scheduleOnce(() => {
+                emitDeviceEvent('debug_command', { phase: 'submitted', command: request.command });
+                void binding.submit(request.command);
+            }, request.delayMs / 1000);
+        } catch (error) {
+            this.reportSessionError('debug_command', error);
+        }
     }
 
     private onGameHide(): void {

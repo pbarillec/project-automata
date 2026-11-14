@@ -55,6 +55,8 @@ export const DEVICE_EVENT_TYPES = [
     'milestone_presentation',
     // AUT-048: era transition title card + focus beat: { phase: 'synced' | 'scheduled' | 'title_started' | 'title_applied' | 'title_finished' | 'focus_requested' | 'focus_skipped' | 'cancelled', eraId, ... }.
     'era_transition',
+    // AUT-048 follow-up (DEBUG only): debug_command.json read once after ready: { phase: 'scheduled' | 'submitted' | 'ignored', command?, delayMs? }; the verdict is the normal command_result.
+    'debug_command',
     // AUT-047: temporary boost presentation: { phase: 'synced' | 'started' | 'ended' | 'suspended' | 'resumed' | 'stopped' | 'settled' | 'effect_applied', ... } (effect_applied: anchorResolved, timeScale, plate / spark scale + worldPos).
     'boost_presentation',
     'error',

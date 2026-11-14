@@ -20,7 +20,7 @@ import { seedAut043, type Aut043SeedVariant } from './seed_aut043.ts';
 import { seedAut044 } from './seed_aut044.ts';
 import { seedAut046 } from './seed_aut046.ts';
 import { seedAut047 } from './seed_aut047.ts';
-import { seedAut048 } from './seed_aut048.ts';
+import { seedAut048, seedAut048Era3Live } from './seed_aut048.ts';
 import { seedUi003 } from './seed_ui003.ts';
 import { parseHudActions } from './scenarios/ui001_core_loop.ts';
 import { parseUiLayout, rectCentre } from './ui_geometry.ts';
@@ -99,6 +99,8 @@ export const REVEAL_SCENARIOS: Readonly<Record<string, RevealScenario>> = Object
     // AUT-048 Era II: Robot Line one step before construction; tap the zone then the panel x1 button; the title card (t0 + 0.6 s) must start / finish, no card on load.
     aut048: { id: 'aut048', label: 'aut048-era2', seed: (d, pkg, act) => seedAut048(d, pkg, act, 'era2'), expectConstruction: 'robot_line', expectFocus: false, trigger: 'robot-line-build', durationMs: 12_000, intervalMs: 300, expectEraTitle: 'automated_factory' },
     // AUT-048 Era III: no existing tap path triggers the era goal (no HUD action by design): this capture only proves the silent load (no card, no focus) at the natural era.
+    // AUT-048 follow-up: the DEBUG-only debug_command.json (written by the seed, read once after ready) submits the normal Advanced Robotics purchase; trigger 'none' on the capture side.
+    'aut048-era3-live': { id: 'aut048-era3-live', label: 'aut048-era3-live', seed: (d, pkg, act) => seedAut048Era3Live(d, pkg, act), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 18_000, intervalMs: 400, expectEraTitle: 'robotics_complex', expectCommands: ['purchaseBreakthrough'] },
     'aut048-era3': { id: 'aut048-era3', label: 'aut048-era3-silent-load', seed: (d, pkg, act) => seedAut048(d, pkg, act, 'era3'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 400, expectEraTitle: 'none' },
 });
 

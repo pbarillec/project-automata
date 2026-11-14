@@ -70,3 +70,13 @@ Vision QA (`scene-presentation`): PASS on agent-decidable criteria — single ca
 Non-blocking POLISH (tracked): the card panel is slightly translucent (a hall pylon shows behind the text at ~3.6 s); Era III vertical group/teaser not identifiable in the one era3 frame inspected (AUT-045 owns them).
 
 Not shown / pending: Era III live card (no existing tap path — unit-tested only, incl. a real GameRuntime run of the advanced_robotics breakthrough); card fade shape (frame cadence ~0.8 s); whether the hall fades or pops in (already visible at the first post frame). Owner (subjective): the ~3 s timing and the card overlapping the construction (card appears at 1.3 s while construction activates at 2.9 s).
+
+## Follow-up: DEBUG-only Era III capture trigger (owner decision)
+
+The owner approved ONLY a capture-side DEBUG trigger so the live Era III card can be validated; no player-facing HUD path was added or changed.
+
+- `DebugCommandFile.ts` (pure): `debug_command.json` = `{ "command": { "type": "purchaseBreakthrough", "breakthroughId": "<id>" }, "delayMs": n }`. Allow-list: only `purchaseBreakthrough` with an id matching `^[a-z0-9_]{1,64}$`; delay clamped to 0..30000 ms; anything else is ignored.
+- `FactoryWorldBootstrap.runDebugCommandFile` (called at the end of `activateSessionBinding`, after `binding.init()` and the command emitters exist): guarded by `DEBUG === true` (`cc/env`) AND `isDeviceDiagnosticsEnabled()`, so release builds never read the file. It reads the file once from the app files dir, deletes it (also when the content is rejected, so it fires once), then after `delayMs` submits the command through `binding.submit` (the same path as the HUD / panel emitters). It writes no state and no save; the verdict is the normal `command_result`. DEBUG events: `debug_command` (`scheduled` / `submitted` / `ignored`).
+- `seed_aut048.ts`: the `era3` save is already one step before Era III (Advanced Robotics affordable, 1000 Robots Built, natural era `automated_factory`). New `seedAut048Era3Live` writes that save plus `debug_command.json` (6 s delay) before launch; every other `seedAut048` call removes a stale command file first.
+- Scenario `aut048-era3-live` (trigger `none` on the capture side, 18 s): checks `command_purchaseBreakthrough_ok`, exactly one `title_started` for `robotics_complex` (ROBOTICS COMPLEX ONLINE), `title_finished` <= 3.5 s, a focus decision (requested / skipped + reason), the environment fade started, 0 errors. The `aut048-era3` silent-load scenario is unchanged.
+- Tests: parser allow-list, the DEBUG guard / once / normal-submit pins, no reference in `UiLayout` / HUD / panel controllers / the scene, seed + scenario + checks. Not run on a device (no APK built).
