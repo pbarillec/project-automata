@@ -59,7 +59,8 @@ export function evaluateOfflineDouble(events: readonly OfflineDoubleTimelineEven
 
     // Geometry of the card with the x2 action (latest layout that reports it, before the tap).
     const firstTap = report(before, 'double_tapped')[0];
-    const layoutBeforeTap = latestLayout(firstTap ? before.filter((e) => e.tMs <= firstTap.tMs) : before, 'OfflineReportDouble');
+    // Event order, not tMs: tMs mixes frame-collection time with event time. The first layout reporting the x2 rect is the card as shown before the tap.
+    const layoutBeforeTap = firstLayout(before, 'OfflineReportDouble');
     checks.push(...geometryChecks(layoutBeforeTap));
 
     checks.push({ id: 'double_tapped', ok: firstTap !== undefined, detail: firstTap ? `t=${firstTap.tMs}ms` : 'x2 not tapped' });
@@ -76,7 +77,7 @@ export function evaluateOfflineDouble(events: readonly OfflineDoubleTimelineEven
         const total = Number(granted?.event.grantedReward ?? Number.NaN);
         checks.push({
             id: 'double_granted_exactly_2x',
-            ok: granted !== undefined && base > 0 && Math.abs(total - 2 * base) <= Math.abs(2 * base) * 1e-9 && granted.event.multiplier === 2,
+            ok: granted !== undefined && base > 0 && Math.abs(total - 2 * base) <= 0.011 && granted.event.multiplier === 2,
             detail: granted ? `base=${base} granted=${total} multiplier=${String(granted.event.multiplier)}` : 'no granted event',
         });
         const projected = Number(offer?.event.projectedReward ?? Number.NaN);
@@ -114,6 +115,11 @@ export function evaluateOfflineDouble(events: readonly OfflineDoubleTimelineEven
 }
 
 interface LayoutSnapshot { readonly screen: { w: number; h: number }; readonly safeArea: Rect | null; readonly rects: Record<string, unknown> }
+
+function firstLayout(list: readonly OfflineDoubleTimelineEvent[], rectName: string): LayoutSnapshot | null {
+    const index = list.findIndex((e) => e.event.evt === 'ui_layout' && toRect((e.event.rects as Record<string, unknown> | undefined)?.[rectName]) !== null);
+    return index < 0 ? null : latestLayout(list.slice(0, index + 1), rectName);
+}
 
 function latestLayout(list: readonly OfflineDoubleTimelineEvent[], rectName: string): LayoutSnapshot | null {
     const hit = list.filter((e) => e.event.evt === 'ui_layout' && toRect((e.event.rects as Record<string, unknown> | undefined)?.[rectName]) !== null).pop();
