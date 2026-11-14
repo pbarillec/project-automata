@@ -405,7 +405,7 @@ test('native config: manifest placeholders, provider removal, gradle defaults, J
     assert.match(gradle, /System\.getenv\(name\)/);
     assert.match(gradle, /project\.findProperty\(name\)/);
 
-    const java = read('native/engine/android/app/src/com/cocos/game/AutomataAdsController.java');
+    const java = read('native/engine/android/app/src/com/cocos/game/AutomataAdsController.java').replace(/\r\n/g, '\n');
     assert.ok(java.includes('ca-app-pub-3940256099942544~3347511713'));
     assert.ok(java.includes('ca-app-pub-3940256099942544/5224354917'));
     assert.match(java, /FLAG_DEBUGGABLE/);
