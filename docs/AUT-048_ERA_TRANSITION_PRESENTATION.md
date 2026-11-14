@@ -80,3 +80,13 @@ The owner approved ONLY a capture-side DEBUG trigger so the live Era III card ca
 - `seed_aut048.ts`: the `era3` save is already one step before Era III (Advanced Robotics affordable, 1000 Robots Built, natural era `automated_factory`). New `seedAut048Era3Live` writes that save plus `debug_command.json` (6 s delay) before launch; every other `seedAut048` call removes a stale command file first.
 - Scenario `aut048-era3-live` (trigger `none` on the capture side, 18 s): checks `command_purchaseBreakthrough_ok`, exactly one `title_started` for `robotics_complex` (ROBOTICS COMPLEX ONLINE), `title_finished` <= 3.5 s, a focus decision (requested / skipped + reason), the environment fade started, 0 errors. The `aut048-era3` silent-load scenario is unchanged.
 - Tests: parser allow-list, the DEBUG guard / once / normal-submit pins, no reference in `UiLayout` / HUD / panel controllers / the scene, seed + scenario + checks. Not run on a device (no APK built).
+
+## Live Era III device evidence and visual QA (2026-11-14)
+
+DEBUG APK from c9269dd (gate label aut048b), `npm run device:reveal-capture -- --scenario aut048-era3-live` (`temp/reveal/aut048e3live-2026-11-14T075841/`, 25 frames), triggered by the DEBUG-only `debug_command.json` (purchaseBreakthrough advanced_robotics; no player-facing path added). All automated checks PASS: 0 errors, command ok (eraChanged), exactly one `era_title_started` ROBOTICS COMPLEX ONLINE at ~7.1 s (none before the trigger), `era_title_finished` 3 s, `focus_skipped on_centre`, era environment fade started at the purchase.
+
+Vision QA (`scene-presentation`): PASS — single card in the band under the HUD, legible with the muted cyan underline (59,112,121, dimmer than the lamps), no second toast, gone by ~10.3 s without residual; Era III palette shift, vertical group and the sealed unlabelled teaser appear, Advanced Robotics Complex build visible below the card; no tint/flash/clipping; HUD and Next Goal text update correctly; no regression.
+
+Non-blocking POLISH (tracked): card panel slightly translucent (Era II note); the top-band card hides the top of the new vertical group/teaser for ~3 s (inherent to the design); foreground robots overlap the 'Tap a producer'/'Manual Produce' labels at the Era III focus distance (pre-existing, AUT-VIS candidate).
+
+Owner decision (2026-11-14): AUT-048 PASS, Era II card timing accepted (card during the build feels appropriate); Era III validation via DEBUG/capture-only trigger only.
