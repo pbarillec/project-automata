@@ -103,7 +103,7 @@ test('FactoryWorldBootstrap assigns displayNames only in activateSessionBinding,
 
 test('localization/ and PresentationText.ts are engine-free', async () => {
     const files = (await readdir(path.join(repoRoot, 'assets/scripts/localization'))).filter((name) => name.endsWith('.ts'));
-    assert.deepEqual(files.sort(), ['EmbeddedTextCatalogue.ts', 'TextCatalogue.ts', 'index.ts']);
+    assert.deepEqual(files.sort(), ['EmbeddedTextCatalogue.ts', 'PseudoLocale.ts', 'TextCatalogue.ts', 'index.ts']);
     for (const name of files) assert.doesNotMatch(await read(`assets/scripts/localization/${name}`), CC_IMPORT, name);
     assert.doesNotMatch(await read('assets/scripts/presentation/PresentationText.ts'), CC_IMPORT);
 });

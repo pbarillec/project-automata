@@ -67,6 +67,7 @@ export class MilestonePresentationController extends Component {
     private eraAppliedReportedFor = 0;
     /** AUT-049: the Reboot card beat currently drawn (text changes per beat). */
     private rebootBeat: RebootBeat | null = null;
+    private rebootCardActive = false;
 
     public start(): void {
         this.ensureToast();
@@ -100,6 +101,11 @@ export class MilestonePresentationController extends Component {
         return update;
     }
 
+    /** True while the Reboot title card item is playing (the Settings chip is suppressed meanwhile). */
+    public isRebootCardActive(): boolean {
+        return this.rebootCardActive;
+    }
+
     public update(deltaSeconds: number): void {
         const tick = this.viewModel.tick(deltaSeconds);
         for (const item of tick.finished) {
@@ -109,6 +115,8 @@ export class MilestonePresentationController extends Component {
         }
         // Era card offers made when the card delay elapsed are already merged into started (both start paths are handled).
         for (const item of tick.started) this.onToastStarted(item);
+        // AUT-052: the Settings chip stays inert while the Reboot title card owns the band.
+        this.rebootCardActive = tick.frame?.item.trigger.kind === 'reboot_title';
         if (tick.frame) this.renderToast(tick.frame.item, tick.frame.sample.alpha, tick.frame.sample.wipe, tick.frame.sample.beat ?? null);
         else this.hideToast();
         this.updateEffect(deltaSeconds);

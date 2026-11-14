@@ -4,29 +4,9 @@ import type { MilestoneTrigger } from './MilestoneTier.ts';
 import { eraTransitionSpec } from './EraTransition.ts';
 import type { RebootBeat } from './RebootPresentation.ts';
 
-/**
- * English toast templates. They live here rather than in localization/en.json on purpose: the AUT-LOC-001 tests pin the shared
- * catalogue to the HUD / panel composition (no dead keys, exact params). Producer and breakthrough NAMES still come from the
- * catalogue through the config display-name keys. Moving these to the catalogue is a localization follow-up (AUT-052).
- */
-export const MILESTONE_TEXT_TEMPLATES: Readonly<Record<string, string>> = Object.freeze({
-    producer_milestone: '{name} Lv {level}',
-    automation: '{name} automated',
-    producer_constructed: '{name} built',
-    breakthrough_subtitle: 'Breakthrough unlocked',
-    breakthrough_generic: 'New breakthrough',
-    robots_built_title: 'Robots built: {count}',
-    robots_built_subtitle: 'Robot output milestone',
-    producer_generic: 'Producer',
-    extra: '{text} +{count}',
-    // AUT-049 Reboot title card beats (English, all caps, until the AUT-052 catalogue move).
-    reboot_title: 'REBOOT',
-    reboot_ai_core: 'AI CORE ×{count}',
-    reboot_civilization: 'CIVILIZATION #{number}',
-});
-
-function fill(key: string, params: Readonly<Record<string, string | number>> = {}): string {
-    return MILESTONE_TEXT_TEMPLATES[key].replace(/\{(\w+)\}/g,(placeholder, name: string) => (name in params ? String(params[name]) : placeholder));
+/** Toast wording lives in the shared catalogue (`toast.*` keys, AUT-052); producer and breakthrough NAMES come from the config display-name keys. */
+function fill(catalogue: TextCatalogue, key: string, params: Readonly<Record<string, string | number>> = {}): string {
+    return catalogue.resolveText(`toast.${key}`, params);
 }
 
 export interface MilestoneToastText {
@@ -45,43 +25,48 @@ export function formatMilestoneToast(
     beat: RebootBeat | null = null,
 ): MilestoneToastText {
     // AUT-049: the Reboot card shows one title per beat (REBOOT, AI CORE x N, CIVILIZATION #N); no "+N", no subtitle.
-    if (trigger.kind === 'reboot_title') return { title: formatRebootBeat(trigger, beat ?? 'reboot'), subtitle: null };
+    if (trigger.kind === 'reboot_title') return { title: formatRebootBeat(trigger, beat ?? 'reboot', catalogue), subtitle: null };
     const text = compose(trigger, names, catalogue);
-    const title = extra > 0 ? fill('extra', { text: text.title, count: extra }) : text.title;
+    const title = extra > 0 ? fill(catalogue, 'extra', { text: text.title, count: extra }) : text.title;
     return { title, subtitle: text.subtitle };
 }
 
 /** Title of one beat of the Reboot card ("AI CORE ×N" uses the AI Cores granted, "CIVILIZATION #N" the new civilization). */
-export function formatRebootBeat(trigger: MilestoneTrigger, beat: RebootBeat): string {
-    if (beat === 'ai_core') return fill('reboot_ai_core', { count: trigger.reboot?.aiCoresGranted ?? 0 });
-    if (beat === 'civilization') return fill('reboot_civilization', { number: trigger.reboot?.newCivilization ?? 0 });
-    return fill('reboot_title');
+export function formatRebootBeat(trigger: MilestoneTrigger, beat: RebootBeat, catalogue: TextCatalogue = getDefaultTextCatalogue()): string {
+    if (beat === 'ai_core') return fill(catalogue, 'reboot_ai_core', { count: trigger.reboot?.aiCoresGranted ?? 0 });
+    if (beat === 'civilization') return fill(catalogue, 'reboot_civilization', { number: trigger.reboot?.newCivilization ?? 0 });
+    return fill(catalogue, 'reboot_title');
 }
 
 function compose(trigger: MilestoneTrigger, names: DisplayNameSource | null, catalogue: TextCatalogue): MilestoneToastText {
     switch (trigger.kind) {
         case 'producer_milestone':
-            return { title: fill('producer_milestone', { name: producerName(trigger.producerId, names, catalogue), level: trigger.threshold ?? 0 }), subtitle: null };
+            return { title: fill(catalogue, 'producer_milestone', { name: producerName(trigger.producerId, names, catalogue), level: trigger.threshold ?? 0 }), subtitle: null };
         case 'automation':
-            return { title: fill('automation', { name: producerName(trigger.producerId, names, catalogue) }), subtitle: null };
+            return { title: fill(catalogue, 'automation', { name: producerName(trigger.producerId, names, catalogue) }), subtitle: null };
         case 'producer_constructed':
-            return { title: fill('producer_constructed', { name: producerName(trigger.producerId, names, catalogue) }), subtitle: null };
+            return { title: fill(catalogue, 'producer_constructed', { name: producerName(trigger.producerId, names, catalogue) }), subtitle: null };
         case 'breakthrough': {
             const key = trigger.breakthroughId !== null ? names?.getBreakthrough(trigger.breakthroughId)?.displayNameKey ?? null : null;
-            const title = key !== null && catalogue.has(key) ? catalogue.resolveText(key) : fill('breakthrough_generic');
-            return { title, subtitle: fill('breakthrough_subtitle') };
+            const title = key !== null && catalogue.has(key) ? catalogue.resolveText(key) : fill(catalogue, 'breakthrough_generic');
+            return { title, subtitle: fill(catalogue, 'breakthrough_subtitle') };
         }
         case 'era_title':
-            // AUT-048: one all-caps line from the era table (English until the AUT-052 catalogue move), never a subtitle.
-            return { title: eraTransitionSpec(trigger.eraId)?.title ?? fill('breakthrough_generic'), subtitle: null };
+            // AUT-048: one all-caps line (catalogue key from the era table), never a subtitle.
+            return { title: eraTitle(trigger.eraId, catalogue), subtitle: null };
         case 'robots_built':
-            return { title: fill('robots_built_title', { count: trigger.threshold ?? 0 }), subtitle: fill('robots_built_subtitle') };
+            return { title: fill(catalogue, 'robots_built_title', { count: trigger.threshold ?? 0 }), subtitle: fill(catalogue, 'robots_built_subtitle') };
         default:
-            return { title: fill('breakthrough_generic'), subtitle: null };
+            return { title: fill(catalogue, 'breakthrough_generic'), subtitle: null };
     }
+}
+
+function eraTitle(eraId: string | null, catalogue: TextCatalogue): string {
+    const key = eraTransitionSpec(eraId)?.titleKey ?? null;
+    return key !== null && catalogue.has(key) ? catalogue.resolveText(key) : fill(catalogue, 'breakthrough_generic');
 }
 
 function producerName(producerId: string | null, names: DisplayNameSource | null, catalogue: TextCatalogue): string {
     const key = producerId !== null ? names?.getProducer(producerId)?.displayNameKey ?? null : null;
-    return key !== null && catalogue.has(key) ? catalogue.resolveText(key) : fill('producer_generic');
+    return key !== null && catalogue.has(key) ? catalogue.resolveText(key) : fill(catalogue, 'producer_generic');
 }

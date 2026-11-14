@@ -48,6 +48,15 @@ import { BoostPresentationController } from './BoostPresentationController';
 import { RebootPresentationController } from './RebootPresentationController';
 import { OfflineReportController, type OfflineReportShowReason } from './OfflineReportController';
 import { PermanentUpgradeController } from './PermanentUpgradeController';
+import { SettingsController } from './SettingsController';
+import { mapEventsToCues } from './AudioCueMapper.ts';
+import { SettingsStore, type SettingsEvent } from '../settings/SettingsStore.ts';
+import type { UserSettings } from '../settings/UserSettings.ts';
+import { getDefaultTextCatalogue, type MissingTextReport } from '../localization/index.ts';
+import type { AudioService } from '../services/AudioService.ts';
+import type { HapticsService } from '../services/HapticsService.ts';
+import { SilentAudioService } from '../platform/noop/SilentAudioService';
+import { NoOpHapticsService } from '../platform/noop/NoOpHapticsService';
 import { REBOOT_CORE_EULER_DEG, REBOOT_SOCKET, socketRingBars } from './RebootPresentation.ts';
 import { milestoneToastTopOffset } from './MilestoneToastLayout.ts';
 import { MILESTONE_ACCENT_RGB, producerZoneName } from './MilestoneFeedback.ts';
@@ -113,7 +122,12 @@ export class FactoryWorldBootstrap extends Component {
     /** AUT-INT-001: the persistent session binding; null until the save has loaded (inputs stay inert). */
     private binding: FactoryWorldStateBinding | null = null;
     private pendingBinding: { binding: FactoryWorldStateBinding; status: string; displayNames: DisplayNameSource } | null = null;
-    private sessionWiring: { hud: CoreHudController; panel: ProducerPanelController; batch: AssemblyBatchActionController; selection: ProducerSelectionController; presentation: PresentationController | null; offlineReport: OfflineReportController; permanentUpgrades: PermanentUpgradeController } | null = null;
+    private sessionWiring: { hud: CoreHudController; panel: ProducerPanelController; batch: AssemblyBatchActionController; selection: ProducerSelectionController; presentation: PresentationController | null; offlineReport: OfflineReportController; permanentUpgrades: PermanentUpgradeController; settings: SettingsController } | null = null;
+    /** AUT-052: device preferences (own file, loaded before the first UI paint) and the silent audio / no-op haptics services that follow them. */
+    private settingsStore: SettingsStore | null = null;
+    private readonly audio: AudioService = new SilentAudioService();
+    private readonly haptics: HapticsService = new NoOpHapticsService();
+    private missingTextReports = 0;
     private saveRootPath = '';
     private lifecycleHooksRegistered = false;
     /** AUT-R-036: frames left before the DEBUG `ui_layout` diagnostic (0 = none scheduled). */
@@ -133,6 +147,8 @@ export class FactoryWorldBootstrap extends Component {
     }
 
     public start(): void {
+        // AUT-052: the user settings load synchronously BEFORE any UI is built, so the first paint already uses them.
+        this.loadUserSettings();
         const site = this.node.getChildByName('FactorySite') ?? new Node('FactorySite');
         site.parent = this.node;
         if (!site.getChildByName('SiteBoundary')) this.createShell(site);
@@ -162,6 +178,8 @@ export class FactoryWorldBootstrap extends Component {
         this.createRebootPresentation(site);
         // AUT-050: the AI Upgrades chip + panel sit below the offline card (the offline report root stays the LAST child of the Canvas).
         const permanentUpgrades = this.createPermanentUpgrades();
+        // AUT-052: the Settings chip / panel also sit below the offline card root, which stays the LAST child of the Canvas.
+        const settings = this.createSettings();
         const offlineReport = this.createOfflineReport();
         selection.onSelectionChanged = (producerId) => {
             panel.replaceSelection(producerId);
@@ -169,7 +187,7 @@ export class FactoryWorldBootstrap extends Component {
         };
         this.reportUiLayoutAfterSelection(selection);
         const presentation = site.getChildByName('PresentationAnchors')?.getComponent(PresentationController) ?? null;
-        this.sessionWiring = { hud, panel, batch, selection, presentation, offlineReport, permanentUpgrades };
+        this.sessionWiring = { hud, panel, batch, selection, presentation, offlineReport, permanentUpgrades, settings };
         this.startPersistentSession(presentation);
     }
 
@@ -177,6 +195,7 @@ export class FactoryWorldBootstrap extends Component {
     public update(deltaTime: number): void {
         this.tickUiLayoutDiagnostics();
         this.tickCameraStateDiagnostics();
+        this.updateSettingsSuppression();
         if (this.pendingBinding) {
             this.activateSessionBinding(this.pendingBinding.binding, this.pendingBinding.status, this.pendingBinding.displayNames);
             this.pendingBinding = null;
@@ -235,7 +254,11 @@ export class FactoryWorldBootstrap extends Component {
                 assemblyBatch: this.sessionWiring?.batch ?? null,
                 // AUT-050: the AI Upgrades chip / panel follows every fresh snapshot.
                 permanentUpgrades: this.sessionWiring?.permanentUpgrades ?? null,
-                observeDomainEvents: isDeviceDiagnosticsEnabled() ? (events) => this.emitAssemblyBatchEvents(events) : undefined,
+                observeDomainEvents: (events) => {
+                    // AUT-052: presentation observes the events and asks the (silent) audio service for cues; the runtime knows nothing about audio.
+                    for (const cue of mapEventsToCues(events)) this.audio.playSfx(cue);
+                    if (isDeviceDiagnosticsEnabled()) this.emitAssemblyBatchEvents(events);
+                },
                 // AUT-051: a Reboot blocked by the pending offline report re-surfaces the card.
                 onRebootBlockedByPendingOffline: () => { this.sessionWiring?.offlineReport.reportRebootBlocked(); this.showOfflineReport('reboot_blocked'); },
             });
@@ -1032,6 +1055,80 @@ export class FactoryWorldBootstrap extends Component {
         return controller;
     }
 
+    /**
+     * AUT-052 Settings: a full-screen root (below the offline report root) holding the dim backdrop and a safe-area container for the card;
+     * the entry chip is built by the controller under the HUD safe-area container, left-aligned under the HUD. Hidden by scale until opened.
+     */
+    private createSettings(): SettingsController {
+        const canvas = this.node.getChildByName('CoreHudCanvas');
+        if (!canvas) throw new Error('createUiRoot() must run before the settings panel is built.');
+        const stretched = (parent: Node, name: string): Node => {
+            const node = parent.getChildByName(name) ?? new Node(name);
+            node.parent = parent;
+            node.layer = Layers.Enum.UI_2D;
+            node.getComponent(UITransform) ?? node.addComponent(UITransform);
+            this.stretchWidget(node.getComponent(Widget) ?? node.addComponent(Widget));
+            return node;
+        };
+        const root = stretched(canvas, 'Settings');
+        const backdrop = stretched(root, 'SettingsBackdrop');
+        const safe = stretched(root, 'SettingsSafeArea');
+        safe.getComponent(SafeArea) ?? safe.addComponent(SafeArea);
+        const controller = root.getComponent(SettingsController) ?? root.addComponent(SettingsController);
+        controller.backdropNode = backdrop;
+        controller.safeNode = safe;
+        controller.chipHost = this.uiSafeArea();
+        controller.settingsStore = this.settingsStore;
+        controller.screenRectOf = (node) => this.uiScreenRect(node);
+        controller.onLayoutChanged = (reason) => this.scheduleUiLayoutDiagnostics(reason);
+        controller.missingTextCount = () => this.missingTextReports;
+        controller.refresh();
+        return controller;
+    }
+
+    /**
+     * AUT-052: loads `settings.json` (synchronously, contained: a failure gives the defaults) and applies it to the audio / haptics services.
+     * Later changes made by the Settings panel go through `SettingsStore.update`, and this subscription applies them.
+     */
+    private loadUserSettings(): void {
+        const catalogue = getDefaultTextCatalogue();
+        catalogue.setMissingTextSink((report: MissingTextReport) => {
+            this.missingTextReports += 1;
+            if (isDeviceDiagnosticsEnabled() && this.missingTextReports <= 5) emitDeviceEvent('settings', { phase: 'missing_text', report, missingText: this.missingTextReports });
+        });
+        try {
+            const store = new SettingsStore(new CocosFileSystemPort(), (event) => this.reportSettingsEvent(event));
+            this.settingsStore = store;
+            this.applyUserSettings(store.load());
+            store.subscribe((settings) => this.applyUserSettings(settings));
+        } catch (error) {
+            // No usable file port: the defaults stay (audio / haptics already default to on) and the chip is simply not offered.
+            this.reportSessionError('settings', error);
+        }
+    }
+
+    private applyUserSettings(settings: UserSettings): void {
+        this.audio.applySettings({ musicEnabled: settings.musicEnabled, sfxEnabled: settings.sfxEnabled });
+        this.haptics.setEnabled(settings.vibrationEnabled);
+    }
+
+    private reportSettingsEvent(event: SettingsEvent): void {
+        if (!isDeviceDiagnosticsEnabled()) return;
+        const settings = this.settingsStore?.get() ?? null;
+        const values = settings ? { musicEnabled: settings.musicEnabled, sfxEnabled: settings.sfxEnabled, vibrationEnabled: settings.vibrationEnabled, language: settings.language } : null;
+        if (event.kind === 'loaded') emitDeviceEvent('settings', { phase: 'loaded', source: event.source, settings: values, missingText: this.missingTextReports });
+        else if (event.kind === 'saved') emitDeviceEvent('settings', { phase: 'saved', settings: values });
+        else emitDeviceEvent('settings', { phase: event.kind, message: event.message, settings: values });
+    }
+
+    /** AUT-052: the Settings chip is hidden and inert while the offline report card or the Reboot title card is up. */
+    private updateSettingsSuppression(): void {
+        const wiring = this.sessionWiring;
+        if (!wiring) return;
+        const rebootCard = wiring.presentation?.milestonePresentation?.isRebootCardActive() === true;
+        wiring.settings.setSuppressed(wiring.offlineReport.isVisible() || rebootCard);
+    }
+
     /** DEBUG: screen rectangle (bottom-left frame) of a UI node through the UI camera. */
     private uiScreenRect(node: Node): UiRect | null {
         const uiCamera = this.node.getChildByName('CoreHudCanvas')?.getChildByName('UICamera')?.getComponent(Camera) ?? null;
@@ -1138,6 +1235,12 @@ export class FactoryWorldBootstrap extends Component {
         rects.PermanentUpgradeClose = upgradeNodes?.close ? rectOf(upgradeNodes.close) : null;
         upgradeNodes?.tabs.forEach((node, index) => { rects[`PermanentUpgradeTab${index}`] = node ? rectOf(node) : null; });
         upgradeNodes?.buys.forEach((node, index) => { rects[`PermanentUpgradeBuy${index}`] = node ? rectOf(node) : null; });
+        // AUT-052: the Settings chip, panel, rows and CLOSE, only while shown / open (null otherwise).
+        const settingsNodes = this.sessionWiring?.settings.getRectNodes() ?? null;
+        rects.SettingsChip = settingsNodes?.chip ? rectOf(settingsNodes.chip) : null;
+        rects.SettingsPanel = settingsNodes?.panel ? rectOf(settingsNodes.panel) : null;
+        rects.SettingsClose = settingsNodes?.close ? rectOf(settingsNodes.close) : null;
+        settingsNodes?.rows.forEach((node, index) => { rects[`SettingsRow${index}`] = node ? rectOf(node) : null; });
         const rowsOf = (card: Node | null, spec: UiCardSpec) => Object.fromEntries(spec.rows.map((row) => [row.key, rectOf(card?.getChildByName(row.key))]));
         const rows = { CoreHUD: rowsOf(hud, CORE_HUD_LAYOUT), ProducerPanel: rowsOf(panel, PRODUCER_PANEL_LAYOUT) };
         // AUT-UI-001: effective (post-SHRINK) font size of every non-empty label in design units; null while empty.

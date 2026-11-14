@@ -4,6 +4,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createFreshGameState, type GameState } from '../assets/scripts/state/index.ts';
+import { getDefaultTextCatalogue } from '../assets/scripts/localization/index.ts';
 import type { DomainEvent } from '../assets/scripts/domain/Events.ts';
 import { loadGameConfigFromSources } from '../assets/scripts/config/ConfigLoader.ts';
 import { getEmbeddedEconomyConfigSources } from '../assets/scripts/config/EmbeddedEconomyConfig.ts';
@@ -122,7 +123,13 @@ test('AUT-048 text and accent per era: all-caps single line, Era II amber, Era I
     const three = E.buildEraTrigger('robotics_complex')!;
     assert.deepEqual(X.formatMilestoneToast(two, repository), { title: 'AUTOMATED FACTORY', subtitle: null });
     assert.deepEqual(X.formatMilestoneToast(three, repository), { title: 'ROBOTICS COMPLEX ONLINE', subtitle: null });
-    for (const spec of Object.values(E.ERA_TRANSITION_SPECS)) assert.equal(spec.title, spec.title.toUpperCase());
+    // AUT-052: the wording moved to the catalogue (`era.<id>.title_card`, all caps there); the spec only carries the key.
+    for (const spec of Object.values(E.ERA_TRANSITION_SPECS)) {
+        assert.equal(spec.titleKey, `era.${spec.eraId}.title_card`);
+        const title = getDefaultTextCatalogue().resolveText(spec.titleKey);
+        assert.equal(title, title.toUpperCase());
+        assert.equal('title' in spec, false);
+    }
     assert.deepEqual([two.accent, three.accent], ['amber', 'cyan']);
     assert.deepEqual([two.tier, two.kind, two.key, three.key], ['exceptional', 'era_title', 'e:automated_factory', 'e:robotics_complex']);
     assert.deepEqual([two.pulse, two.sparks, three.pulse, three.sparks], [false, false, false, false], 'no new light / spark effect');
@@ -450,7 +457,7 @@ test('AUT-048 device tooling: npm script, cli usage, scenarios, capture checks (
     const cli = read('tools/device/cli.ts');
     assert.match(cli, /command === 'seed-aut048'/);
     assert.match(cli, /seed-aut048 \[--variant era2\|era3\]/);
-    assert.match(cli, /aut048\|aut048-era3\|aut048-era3-live\|aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\]/);
+    assert.match(cli, /aut048\|aut048-era3\|aut048-era3-live\|aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\]/);
     assert.match(cli, /robot-line-build/);
     assert.match(cli, /expectEraTitle: scenario\.expectEraTitle/);
     const two = REVEAL_SCENARIOS.aut048;

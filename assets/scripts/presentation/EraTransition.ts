@@ -13,8 +13,8 @@ export type EraFocusRule = 'construction_gated' | 'on_centre';
 
 export interface EraTransitionSpec {
     readonly eraId: string;
-    /** Title card wording (all caps, one line, no subtitle). English text lives here until the catalogue move (AUT-052). */
-    readonly title: string;
+    /** Catalogue key of the title card wording (all caps in the catalogue, one line, no subtitle); resolved by `MilestoneToastText` (AUT-052). */
+    readonly titleKey: string;
     /** Underline accent: Era II amber, Era III cyan (AUT-045 environment cyan). */
     readonly accent: MilestoneAccent;
     /** The card starts this many seconds after the transition was observed (t0 = `eraChanged` observed; the environment fade starts at t0). */
@@ -26,8 +26,8 @@ export interface EraTransitionSpec {
 
 /** One row per presented era. Era I (workshop) and any unknown era have no row: nothing is presented. Era IV does not exist. */
 export const ERA_TRANSITION_SPECS: Readonly<Record<string, EraTransitionSpec>> = Object.freeze({
-    automated_factory: Object.freeze({ eraId: 'automated_factory', title: 'AUTOMATED FACTORY', accent: 'amber' as const, cardDelaySeconds: 0.6, focusProducerId: 'robot_line', focusRule: 'construction_gated' as const }),
-    robotics_complex: Object.freeze({ eraId: 'robotics_complex', title: 'ROBOTICS COMPLEX ONLINE', accent: 'cyan' as const, cardDelaySeconds: 0.4, focusProducerId: 'advanced_robotics_complex', focusRule: 'on_centre' as const }),
+    automated_factory: Object.freeze({ eraId: 'automated_factory', titleKey: 'era.automated_factory.title_card', accent: 'amber' as const, cardDelaySeconds: 0.6, focusProducerId: 'robot_line', focusRule: 'construction_gated' as const }),
+    robotics_complex: Object.freeze({ eraId: 'robotics_complex', titleKey: 'era.robotics_complex.title_card', accent: 'cyan' as const, cardDelaySeconds: 0.4, focusProducerId: 'advanced_robotics_complex', focusRule: 'on_centre' as const }),
 });
 
 export function eraTransitionSpec(eraId: string | null | undefined): EraTransitionSpec | null {

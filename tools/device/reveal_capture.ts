@@ -24,6 +24,8 @@ import { seedAut048, seedAut048Era3Live } from './seed_aut048.ts';
 import { seedAut049 } from './seed_aut049.ts';
 import { seedAut050 } from './seed_aut050.ts';
 import { seedAut051 } from './seed_aut051.ts';
+import { seedAut052 } from './seed_aut052.ts';
+import { SETTINGS_RELAUNCH_MARKER_EVT, evaluateSettings, type SettingsExpectation } from './settings_checks.ts';
 import { OFFLINE_RELAUNCH_MARKER_EVT, evaluateOfflineReport, type OfflineReportExpectation } from './offline_report_checks.ts';
 import { PERMANENT_UPGRADE_RELAUNCH_MARKER_EVT, evaluatePermanentUpgrades, pickAffordableRow, type PermanentUpgradeExpectation } from './permanent_upgrade_checks.ts';
 import { seedUi003 } from './seed_ui003.ts';
@@ -52,6 +54,8 @@ export interface RevealCaptureOptions {
     readonly expectOfflineReport?: OfflineReportExpectation;
     /** AUT-050: 'purchase' = tap the AI chip, open the panel, buy an affordable row with a real tap, switch tab, force-stop + relaunch WITHOUT reseeding (balance / rank persisted). */
     readonly expectPermanentUpgrades?: PermanentUpgradeExpectation;
+    /** AUT-052: 'toggle_persist' = tap the Settings chip, open the panel, toggle Music OFF with a real tap, close, force-stop + relaunch WITHOUT reseeding (the file survives), toggle it back ON, close. */
+    readonly expectSettings?: SettingsExpectation;
     /** AUT-UI-003: command types whose accepted `command_result` (ok) must be observed. */
     readonly expectCommands?: readonly string[];
     readonly preMs?: number;
@@ -79,7 +83,7 @@ export interface RevealCaptureResult {
 
 export const DEFAULT_REVEAL_EVENT_TYPES: readonly string[] = Object.freeze([
     'scene_ready', 'session_state', 'ui_layout', 'command_result', 'construction_state', 'camera_focus', 'reveal_state',
-    'milestone_presentation', 'era_transition', 'reboot_presentation', 'offline_report', 'permanent_upgrades', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'error',
+    'milestone_presentation', 'era_transition', 'reboot_presentation', 'offline_report', 'permanent_upgrades', 'settings', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'error',
 ]);
 
 /** A named live-reveal scenario: the seed (unbuilt variant), the producer whose construction must be observed and whether a camera focus is expected. */
@@ -99,6 +103,7 @@ export interface RevealScenario {
     readonly expectReboot?: RebootExpectation;
     readonly expectOfflineReport?: OfflineReportExpectation;
     readonly expectPermanentUpgrades?: PermanentUpgradeExpectation;
+    readonly expectSettings?: SettingsExpectation;
 }
 
 export const DEFAULT_REVEAL_SCENARIO_ID = 'aut043';
@@ -123,6 +128,8 @@ export const REVEAL_SCENARIOS: Readonly<Record<string, RevealScenario>> = Object
     'aut049-post': { id: 'aut049-post', label: 'aut049-post-reboot-socket', seed: (d, pkg, act) => seedAut049(d, pkg, act, 'post'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 400, expectReboot: 'silent' },
     // AUT-050: AI Upgrades. Post-Reboot seed (Civilization #2, 4 AI Cores, Optimized Fabrication rank 2): screenshot with the chip, tap the chip, screenshot the open panel, buy an affordable row with a REAL tap, screenshot, switch to Automation (locked row), force-stop + relaunch WITHOUT reseeding (balance / rank persisted).
     aut050: { id: 'aut050', label: 'aut050-ai-upgrades', seed: (d, pkg, act) => seedAut050(d, pkg, act, 'mixed'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectPermanentUpgrades: 'purchase' },
+    // AUT-052: Settings. Post-Reboot seed (both chips visible, no settings file): screenshot the chips, REAL tap on the gear chip, screenshot the panel, REAL tap on the Music row (OFF), screenshot, CLOSE, force-stop + relaunch WITHOUT reseeding (settings_loaded source=file, music off), toggle back ON, close.
+    aut052: { id: 'aut052', label: 'aut052-settings', seed: (d, pkg, act) => seedAut052(d, pkg, act), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectSettings: 'toggle_persist' },
     // AUT-051: Offline Factory Report. aut051: seeded 3 h absence (Assembly manual -> educational line), screenshot with the card, tap COLLECT at the reported rect, screenshot after, force-stop + relaunch WITHOUT reseeding (no card, reward persisted).
     aut051: { id: 'aut051', label: 'aut051-offline-report', seed: (d, pkg, act) => seedAut051(d, pkg, act, 'first'), expectConstruction: null, expectFocus: false, trigger: 'offline-collect', durationMs: 4_000, intervalMs: 500, expectOfflineReport: 'collect' },
     // AUT-051: the report survives a kill: launch with the seed, force-stop BEFORE Collect, relaunch without reseeding: the card shows again with the same (equivalent) reward.
@@ -138,7 +145,7 @@ export function resolveRevealScenario(id: unknown): RevealScenario | null {
 }
 
 /** Objective checks over a timeline (pure, unit-tested). `tMs` is relative to the trigger (negative = before). */
-export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation }): RevealCheck[] {
+export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation; expectSettings?: SettingsExpectation }): RevealCheck[] {
     const checks: RevealCheck[] = [];
     const errors = events.filter((e) => e.event.evt === 'error');
     checks.push({ id: 'no_error_events', ok: errors.length === 0, detail: `${errors.length} error events` });
@@ -171,6 +178,7 @@ export function evaluateRevealTimeline(events: readonly TimelineEvent[], options
     if (options.expectReboot !== undefined) checks.push(...evaluateRebootPresentation(events, options.expectReboot));
     if (options.expectOfflineReport !== undefined) checks.push(...evaluateOfflineReport(events, options.expectOfflineReport));
     if (options.expectPermanentUpgrades !== undefined) checks.push(...evaluatePermanentUpgrades(events, options.expectPermanentUpgrades));
+    if (options.expectSettings !== undefined) checks.push(...evaluateSettings(events, options.expectSettings));
     return checks;
 }
 
@@ -425,6 +433,66 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
         }
         tapDetail = details.join('; ');
     }
+    // AUT-052: the Settings drive: real taps at the rects `ui_layout` reports (gear chip, Music row, CLOSE), force-stop + relaunch without reseeding, toggle back.
+    if (layout && options.expectSettings) {
+        const display = pngSize(await driver.screencap());
+        const screenSize = { w: layout.screen.w, h: layout.screen.h };
+        const rectNow = async (name: string, waitMs = 5_000): Promise<{ x: number; y: number; w: number; h: number } | null> => {
+            const pick = () => toRect((stream.allEvents().filter((e) => e.evt === 'ui_layout' && toRect((e.rects as Record<string, unknown> | undefined)?.[name]) !== null).pop()?.rects as Record<string, unknown> | undefined)?.[name]);
+            const until = Date.now() + waitMs;
+            while (pick() === null && Date.now() < until) await sleep(200);
+            return pick();
+        };
+        const tapRect = async (name: string): Promise<string | null> => {
+            const rect = await rectNow(name);
+            if (!display || !rect) return null;
+            const point = cocosToAdb(rectCentre(rect), screenSize, display);
+            await driver.tap(Math.round(point.x), Math.round(point.y));
+            return `${name} at ${Math.round(point.x)},${Math.round(point.y)}`;
+        };
+        const settingsEvent = (cursor: number, phase: string) => stream.waitFor((e) => e.evt === 'settings' && e.phase === phase, cursor, 8_000);
+        const details: string[] = [];
+        // One pass: chip -> panel -> Music row -> CLOSE. A rect reported by an earlier pass is stale (the panel moves out of sight), so each pass waits for fresh layouts.
+        const pass = async (label: string, shot: boolean): Promise<boolean> => {
+            const openCursor = stream.cursor;
+            const chipTap = await tapRect('SettingsChip');
+            if (!chipTap) return false;
+            details.push(`${label}: tapped ${chipTap}`);
+            await settingsEvent(openCursor, 'opened');
+            await rectNow('SettingsRow0');
+            await sleep(700);
+            if (shot) await frame('post');
+            const toggleCursor = stream.cursor;
+            const rowTap = await tapRect('SettingsRow0');
+            if (!rowTap) return false;
+            details.push(`${label}: toggled Music via ${rowTap}`);
+            await settingsEvent(toggleCursor, 'toggled');
+            await sleep(500);
+            if (shot) await frame('post');
+            const closeCursor = stream.cursor;
+            const closeTap = await tapRect('SettingsClose');
+            if (!closeTap) return false;
+            details.push(`${label}: closed via ${closeTap}`);
+            await settingsEvent(closeCursor, 'closed');
+            await sleep(400);
+            return true;
+        };
+        if (await pass('first launch', true)) {
+            triggered = true;
+            collect(Date.now());
+            events.push({ tMs: Date.now() - t0, event: { v: 1, seq: 0, evt: SETTINGS_RELAUNCH_MARKER_EVT, phase: 'relaunch' } });
+            await driver.forceStop(packageName);
+            const relaunchCursor = stream.cursor;
+            await driver.launch(packageName, activity);
+            await stream.waitFor((e) => e.evt === 'ui_layout', relaunchCursor, options.layoutTimeoutMs ?? 60_000);
+            await sleep(options.preMs ?? 2_000);
+            await frame('post');
+            await pass('after relaunch', true);
+        } else {
+            details.push('SettingsChip rect or display size missing');
+        }
+        tapDetail = details.join('; ');
+    }
     const end = Date.now() + (options.durationMs ?? 9_000);
     while (Date.now() < end) {
         await frame(triggered ? 'post' : 'pre');
@@ -433,9 +501,9 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
     collect(Date.now());
     await driver.stopLogcat();
 
-    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport, expectPermanentUpgrades: options.expectPermanentUpgrades });
+    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport, expectPermanentUpgrades: options.expectPermanentUpgrades, expectSettings: options.expectSettings });
     checks.unshift({ id: 'ui_layout_ready', ok: layout !== null, detail: layout ? 'ui_layout received' : 'no ui_layout (app did not reach the HUD)' });
-    if (options.expectPermanentUpgrades) checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
+    if (options.expectPermanentUpgrades || options.expectSettings) checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
     if (trigger !== 'none') checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
     writeFileSync(path.join(outDir, 'timeline.json'), `${JSON.stringify({ label: options.label, frames, events, checks }, null, 2)}\n`);
     writeFileSync(path.join(outDir, 'summary.md'), renderRevealSummary(options.label, frames, events, checks));

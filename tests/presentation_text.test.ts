@@ -255,6 +255,14 @@ test('template params match exactly what PresentationText supplies', async () =>
         'upgrades.effect.starts_automated': ['name'],
         'upgrades.effect.construction_cost': ['percent'],
         'upgrades.effect.major_requirement': ['percent'],
+        // AUT-052 toasts (moved from MILESTONE_TEXT_TEMPLATES, identical wording).
+        'toast.producer_milestone': ['name', 'level'],
+        'toast.automation': ['name'],
+        'toast.producer_constructed': ['name'],
+        'toast.robots_built_title': ['count'],
+        'toast.extra': ['text', 'count'],
+        'toast.reboot_ai_core': ['count'],
+        'toast.reboot_civilization': ['number'],
     };
     for (const key of base.keys()) {
         assert.deepEqual(extractPlaceholders(base.template(key)).sort(), (expected[key] ?? []).slice().sort(), key);
@@ -310,6 +318,20 @@ test('every catalogue entry is reachable from the composition paths (no dead key
         meta.meta.permanentUpgradeRanks = ranks;
         upgrades.createPermanentUpgradePanelViewModel(repository, meta, catalogue);
     }
+    // AUT-052 toasts: every trigger kind, the "+N" collapse, the two era cards and the three Reboot beats.
+    const toast = await imp('assets/scripts/presentation/MilestoneToastText.ts');
+    const eraTransition = await imp('assets/scripts/presentation/EraTransition.ts');
+    const trigger = (kind, extra = {}) => ({ key: 'k', tier: 'major', kind, accent: 'amber', producerId: 'fabricator', breakthroughId: 'auto_feeder', milestoneId: null, threshold: 25, focusProducerId: null, sparks: false, pulse: false, eraId: null, focusSuppressed: false, ...extra });
+    for (const kind of ['producer_milestone', 'automation', 'producer_constructed', 'breakthrough', 'robots_built', 'unknown_kind']) {
+        toast.formatMilestoneToast(trigger(kind), repository, 0, catalogue);
+        toast.formatMilestoneToast(trigger(kind, { producerId: null, breakthroughId: null }), null, 3, catalogue);
+    }
+    for (const eraId of ['automated_factory', 'robotics_complex', 'nope']) toast.formatMilestoneToast(eraTransition.buildEraTrigger(eraId) ?? trigger('era_title', { eraId }), repository, 0, catalogue);
+    for (const beat of ['reboot', 'ai_core', 'civilization']) toast.formatMilestoneToast(trigger('reboot_title', { reboot: { newCivilization: 2, aiCoresGranted: 3 } }), repository, 0, catalogue, beat);
+    // AUT-052 Settings panel: every settings.* key (ON and OFF, the language row).
+    const settingsVm = await imp('assets/scripts/presentation/SettingsViewModel.ts');
+    const userSettings = await imp('assets/scripts/settings/UserSettings.ts');
+    for (const on of [true, false]) settingsVm.createSettingsViewModel({ ...userSettings.DEFAULT_USER_SETTINGS, musicEnabled: on, sfxEnabled: on, vibrationEnabled: on }, catalogue);
     assert.deepEqual(base.keys().filter((key) => !used.has(key)), []);
 });
 

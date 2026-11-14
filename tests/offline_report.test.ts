@@ -202,7 +202,7 @@ test('text: the educational line names at most two producers, then "and N more";
     assert.equal(vm.OFFLINE_REPORT_MAX_NAMED_PRODUCERS, 2);
 });
 
-test('text: every offline.* key lives in en.json and in the embedded catalogue; the catalogue holds 94 entries (65 + 29 AUT-050 upgrades.* / permanent_upgrade.* keys)', async () => {
+test('text: every offline.* key lives in en.json and in the embedded catalogue; the catalogue holds 118 entries (65 + 29 AUT-050 upgrades.* / permanent_upgrade.* keys + 24 AUT-052 toast.* / era title_card / settings.* keys)', async () => {
     const { localization } = await modules();
     const parsed = JSON.parse(await read('localization/en.json'));
     const keys = ['offline.title', 'offline.time_away', 'offline.cap_reached', 'offline.reward', 'offline.robots', 'offline.robot_single', 'offline.explain.manual', 'offline.explain.more', 'offline.collect', 'offline.collect_failed'];
@@ -212,7 +212,7 @@ test('text: every offline.* key lives in en.json and in the embedded catalogue; 
         assert.ok(embedded.has(key), `${key} embedded`);
         assert.equal(embedded.template(key), parsed.entries[key]);
     }
-    assert.equal(Object.keys(parsed.entries).length, 94);
+    assert.equal(Object.keys(parsed.entries).length, 118);
 });
 
 // ---------------------------------------------------------------- layout
@@ -812,7 +812,7 @@ test('device: scenarios, CLI usage and package script are registered', async () 
     const cli = await read('tools/device/cli.ts');
     assert.match(cli, /command === 'seed-aut051'/);
     assert.match(cli, /seed-aut051 \[--variant first\|compact\|cap\|reload\|short\]/);
-    assert.match(cli, /aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\]/);
+    assert.match(cli, /aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\]/);
     const short = REVEAL_SCENARIOS['aut051-short'];
     assert.equal(short.trigger, 'none');
     assert.equal(short.expectOfflineReport, 'short');

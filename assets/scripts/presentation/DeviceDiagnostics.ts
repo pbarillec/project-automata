@@ -63,6 +63,8 @@ export const DEVICE_EVENT_TYPES = [
     'offline_report',
     // AUT-050: AI Upgrades chip / panel: { phase: 'chip_shown' | 'chip_hidden' | 'opened' | 'tab' | 'row_tapped' | 'purchase_result' | 'closed', tab, upgradeId, rowState, aiCores, ranks, rank, cost, status, reason, saveOk, rows, texts, chipRect, panelRect, rowRects, buyRects, scale }.
     'permanent_upgrades',
+    // AUT-052: Settings chip / panel and the user settings file: { phase: 'chip_shown' | 'chip_hidden' | 'opened' | 'closed' | 'toggled' | 'loaded' | 'saved' | 'save_failed' | 'load_failed' | 'missing_text', setting, value, saved, source ('file' | 'default' | 'corrupt'), settings, missingText, chipRect, panelRect, rowRects, closeRect, suppressed, scale }.
+    'settings',
     // AUT-047: temporary boost presentation: { phase: 'synced' | 'started' | 'ended' | 'suspended' | 'resumed' | 'stopped' | 'settled' | 'effect_applied', ... } (effect_applied: anchorResolved, timeScale, plate / spark scale + worldPos).
     'boost_presentation',
     'error',

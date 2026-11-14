@@ -9,7 +9,9 @@ export type TextParams = Readonly<Record<string, TextParamValue>>;
 
 export type MissingTextReport =
     | { readonly kind: 'missing_key'; readonly locale: string; readonly key: string }
-    | { readonly kind: 'missing_param'; readonly locale: string; readonly key: string; readonly param: string };
+    | { readonly kind: 'missing_param'; readonly locale: string; readonly key: string; readonly param: string }
+    /** AUT-052: a requested language has no catalogue; English was used instead. */
+    | { readonly kind: 'unknown_language'; readonly locale: string; readonly language: string };
 
 export type MissingTextSink = (report: MissingTextReport) => void;
 
