@@ -57,3 +57,9 @@ MOCK ad (DEBUG builds only). No data/economy change and NO save-schema change: t
 
 Device behaviour, label fit on a real device, visual composition (Scene Presentation / visual QA), the feel of the Extended activation impulse, and
 the real ad SDK path (AUT-057).
+
+## Device evidence and visual QA (2026-11-14)
+
+DEBUG APK from 9db492f (gate label aut056; capture-check fix 8e35fd2). Scenarios (all PASS, 0 errors): `aut056-success` (real tap on the chip; rewarded verified; command accepted; boost x2, 600 s, source rewarded; HUD "Extended Overclock: ×2" counting down; claim persisted; boost still active after relaunch; chip hidden), `aut056-free-active` (Free suspended, effective x2 not x4), `aut056-resume` (Extended expiry -> Free resumes with preserved remaining -> Free expiry -> cooldown), `aut056-closed` / `aut056-failed` (no boost, no claim, calm note, chip stays), `aut056-quota` / `aut056-interval` (no chip); regressions `aut055-success`, `aut055-closed`, `ui003` PASS. The first success/free-active runs failed one check only (relaunch remaining 0.9 s HIGHER than the last pre-kill HUD value: the persisted boost is up to one save interval old); the check now allows 2 s of save lag; game behaviour was correct.
+
+Vision QA (stills): PASS. Chip directly under SET (left aligned, 96 px, text unclipped, amber outline), no overlaps; pill "Extended Overclock: ×2" with m:ss and the x glyph; Free action not offered while active; closed/failed note calm; no chip when quota/interval blocked; no blank rectangles. Non-blocking POLISH (AUT-VIS): pill text contrast (pre-existing style), chip slightly prominent for an optional offer, ~14 px gap to SET, note easy to miss. Pending human: feel of the Extended activation impulse. Not verified: real ad SDK/overlay/crash windows (AUT-057).
