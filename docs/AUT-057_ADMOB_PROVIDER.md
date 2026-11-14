@@ -108,3 +108,13 @@ signing config, and consent / legal (AUT-065, privacy policy URL, Play Data Safe
 - NOT verified here (device, human / device gate): real test-ad loading and show, that the `automata.ads.rewarded_result` event reaches the JS thread
   while the activity is paused (the Java side hops through `CocosHelper.runOnGameThread`), that Cocos reports the ad's activity pause as `EVENT_HIDE`
   (the gate handles both orders), BACK dismissal of the test ad, and the no-fill scenario on a real network-off device.
+
+## Device verification (2026-11-14) — PARTIAL, real test-ad show/reward still pending
+
+DEBUG APK from 41398e9 (gate label aut057; capture wiring fix: `expectAdmob` was not passed to the evaluator in reveal_capture.ts, same class of omission as AUT-050). `npm run check` PASS (1158 tests); the gate build compiled the native Java, 16 KB check PASS.
+
+On the phone (`aut057-offline-double`, `temp/reveal/aut057-admob-offline-double-2026-11-14T145304/`): the real native path ran end to end up to ad load — SDK init, `ads_state` init/availability events, both placements load attempts with bounded retry/backoff (`load_error_0` = internal error), availability reporting `loading` -> `load_error_0`, 0 error events, gameplay unaffected. The test device had NO working internet during the run (mobile data attached but DNS resolution failed: `ping googleads.g.doubleclick.net` = unknown host; Wi-Fi off), so no test ad could load: the show / reward / dismiss / overlay-vs-absence checks are NOT verified. The capture FAILs on those checks reflect the offline device, not a code defect; the failing checks are listed as environment-blocked.
+
+Regression with the default mock provider after the change (all PASS): `aut055-success`, `aut056-success`, `aut051`.
+
+PENDING (human step, no code change expected): put the test phone online (Wi-Fi), then run `npm run device:seed-aut057 -- --variant offline_double` and `npm run device:reveal-capture -- --scenario aut057-offline-double` (and `aut057-extended`); watch the Google test ad, close it after the countdown, confirm the reward arrives once. Verify on device: the JS listener receives `automata.ads.rewarded_result` while the activity is paused behind the ad, the overlay gate prevents an offline report/suspend, and no-fill behaviour (`aut057-no-fill` toggles device network and restores it).
