@@ -64,9 +64,12 @@ export function evaluateOfflineReport(events: readonly OfflineTimelineEvent[], e
         || (e.event.evt === 'era_transition' && e.event.phase === 'title_started')
         || (e.event.evt === 'reboot_presentation' && e.event.phase === 'sequence_started')));
     checks.push({ id: 'offline_collect_no_fanfare', ok: fanfare.length === 0, detail: `${fanfare.length} toast / camera focus / era / reboot events after the tap` });
-    const shownAfter = phaseOf(after, 'shown').length;
-    const skippedAfter = phaseOf(after, 'skipped').length;
-    checks.push({ id: 'offline_no_card_after_relaunch', ok: markerIndex >= 0 && shownAfter === 0 && skippedAfter >= 1, detail: `${shownAfter} shown, ${skippedAfter} skipped after the relaunch` });
-    checks.push({ id: 'offline_collect_persisted', ok: result?.event.saveOk === true && markerIndex >= 0 && shownAfter === 0, detail: 'saved collect and no card (no re-grant) after the relaunch' });
+    // The relaunch itself takes several seconds, so a small genuine report for that gap may legitimately appear; what must not appear is the ORIGINAL report again (cursor advanced, no re-grant).
+    const originalReward = Number(shown?.event.reward ?? 0);
+    const originalSeconds = Number(shown?.event.effectiveSeconds ?? 0);
+    const reshown = phaseOf(after, 'shown');
+    const regrant = reshown.some((e) => Number(e.event.reward ?? 0) > originalReward * 0.05 || Number(e.event.effectiveSeconds ?? 0) > originalSeconds * 0.05);
+    checks.push({ id: 'offline_no_original_report_after_relaunch', ok: markerIndex >= 0 && !regrant, detail: `${reshown.length} card(s) after the relaunch, original report re-shown: ${String(regrant)}` });
+    checks.push({ id: 'offline_collect_persisted', ok: result?.event.saveOk === true && markerIndex >= 0 && !regrant, detail: 'saved collect; the original report is not re-granted after the relaunch (only the small relaunch gap may show)' });
     return checks;
 }

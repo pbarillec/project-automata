@@ -719,7 +719,7 @@ test('device checks: collect scenario passes on a full chain and fails on regres
     assert.ok(run(good).every((c) => c.ok), JSON.stringify(run(good).filter((c) => !c.ok)));
     const failing = (events, id) => run(events).find((c) => c.id === id)?.ok === false;
     assert.ok(failing(good.filter((e) => e.event.phase !== 'hidden'), 'offline_card_hidden_after_collect'));
-    assert.ok(failing([...good.slice(0, 5), ev(9000, 'offline_report', { phase: 'shown', reward: 5000, cardRect: rect, collectRect: rect })], 'offline_no_card_after_relaunch'));
+    assert.ok(failing([...good.slice(0, 5), ev(9000, 'offline_report', { phase: 'shown', reward: 5000, cardRect: rect, collectRect: rect })], 'offline_no_original_report_after_relaunch'));
     assert.ok(failing([...good.slice(0, 4), ev(3070, 'milestone_presentation', { phase: 'toast_started' }), ...good.slice(4)], 'offline_collect_no_fanfare'));
     assert.ok(failing(good.map((e) => (e.event.phase === 'collect_result' ? ev(3050, 'offline_report', { phase: 'collect_result', status: 'collected_persistence_failed', saveOk: false }) : e)), 'offline_collect_saved'));
     assert.ok(failing([ev(100, 'offline_report', { ...shown.event, texts: { collect: 'Watch ad for x2' } }), ...good.slice(1)], 'offline_no_ad_affordance'));
