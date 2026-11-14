@@ -124,7 +124,9 @@ test('AUT-UI-003 controller: the tap re-checks the latest snapshot and emits onl
 
     assert.match(source, /resolveOverclockAction\(this\.latest\?\.freeOverclock\)/);
     assert.match(source, /OverclockAction: null/, 'the Overclock Button has no label of its own (the rows are the control)');
-    assert.match(source, /this\.applyOverclockRowText\(viewModel\.freeOverclock\.state\);/);
+    // AUT-056: while Extended Overclock is active the rows / pill show its ACTIVE look (the display state resolver decides).
+    assert.match(source, /const overclockState = resolveOverclockDisplayState\(viewModel\);/);
+    assert.match(source, /this\.applyOverclockRowText\(overclockState\);/);
     assert.match(methodBody(source, 'private applyActionStates(): void {'), /button\.interactable = states\[key\]\.visible && states\[key\]\.enabled;/);
 });
 
@@ -210,7 +212,7 @@ test('AUT-UI-003 device tooling: ui003 scenario, overclock trigger, seed command
     const cli = read('tools/device/cli.ts');
     assert.match(cli, /command === 'seed-ui003'/);
     assert.match(cli, /seed-ui003 \[--serial <id>\]/);
-    assert.match(cli, /aut046\|aut047\|ui003\|aut048\|aut048-era3\|aut048-era3-live\|aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\|rbt001\|aut055-success\|aut055-closed\|aut055-failed\|aut055-ineligible\]/);
+    assert.match(cli, /aut046\|aut047\|ui003\|aut048\|aut048-era3\|aut048-era3-live\|aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\|rbt001\|aut055-success\|aut055-closed\|aut055-failed\|aut055-ineligible\|aut056-success\|aut056-free-active\|aut056-resume\|aut056-closed\|aut056-failed\|aut056-quota\|aut056-interval\]/);
     assert.match(cli, /--trigger next-goal\|overclock\|robot-line-build\|none/);
     assert.match(cli, /expectCommands: scenario\.expectCommands/);
     const capture = read('tools/device/reveal_capture.ts');

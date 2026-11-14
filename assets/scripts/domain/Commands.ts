@@ -3,6 +3,7 @@ export type GameCommand =
     | AdvanceActiveSessionCommand
     | AdvanceAutomationCommand
     | ActivateFreeOverclockCommand
+    | ActivateExtendedOverclockCommand
     | LaunchAssemblyBatchCommand
     | BuyProducerLevelsCommand
     | BuyMaxProducerLevelsCommand
@@ -26,6 +27,16 @@ export interface AdvanceAutomationCommand {
 
 export interface ActivateFreeOverclockCommand {
     readonly type: 'activateFreeOverclock';
+}
+
+/**
+ * AUT-056: starts the rewarded Extended Overclock. Only the session's verified-proof path submits it; `requestId` is the ad request id
+ * and `claimedAtUtcMs` the grant time (stamped into the rewarded claim history).
+ */
+export interface ActivateExtendedOverclockCommand {
+    readonly type: 'activateExtendedOverclock';
+    readonly requestId: string;
+    readonly claimedAtUtcMs: number;
 }
 
 /** AUT-GP-001: launch one Assembly Station batch while it is assisted (one at a time, no queue). */

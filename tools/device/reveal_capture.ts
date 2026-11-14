@@ -26,6 +26,8 @@ import { seedAut050 } from './seed_aut050.ts';
 import { seedAut051 } from './seed_aut051.ts';
 import { seedAut052 } from './seed_aut052.ts';
 import { seedAut055 } from './seed_aut055.ts';
+import { seedAut056 } from './seed_aut056.ts';
+import { EXTENDED_OVERCLOCK_RELAUNCH_MARKER_EVT, evaluateExtendedOverclock, type ExtendedOverclockExpectation } from './extended_overclock_checks.ts';
 import { OFFLINE_DOUBLE_RELAUNCH_MARKER_EVT, evaluateOfflineDouble, type OfflineDoubleExpectation } from './offline_double_checks.ts';
 import { seedRbt001 } from './seed_rbt001.ts';
 import { REBOOT_UI_RELAUNCH_MARKER_EVT, evaluateRebootUi, type RebootUiExpectation } from './reboot_ui_checks.ts';
@@ -58,6 +60,8 @@ export interface RevealCaptureOptions {
     readonly expectOfflineReport?: OfflineReportExpectation;
     /** AUT-055: 'success' = REAL tap on COLLECT x2 (mock ad rewarded): exactly 2x, claim persisted across a relaunch; 'closed' / 'failed' = no bonus, the card stays, the free COLLECT pays the normal reward; 'ineligible' = no x2 action, only COLLECT. */
     readonly expectOfflineDouble?: OfflineDoubleExpectation;
+    /** AUT-056: 'success' / 'free_active' = REAL tap on the Extended Overclock chip (mock ad rewarded): x2 for 600 s, claim persisted across a relaunch; 'closed' / 'failed' = no boost, the chip stays; 'resume' = seeded Extended + suspended Free (no tap): expiry -> resume -> Free expiry -> cooldown; 'quota' / 'interval' = no chip. */
+    readonly expectExtendedOverclock?: ExtendedOverclockExpectation;
     /** AUT-050: 'purchase' = tap the AI chip, open the panel, buy an affordable row with a real tap, switch tab, force-stop + relaunch WITHOUT reseeding (balance / rank persisted). */
     readonly expectPermanentUpgrades?: PermanentUpgradeExpectation;
     /** AUT-052: 'toggle_persist' = tap the Settings chip, open the panel, toggle Music OFF with a real tap, close, force-stop + relaunch WITHOUT reseeding (the file survives), toggle it back ON, close. */
@@ -91,7 +95,7 @@ export interface RevealCaptureResult {
 
 export const DEFAULT_REVEAL_EVENT_TYPES: readonly string[] = Object.freeze([
     'scene_ready', 'session_state', 'ui_layout', 'command_result', 'construction_state', 'camera_focus', 'reveal_state',
-    'milestone_presentation', 'era_transition', 'reboot_presentation', 'offline_report', 'offline_double', 'permanent_upgrades', 'reboot_ui', 'settings', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'error',
+    'milestone_presentation', 'era_transition', 'reboot_presentation', 'offline_report', 'offline_double', 'extended_overclock', 'permanent_upgrades', 'reboot_ui', 'settings', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'error',
 ]);
 
 /** A named live-reveal scenario: the seed (unbuilt variant), the producer whose construction must be observed and whether a camera focus is expected. */
@@ -111,6 +115,7 @@ export interface RevealScenario {
     readonly expectReboot?: RebootExpectation;
     readonly expectOfflineReport?: OfflineReportExpectation;
     readonly expectOfflineDouble?: OfflineDoubleExpectation;
+    readonly expectExtendedOverclock?: ExtendedOverclockExpectation;
     readonly expectPermanentUpgrades?: PermanentUpgradeExpectation;
     readonly expectSettings?: SettingsExpectation;
     readonly expectRebootUi?: RebootUiExpectation;
@@ -153,6 +158,14 @@ export const REVEAL_SCENARIOS: Readonly<Record<string, RevealScenario>> = Object
     'aut055-closed': { id: 'aut055-closed', label: 'aut055-double-closed', seed: (d, pkg, act) => seedAut055(d, pkg, act, 'ready', 'closed'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectOfflineDouble: 'closed' },
     'aut055-failed': { id: 'aut055-failed', label: 'aut055-double-failed', seed: (d, pkg, act) => seedAut055(d, pkg, act, 'ready', 'failed'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectOfflineDouble: 'failed' },
     'aut055-ineligible': { id: 'aut055-ineligible', label: 'aut055-double-ineligible', seed: (d, pkg, act) => seedAut055(d, pkg, act, 'short_ineligible'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectOfflineDouble: 'ineligible' },
+    // AUT-056: Extended Overclock (rewarded x2 for 10 active minutes, MOCK ad). The seed writes the DEBUG-only debug_ads.json (read once) with the scripted ad outcome. trigger 'none': the drive uses REAL taps at the rects `ui_layout` reports.
+    'aut056-success': { id: 'aut056-success', label: 'aut056-extended-success', seed: (d, pkg, act) => seedAut056(d, pkg, act, 'eligible', 'rewarded'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectExtendedOverclock: 'success' },
+    'aut056-free-active': { id: 'aut056-free-active', label: 'aut056-extended-free-active', seed: (d, pkg, act) => seedAut056(d, pkg, act, 'free_active', 'rewarded'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectExtendedOverclock: 'free_active' },
+    'aut056-resume': { id: 'aut056-resume', label: 'aut056-extended-resume', seed: (d, pkg, act) => seedAut056(d, pkg, act, 'resume'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 70_000, intervalMs: 2_000, expectExtendedOverclock: 'resume' },
+    'aut056-closed': { id: 'aut056-closed', label: 'aut056-extended-closed', seed: (d, pkg, act) => seedAut056(d, pkg, act, 'eligible', 'closed'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectExtendedOverclock: 'closed' },
+    'aut056-failed': { id: 'aut056-failed', label: 'aut056-extended-failed', seed: (d, pkg, act) => seedAut056(d, pkg, act, 'eligible', 'failed'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectExtendedOverclock: 'failed' },
+    'aut056-quota': { id: 'aut056-quota', label: 'aut056-extended-quota', seed: (d, pkg, act) => seedAut056(d, pkg, act, 'quota'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 500, expectExtendedOverclock: 'quota' },
+    'aut056-interval': { id: 'aut056-interval', label: 'aut056-extended-interval', seed: (d, pkg, act) => seedAut056(d, pkg, act, 'interval'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 500, expectExtendedOverclock: 'interval' },
     'aut048-era3': { id: 'aut048-era3', label: 'aut048-era3-silent-load', seed: (d, pkg, act) => seedAut048(d, pkg, act, 'era3'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 400, expectEraTitle: 'none' },
 });
 
@@ -162,7 +175,7 @@ export function resolveRevealScenario(id: unknown): RevealScenario | null {
 }
 
 /** Objective checks over a timeline (pure, unit-tested). `tMs` is relative to the trigger (negative = before). */
-export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectOfflineDouble?: OfflineDoubleExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation; expectSettings?: SettingsExpectation; expectRebootUi?: RebootUiExpectation }): RevealCheck[] {
+export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectOfflineDouble?: OfflineDoubleExpectation; expectExtendedOverclock?: ExtendedOverclockExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation; expectSettings?: SettingsExpectation; expectRebootUi?: RebootUiExpectation }): RevealCheck[] {
     const checks: RevealCheck[] = [];
     const errors = events.filter((e) => e.event.evt === 'error');
     checks.push({ id: 'no_error_events', ok: errors.length === 0, detail: `${errors.length} error events` });
@@ -195,6 +208,7 @@ export function evaluateRevealTimeline(events: readonly TimelineEvent[], options
     if (options.expectReboot !== undefined) checks.push(...evaluateRebootPresentation(events, options.expectReboot));
     if (options.expectOfflineReport !== undefined) checks.push(...evaluateOfflineReport(events, options.expectOfflineReport));
     if (options.expectOfflineDouble !== undefined) checks.push(...evaluateOfflineDouble(events, options.expectOfflineDouble));
+    if (options.expectExtendedOverclock !== undefined) checks.push(...evaluateExtendedOverclock(events, options.expectExtendedOverclock));
     if (options.expectPermanentUpgrades !== undefined) checks.push(...evaluatePermanentUpgrades(events, options.expectPermanentUpgrades));
     if (options.expectSettings !== undefined) checks.push(...evaluateSettings(events, options.expectSettings));
     if (options.expectRebootUi !== undefined) checks.push(...evaluateRebootUi(events, options.expectRebootUi));
@@ -464,6 +478,61 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
         }
         tapDetail = details.join('; ');
     }
+    // AUT-056: the Extended Overclock drive: a REAL tap at the chip rect `ui_layout` reports (the rect is read from the freshest layout right before the tap), then frames while the HUD countdown ticks, then force-stop + relaunch without reseeding.
+    if (layout && options.expectExtendedOverclock) {
+        const expectation = options.expectExtendedOverclock;
+        const display = pngSize(await driver.screencap());
+        const screenSize = { w: layout.screen.w, h: layout.screen.h };
+        const rectIn = (event: Record<string, unknown> | undefined, name: string) => toRect((event?.rects as Record<string, unknown> | undefined)?.[name]);
+        const latestChipRect = () => rectIn(stream.allEvents().filter((e) => e.evt === 'ui_layout').pop(), 'ExtendedOverclockAction');
+        const details: string[] = [];
+        if (expectation === 'quota' || expectation === 'interval') {
+            await sleep(3_000);
+            await frame('post');
+            triggered = true;
+            details.push('no tap (the chip must not be offered)');
+        } else if (expectation === 'resume') {
+            await frame('post');
+            triggered = true;
+            details.push('no tap (seeded Extended + suspended Free: observing expiry -> resume -> Free expiry -> cooldown)');
+        } else {
+            const until = Date.now() + 8_000;
+            while (latestChipRect() === null && Date.now() < until) await sleep(200);
+            await sleep(500);
+            await frame('pre');
+            const rect = latestChipRect();
+            if (display && rect) {
+                const point = cocosToAdb(rectCentre(rect), screenSize, display);
+                const tapCursor = stream.cursor;
+                t0 = Date.now();
+                await driver.tap(Math.round(point.x), Math.round(point.y));
+                triggered = true;
+                details.push(`tapped ExtendedOverclockAction at ${Math.round(point.x)},${Math.round(point.y)}`);
+                await stream.waitFor((e) => e.evt === 'extended_overclock' && (e.phase === 'granted' || e.phase === 'not_granted'), tapCursor, 10_000);
+                await sleep(700);
+                await frame('post');
+                if (expectation === 'success' || expectation === 'free_active') {
+                    // Let the HUD countdown tick (the app reports the HUD every 5 s while a boost runs), then relaunch.
+                    await sleep(11_000);
+                    await frame('post');
+                } else {
+                    await sleep(1_500);
+                    await frame('post');
+                }
+                collect(Date.now());
+                events.push({ tMs: Date.now() - t0, event: { v: 1, seq: 0, evt: EXTENDED_OVERCLOCK_RELAUNCH_MARKER_EVT, phase: 'relaunch' } });
+                await driver.forceStop(packageName);
+                const relaunchCursor = stream.cursor;
+                await driver.launch(packageName, activity);
+                await stream.waitFor((e) => e.evt === 'ui_layout', relaunchCursor, options.layoutTimeoutMs ?? 60_000);
+                await sleep(options.preMs ?? 2_000);
+                await frame('post');
+            } else {
+                details.push('ExtendedOverclockAction rect or display size missing');
+            }
+        }
+        tapDetail = details.join('; ');
+    }
     // AUT-050: the AI Upgrades drive: real taps at the rects `ui_layout` reports (chip, buy, tab), then force-stop + relaunch without reseeding.
     if (layout && options.expectPermanentUpgrades) {
         const display = pngSize(await driver.screencap());
@@ -667,9 +736,9 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
     collect(Date.now());
     await driver.stopLogcat();
 
-    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport, expectOfflineDouble: options.expectOfflineDouble, expectPermanentUpgrades: options.expectPermanentUpgrades, expectSettings: options.expectSettings, expectRebootUi: options.expectRebootUi });
+    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport, expectOfflineDouble: options.expectOfflineDouble, expectExtendedOverclock: options.expectExtendedOverclock, expectPermanentUpgrades: options.expectPermanentUpgrades, expectSettings: options.expectSettings, expectRebootUi: options.expectRebootUi });
     checks.unshift({ id: 'ui_layout_ready', ok: layout !== null, detail: layout ? 'ui_layout received' : 'no ui_layout (app did not reach the HUD)' });
-    if (options.expectPermanentUpgrades || options.expectSettings || options.expectRebootUi || options.expectOfflineDouble) checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
+    if (options.expectPermanentUpgrades || options.expectSettings || options.expectRebootUi || options.expectOfflineDouble || options.expectExtendedOverclock) checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
     if (trigger !== 'none') checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
     writeFileSync(path.join(outDir, 'timeline.json'), `${JSON.stringify({ label: options.label, frames, events, checks }, null, 2)}\n`);
     writeFileSync(path.join(outDir, 'summary.md'), renderRevealSummary(options.label, frames, events, checks));

@@ -1,6 +1,11 @@
 import type { BreakthroughEffect, GameConfigRepository } from '../config/ConfigLoader.ts';
 import type { DomainEvent, GameCommand } from '../domain/index.ts';
 import {
+    EXTENDED_OVERCLOCK_CLAIM_KEY,
+    evaluateExtendedOverclockEligibility,
+} from '../monetization/RewardedEligibility.ts';
+import { getRewardedClaimHistory, recordRewardedClaim } from '../monetization/RewardedClaimHistory.ts';
+import {
     calculateElapsedProduction,
     calculateRobotsBuiltFromRobotLineElapsedSeconds,
     calculateRobotsBuiltPerSecond,
@@ -10,6 +15,7 @@ import {
 import {
     ASSEMBLY_STATION_PRODUCER_ID,
     AUTOMATED_FACTORY_ERA_ID,
+    activateExtendedOverclock,
     activateFreeOverclock,
     advanceAssistedBatches,
     advanceTemporaryBoosts,
@@ -48,6 +54,7 @@ export type CommandRejectionReason =
     | 'boost_already_active'
     | 'boost_suspended'
     | 'boost_on_cooldown'
+    | 'rewarded_not_eligible'
     | 'assisted_batch_unavailable'
     | 'assisted_batch_already_running'
     | 'locked_producer'
@@ -253,6 +260,10 @@ function executeGameCommandInternal(
             return executeActivateFreeOverclock(state, parsedCommand.command);
         }
 
+        if (parsedCommand.command.type === 'activateExtendedOverclock') {
+            return executeActivateExtendedOverclock(state, parsedCommand.command);
+        }
+
         if (parsedCommand.command.type === 'launchAssemblyBatch') {
             return executeLaunchAssemblyBatch(repository, state, parsedCommand.command);
         }
@@ -404,6 +415,44 @@ function executeActivateFreeOverclock(
 
     const draft = cloneGameState(state);
     draft.boosts = result.boosts;
+
+    return commit(command, draft, result.events);
+}
+
+/**
+ * AUT-056: the rewarded Extended Overclock. Boost activation and the rewarded claim record are committed in the SAME draft (atomic;
+ * every rejection leaves the state untouched). The caller (the session) has already verified the ad proof.
+ */
+function executeActivateExtendedOverclock(
+    state: GameState,
+    command: GameCommand & { type: 'activateExtendedOverclock' },
+): InternalCommandExecutionResult {
+    const result = activateExtendedOverclock(state, command.requestId);
+    if (result.status !== 'activated') {
+        const reason = result.status === 'locked' ? 'boost_locked' : 'boost_already_active';
+        return reject(reason, result.status === 'locked' ? 'Free Overclock is locked.' : 'Extended Overclock is already active.', {
+            boostId: 'extended_overclock',
+        });
+    }
+
+    const eligibility = evaluateExtendedOverclockEligibility({
+        nowUtcMs: command.claimedAtUtcMs,
+        claimTimestampsUtcMs: getRewardedClaimHistory(state, EXTENDED_OVERCLOCK_CLAIM_KEY),
+    });
+    if (!eligibility.eligible) {
+        return reject('rewarded_not_eligible', 'Extended Overclock is not available right now.', {
+            reason: eligibility.reason,
+            nextEligibleAtUtc: eligibility.nextEligibleAtUtc,
+        });
+    }
+
+    const draft = cloneGameState(state);
+    draft.boosts = result.boosts;
+    draft.monetization.rewardedClaims[EXTENDED_OVERCLOCK_CLAIM_KEY] = recordRewardedClaim(
+        state,
+        EXTENDED_OVERCLOCK_CLAIM_KEY,
+        command.claimedAtUtcMs,
+    );
 
     return commit(command, draft, result.events);
 }
@@ -923,6 +972,25 @@ function parseGameCommand(command: unknown): { ok: true; command: GameCommand } 
 
     if (command.type === 'activateFreeOverclock') {
         return { ok: true, command: { type: 'activateFreeOverclock' } };
+    }
+
+    if (command.type === 'activateExtendedOverclock') {
+        if (typeof command.requestId !== 'string' || command.requestId.length === 0) {
+            return reject('malformed_command', 'requestId must be a non-empty string.');
+        }
+
+        if (typeof command.claimedAtUtcMs !== 'number' || !Number.isFinite(command.claimedAtUtcMs) || command.claimedAtUtcMs < 0) {
+            return reject('malformed_command', 'claimedAtUtcMs must be a non-negative finite number.');
+        }
+
+        return {
+            ok: true,
+            command: {
+                type: 'activateExtendedOverclock',
+                requestId: command.requestId,
+                claimedAtUtcMs: command.claimedAtUtcMs,
+            },
+        };
     }
 
     if (command.type === 'launchAssemblyBatch') {

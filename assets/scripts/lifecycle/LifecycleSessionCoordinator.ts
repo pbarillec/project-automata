@@ -2,8 +2,10 @@ import type { GameConfigRepository } from '../config/ConfigLoader.ts';
 import type { DomainEvent, GameCommand } from '../domain/index.ts';
 import { getRewardedClaimHistory, recordRewardedClaim } from '../monetization/RewardedClaimHistory.ts';
 import {
+    EXTENDED_OVERCLOCK_CLAIM_KEY,
     OFFLINE_DOUBLE_CLAIM_KEY,
     OFFLINE_DOUBLE_MULTIPLIER,
+    evaluateExtendedOverclockEligibility,
     evaluateOfflineDoubleEligibility,
     type RewardedEligibilityResult,
 } from '../monetization/RewardedEligibility.ts';
@@ -17,6 +19,7 @@ import {
     type OfflinePreviewResult,
     type OfflineProgressConfig,
 } from '../offline/index.ts';
+import { EXTENDED_OVERCLOCK_BOOST_ID, isFreeOverclockUnlocked } from '../progression/index.ts';
 import type {
     LoadGameFailureResult,
     LoadGameFreshResult,
@@ -65,13 +68,53 @@ export interface LifecycleSessionCoordinatorOptions {
  * AUT-055: structural proof of a rewarded ad result (shape-compatible with the ad provider's result type;
  * declared locally so the lifecycle layer stays free of any ad-provider import).
  */
-export interface OfflineDoubleAdProof {
+export interface RewardedAdProof {
     readonly requestId: string;
     readonly placementId: string;
     readonly status: string;
     readonly rewardVerified: boolean;
     readonly duplicate?: boolean;
 }
+
+/** AUT-055 name kept so existing code and tests are unchanged. */
+export type OfflineDoubleAdProof = RewardedAdProof;
+
+/** AUT-056: the Extended Overclock offer. `activeBlocked` covers the activation preconditions that are not player eligibility. */
+export interface LifecycleExtendedOverclockOffer {
+    readonly eligibility: RewardedEligibilityResult;
+    readonly activeBlocked: boolean;
+    readonly blockedReason: 'active' | 'locked' | 'offline_pending' | null;
+}
+
+export type ExtendedOverclockNotGrantedReason =
+    | OfflineDoubleNotGrantedReason
+    | 'offline_pending'
+    | 'already_active'
+    | 'locked'
+    | 'rejected';
+
+export interface LifecycleExtendedOverclockNotGrantedResult {
+    readonly status: 'not_granted';
+    readonly reason: ExtendedOverclockNotGrantedReason;
+    readonly execution?: CommandRejectionResult;
+}
+
+export interface LifecycleExtendedOverclockDurableResult {
+    readonly status: 'activated_saved';
+    readonly execution: CommandSuccessResult;
+    readonly save: PersistenceSaveResult & { readonly ok: true };
+}
+
+export interface LifecycleExtendedOverclockDurabilityFailureResult {
+    readonly status: 'activated_persistence_failed';
+    readonly execution: CommandSuccessResult;
+    readonly save: PersistenceSaveResult & { readonly ok: false };
+}
+
+export type LifecycleExtendedOverclockResult =
+    | LifecycleExtendedOverclockNotGrantedResult
+    | LifecycleExtendedOverclockDurableResult
+    | LifecycleExtendedOverclockDurabilityFailureResult;
 
 export interface LifecycleOfflineDoubleOffer {
     readonly eligibility: RewardedEligibilityResult;
@@ -314,6 +357,19 @@ export class LifecycleSessionCoordinator {
     }
 
     async execute(command: GameCommand, options: { readonly requestOrdinarySave?: boolean } = {}): Promise<LifecycleCommandResult> {
+        if (command.type === 'activateExtendedOverclock') {
+            // AUT-056: a generic submit can never grant the rewarded boost; only a verified proof does.
+            return Object.freeze({
+                execution: Object.freeze({
+                    ok: false as const,
+                    reason: 'malformed_command' as const,
+                    message: 'Extended Overclock requires a verified rewarded-ad proof.',
+                    events: Object.freeze([]) as readonly DomainEvent[],
+                }),
+                save: null,
+            });
+        }
+
         const execution = this.runtime.execute(command);
         let save: PersistenceSaveResult | null = null;
         if (execution.ok) {
@@ -492,7 +548,7 @@ export class LifecycleSessionCoordinator {
             return Object.freeze({ status: 'no_pending_preview' as const });
         }
 
-        const proofReason = readProofFailure(proof);
+        const proofReason = readProofFailure(proof, OFFLINE_DOUBLE_CLAIM_KEY);
         if (proofReason !== null) {
             return notGranted(proofReason);
         }
@@ -558,6 +614,99 @@ export class LifecycleSessionCoordinator {
             effectiveOfflineSeconds: pending.effectiveOfflineSeconds,
             claimTimestampsUtcMs: getRewardedClaimHistory(state, OFFLINE_DOUBLE_CLAIM_KEY),
         });
+    }
+
+    /** AUT-056: the Extended Overclock offer. Display/eligibility only; no side effects. */
+    getExtendedOverclockOffer(): LifecycleExtendedOverclockOffer {
+        const state = this.runtime.getStateSnapshot();
+        const blockedReason = this.readExtendedOverclockBlockedReason(state);
+        return Object.freeze({
+            eligibility: this.evaluateExtendedOverclockEligibility(state),
+            activeBlocked: blockedReason !== null,
+            blockedReason,
+        });
+    }
+
+    /**
+     * AUT-056: starts the rewarded Extended Overclock from a verified proof, exactly once and atomically (boost + claim in one runtime
+     * command, then one critical save). Any bad proof / race / replay / rejection leaves state, claim and save untouched.
+     */
+    async activateExtendedOverclockWithRewardedProof(proof: RewardedAdProof): Promise<LifecycleExtendedOverclockResult> {
+        if (this.pendingOfflinePreview !== null) {
+            return extendedNotGranted('offline_pending');
+        }
+
+        const proofReason = readProofFailure(proof, EXTENDED_OVERCLOCK_CLAIM_KEY);
+        if (proofReason !== null) {
+            return extendedNotGranted(proofReason);
+        }
+
+        const snapshot = this.runtime.getStateSnapshot();
+        const blockedReason = this.readExtendedOverclockBlockedReason(snapshot);
+        if (blockedReason === 'locked') {
+            return extendedNotGranted('locked');
+        }
+        if (blockedReason === 'active') {
+            return extendedNotGranted('already_active');
+        }
+        if (!this.evaluateExtendedOverclockEligibility(snapshot).eligible) {
+            return extendedNotGranted('ineligible');
+        }
+
+        if (!this.rewardClaimLedger.tryConsume(proof.requestId)) {
+            return extendedNotGranted('duplicate');
+        }
+
+        const claimedAtUtcMs = this.readNowUtcMs();
+        const execution = this.runtime.execute({
+            type: 'activateExtendedOverclock',
+            requestId: proof.requestId,
+            claimedAtUtcMs,
+        });
+        if (!execution.ok) {
+            return Object.freeze({ status: 'not_granted' as const, reason: 'rejected' as const, execution });
+        }
+
+        this.persistence.markDirty();
+        const save = await this.requestSave({
+            intent: 'critical',
+            reason: 'extended_overclock_activation',
+        });
+
+        if (!save.ok) {
+            return Object.freeze({ status: 'activated_persistence_failed' as const, execution, save });
+        }
+
+        return Object.freeze({ status: 'activated_saved' as const, execution, save });
+    }
+
+    private readExtendedOverclockBlockedReason(state: GameState): 'active' | 'locked' | 'offline_pending' | null {
+        if (this.pendingOfflinePreview !== null) {
+            return 'offline_pending';
+        }
+        if (!isFreeOverclockUnlocked(state)) {
+            return 'locked';
+        }
+        if (state.boosts.activeBoosts[EXTENDED_OVERCLOCK_BOOST_ID] !== undefined) {
+            return 'active';
+        }
+        return null;
+    }
+
+    private evaluateExtendedOverclockEligibility(state: GameState): RewardedEligibilityResult {
+        return evaluateExtendedOverclockEligibility({
+            nowUtcMs: this.readNowUtcMs(),
+            claimTimestampsUtcMs: getRewardedClaimHistory(state, EXTENDED_OVERCLOCK_CLAIM_KEY),
+        });
+    }
+
+    private readNowUtcMs(): number {
+        try {
+            return this.timeService.nowUtc().unixMilliseconds;
+        }
+        catch {
+            return Number.NaN;
+        }
     }
 
     async collectPendingOffline(): Promise<LifecycleCollectResult> {
@@ -654,7 +803,11 @@ function notGranted(reason: OfflineDoubleNotGrantedReason): LifecycleBonusNotGra
     return Object.freeze({ status: 'bonus_not_granted' as const, reason });
 }
 
-function readProofFailure(proof: OfflineDoubleAdProof | null | undefined): OfflineDoubleNotGrantedReason | null {
+function extendedNotGranted(reason: ExtendedOverclockNotGrantedReason): LifecycleExtendedOverclockNotGrantedResult {
+    return Object.freeze({ status: 'not_granted' as const, reason });
+}
+
+function readProofFailure(proof: RewardedAdProof | null | undefined, expectedPlacementKey: string): OfflineDoubleNotGrantedReason | null {
     if (proof === null || proof === undefined || proof.status !== 'rewarded') {
         return 'not_rewarded';
     }
@@ -664,7 +817,7 @@ function readProofFailure(proof: OfflineDoubleAdProof | null | undefined): Offli
     if (proof.duplicate === true) {
         return 'duplicate';
     }
-    if (proof.placementId !== OFFLINE_DOUBLE_CLAIM_KEY) {
+    if (proof.placementId !== expectedPlacementKey) {
         return 'wrong_placement';
     }
     if (typeof proof.requestId !== 'string' || proof.requestId.trim().length === 0) {

@@ -324,8 +324,8 @@ test('source scan: MockAdsService is referenced in presentation / app only by Bu
 
 test('debug ads script parser: allow-listed outcomes only', () => {
     assert.equal(DEBUG_ADS_FILE, 'debug_ads.json');
-    assert.deepEqual(parseDebugAdsScriptFile('{"offlineDouble":["closed","rewarded"],"duplicateCallback":true}'), { offlineDouble: ['closed', 'rewarded'], duplicateCallback: true });
-    assert.deepEqual(parseDebugAdsScriptFile('{"offlineDouble":[]}'), { offlineDouble: [], duplicateCallback: false });
+    assert.deepEqual(parseDebugAdsScriptFile('{"offlineDouble":["closed","rewarded"],"duplicateCallback":true}'), { offlineDouble: ['closed', 'rewarded'], extendedOverclock: [], duplicateCallback: true });
+    assert.deepEqual(parseDebugAdsScriptFile('{"offlineDouble":[]}'), { offlineDouble: [], extendedOverclock: [], duplicateCallback: false });
     for (const bad of [undefined, '', '{', 'null', '[]', '{}', '{"offlineDouble":"rewarded"}', '{"offlineDouble":["granted"]}', '{"offlineDouble":[1]}', '{"offlineDouble":["rewarded"],"duplicateCallback":"yes"}', JSON.stringify({ offlineDouble: new Array(DEBUG_ADS_MAX_STEPS + 1).fill('rewarded') })]) {
         assert.equal(parseDebugAdsScriptFile(bad), null, String(bad));
     }
@@ -393,7 +393,7 @@ test('seed_aut055: variants, ads script, stale files removed, scenarios and CLI 
     await seedAut055(driver as never, 'pkg', 'act', 'ready', 'closed', () => new Date(NOW_MS));
     assert.deepEqual(calls, ['forceStop', 'remove:save_main.json,save_backup.json,save_temp.json,debug_command.json,debug_ads.json', 'write:save_main.json', 'write:debug_ads.json', 'launch']);
     assert.equal(written['debug_ads.json'], buildAut055AdsScriptFile('closed'));
-    assert.deepEqual(parseDebugAdsScriptFile(written['debug_ads.json']), { offlineDouble: ['closed'], duplicateCallback: false });
+    assert.deepEqual(parseDebugAdsScriptFile(written['debug_ads.json']), { offlineDouble: ['closed'], extendedOverclock: [], duplicateCallback: false });
     assert.deepEqual(AUT055_ABSENCE_SECONDS, { ready: 10_800, short_ineligible: 1_200, quota: 10_800 });
     assert.ok(AUT055_ABSENCE_SECONDS.short_ineligible > 60 && AUT055_ABSENCE_SECONDS.short_ineligible < 30 * 60);
     // Seeded saves load into a real session with the expected offer.

@@ -70,7 +70,9 @@ import { DEBUG_COMMAND_FILE, parseDebugCommandFile } from './DebugCommandFile.ts
 import { DEBUG_ADS_FILE, parseDebugAdsScriptFile, type DebugAdsScript } from './DebugAdsScriptFile.ts';
 import { createBuildAdsService } from './BuildPlatformServices.ts';
 import { OfflineDoubleFlow } from './OfflineDoubleFlow.ts';
-import { OFFLINE_DOUBLE_CLAIM_KEY } from '../monetization/RewardedEligibility.ts';
+import { ExtendedOverclockController } from './ExtendedOverclockController';
+import { ExtendedOverclockFlow } from './ExtendedOverclockFlow.ts';
+import { EXTENDED_OVERCLOCK_CLAIM_KEY, OFFLINE_DOUBLE_CLAIM_KEY } from '../monetization/RewardedEligibility.ts';
 import type { AdsService } from '../services/AdsService';
 import { bootstrapGameSession } from '../lifecycle/GameSessionBootstrap.ts';
 import { FileSaveStorage } from '../persistence/FileSaveStorage.ts';
@@ -130,7 +132,8 @@ export class FactoryWorldBootstrap extends Component {
     private pendingBinding: { binding: FactoryWorldStateBinding; status: string; displayNames: DisplayNameSource } | null = null;
     /** AUT-055: the build-selected rewarded-ad provider (mock in DEBUG, no-op otherwise). */
     private offlineAds: AdsService | null = null;
-    private sessionWiring: { hud: CoreHudController; panel: ProducerPanelController; batch: AssemblyBatchActionController; selection: ProducerSelectionController; presentation: PresentationController | null; offlineReport: OfflineReportController; permanentUpgrades: PermanentUpgradeController; settings: SettingsController; reboot: RebootController } | null = null;
+    private extendedHudSeconds = 0;
+    private sessionWiring: { hud: CoreHudController; panel: ProducerPanelController; batch: AssemblyBatchActionController; selection: ProducerSelectionController; presentation: PresentationController | null; offlineReport: OfflineReportController; permanentUpgrades: PermanentUpgradeController; settings: SettingsController; reboot: RebootController; extendedOverclock: ExtendedOverclockController } | null = null;
     /** AUT-RBT-001: set by the binding's pending-offline callback and consumed by the Reboot modal to tell "blocked" from "exception" (both return null). */
     private rebootBlockedByPendingOffline = false;
     /** AUT-052: device preferences (own file, loaded before the first UI paint) and the silent audio / no-op haptics services that follow them. */
@@ -192,6 +195,8 @@ export class FactoryWorldBootstrap extends Component {
         const settings = this.createSettings();
         // AUT-RBT-001: the Reboot chip / modal sit below the offline card root too (created before it, so the offline card stays topmost).
         const reboot = this.createReboot();
+        // AUT-056: the Extended Overclock chip (fixed slot, second line under the HUD band) also sits below the offline card root.
+        const extendedOverclock = this.createExtendedOverclock();
         const offlineReport = this.createOfflineReport();
         selection.onSelectionChanged = (producerId) => {
             panel.replaceSelection(producerId);
@@ -199,7 +204,7 @@ export class FactoryWorldBootstrap extends Component {
         };
         this.reportUiLayoutAfterSelection(selection);
         const presentation = site.getChildByName('PresentationAnchors')?.getComponent(PresentationController) ?? null;
-        this.sessionWiring = { hud, panel, batch, selection, presentation, offlineReport, permanentUpgrades, settings, reboot };
+        this.sessionWiring = { hud, panel, batch, selection, presentation, offlineReport, permanentUpgrades, settings, reboot, extendedOverclock };
         this.startPersistentSession(presentation);
     }
 
@@ -208,6 +213,7 @@ export class FactoryWorldBootstrap extends Component {
         this.tickUiLayoutDiagnostics();
         this.tickCameraStateDiagnostics();
         this.updateSettingsSuppression();
+        this.tickExtendedOverclockHudDiagnostics(deltaTime);
         if (this.pendingBinding) {
             this.activateSessionBinding(this.pendingBinding.binding, this.pendingBinding.status, this.pendingBinding.displayNames);
             this.pendingBinding = null;
@@ -274,6 +280,7 @@ export class FactoryWorldBootstrap extends Component {
                     // AUT-052: presentation observes the events and asks the (silent) audio service for cues; the runtime knows nothing about audio.
                     for (const cue of mapEventsToCues(events)) this.audio.playSfx(cue);
                     if (isDeviceDiagnosticsEnabled()) this.emitAssemblyBatchEvents(events);
+                    this.onTemporaryBoostEvents(events);
                 },
                 // AUT-051: a Reboot blocked by the pending offline report re-surfaces the card.
                 onRebootBlockedByPendingOffline: () => { this.rebootBlockedByPendingOffline = true; this.sessionWiring?.offlineReport.reportRebootBlocked(); this.showOfflineReport('reboot_blocked'); },
@@ -298,6 +305,7 @@ export class FactoryWorldBootstrap extends Component {
             port.remove(DEBUG_ADS_FILE);
             const script = parseDebugAdsScriptFile(text);
             emitDeviceEvent('offline_double', { phase: 'script', accepted: script !== null, steps: script?.offlineDouble ?? [], duplicateCallback: script?.duplicateCallback ?? false });
+            emitDeviceEvent('extended_overclock', { phase: 'script', accepted: script !== null, steps: script?.extendedOverclock ?? [], duplicateCallback: script?.duplicateCallback ?? false });
             return script ?? undefined;
         } catch (error) {
             this.reportSessionError('debug_ads', error);
@@ -338,6 +346,21 @@ export class FactoryWorldBootstrap extends Component {
                 onDiagnostic: (phase, payload) => emitDeviceEvent('offline_double', { phase, ...payload }),
             });
         }
+        // AUT-056: the rewarded Extended Overclock flow (ad result -> session proof -> atomic activation, all through the binding).
+        if (offlineAds) {
+            const chip = wiring.extendedOverclock;
+            chip.flow = new ExtendedOverclockFlow({
+                ads: offlineAds,
+                session: {
+                    getExtendedOverclockOffer: () => binding.getExtendedOverclockOffer(),
+                    activateExtendedOverclockWithProof: (proof) => binding.activateExtendedOverclockWithProof(proof),
+                },
+                now: () => Date.now(),
+                onChange: () => chip.onFlowChanged(),
+                onDiagnostic: (phase, payload) => emitDeviceEvent('extended_overclock', { phase, ...payload }),
+            });
+            chip.requestRefresh();
+        }
         if (wiring.presentation?.milestonePresentation) wiring.presentation.milestonePresentation.setNameSource(displayNames);
         if (!this.lifecycleHooksRegistered) {
             game.on(Game.EVENT_HIDE, this.onGameHide, this);
@@ -349,6 +372,9 @@ export class FactoryWorldBootstrap extends Component {
         if (isDeviceDiagnosticsEnabled()) {
             const claim = binding.getStateSnapshot()?.monetization.rewardedClaims[OFFLINE_DOUBLE_CLAIM_KEY];
             emitDeviceEvent('offline_double', { phase: 'claims', claimCount: claim?.claimCount ?? 0, claimsInWindow: claim?.recentClaimUtcMs.length ?? 0 });
+            const extendedClaim = binding.getStateSnapshot()?.monetization.rewardedClaims[EXTENDED_OVERCLOCK_CLAIM_KEY];
+            emitDeviceEvent('extended_overclock', { phase: 'claims', claimCount: extendedClaim?.claimCount ?? 0, claimsInWindow: extendedClaim?.recentClaimUtcMs.length ?? 0 });
+            this.emitExtendedOverclockHud('session_ready');
         }
         this.showOfflineReport('startup');
         this.runDebugCommandFile(binding);
@@ -399,6 +425,8 @@ export class FactoryWorldBootstrap extends Component {
         if (resumedState) this.sessionWiring?.presentation?.boostPresentation?.resume(resumedState);
         this.emitSessionState('resumed', result?.status ?? 'resume_error', null, binding.describe().autoFeederOwned);
         this.showOfflineReport('resumed');
+        // AUT-056: the offer is re-read after a resume (a preview may now be pending, claims may have aged out).
+        this.sessionWiring?.extendedOverclock.requestRefresh();
     }
 
     /** AUT-051: shows / refreshes the Offline Factory Report card from the session's pending preview (a non-collectible preview shows nothing). */
@@ -430,6 +458,49 @@ export class FactoryWorldBootstrap extends Component {
             eventTypes: execution.events.map((event) => event.type),
             industrialOutput,
         });
+    }
+
+    /** AUT-056: a temporary boost changed (activated / expired / suspended / resumed): re-read the chip offer and report it (DEBUG). */
+    private onTemporaryBoostEvents(events: readonly DomainEvent[]): void {
+        let changed = false;
+        for (const event of events) {
+            if (event.type === 'temporaryBoostActivated') {
+                changed = true;
+                if (isDeviceDiagnosticsEnabled()) emitDeviceEvent('extended_overclock', { phase: 'boost_event', event: 'activated', boostId: event.boostId, multiplier: event.multiplier, durationSeconds: event.durationSeconds, cooldownSeconds: event.cooldownSeconds, source: event.source, requestId: event.requestId });
+            }
+            else if (event.type === 'temporaryBoostExpired') {
+                changed = true;
+                if (isDeviceDiagnosticsEnabled()) emitDeviceEvent('extended_overclock', { phase: 'boost_event', event: 'expired', boostId: event.boostId, source: event.source });
+            }
+            else if (event.type === 'temporaryBoostSuspended') {
+                changed = true;
+                if (isDeviceDiagnosticsEnabled()) emitDeviceEvent('extended_overclock', { phase: 'boost_event', event: 'suspended', boostId: event.boostId, suspendedByBoostId: event.suspendedByBoostId, remainingSeconds: event.remainingSeconds });
+            }
+            else if (event.type === 'temporaryBoostResumed') {
+                changed = true;
+                if (isDeviceDiagnosticsEnabled()) emitDeviceEvent('extended_overclock', { phase: 'boost_event', event: 'resumed', boostId: event.boostId, remainingSeconds: event.remainingSeconds });
+            }
+        }
+        if (!changed) return;
+        this.sessionWiring?.extendedOverclock.requestRefresh();
+        this.emitExtendedOverclockHud('boost_event');
+    }
+
+    /** AUT-056 DEBUG: the Overclock rows' current state (what the HUD shows). */
+    private emitExtendedOverclockHud(reason: string): void {
+        if (!isDeviceDiagnosticsEnabled()) return;
+        const hud = this.sessionWiring?.hud.getOverclockDiagnostic() ?? null;
+        if (hud) emitDeviceEvent('extended_overclock', { phase: 'hud', reason, ...hud });
+    }
+
+    /** AUT-056 DEBUG: while a boost runs, the HUD countdown is reported every 5 s (proves the timer is ticking). */
+    private tickExtendedOverclockHudDiagnostics(deltaTime: number): void {
+        if (!isDeviceDiagnosticsEnabled() || !this.binding) return;
+        this.extendedHudSeconds += Number.isFinite(deltaTime) && deltaTime > 0 ? deltaTime : 0;
+        if (this.extendedHudSeconds < 5) return;
+        this.extendedHudSeconds = 0;
+        const hud = this.sessionWiring?.hud.getOverclockDiagnostic() ?? null;
+        if (hud && hud.state !== 'ready' && hud.state !== 'locked') this.emitExtendedOverclockHud('periodic');
     }
 
     /** AUT-GP-001 DEBUG-only `assembly_batch` diagnostic for the runtime's batch launch / completion events. */
@@ -1145,6 +1216,23 @@ export class FactoryWorldBootstrap extends Component {
     }
 
     /**
+     * AUT-056 Extended Overclock: a small host node under the Canvas (below the offline report root) for the controller; the chip itself is
+     * built by the controller under the HUD safe-area container, on the second line under the HUD band, left-aligned. Hidden by scale.
+     */
+    private createExtendedOverclock(): ExtendedOverclockController {
+        const canvas = this.node.getChildByName('CoreHudCanvas');
+        if (!canvas) throw new Error('createUiRoot() must run before the Extended Overclock chip is built.');
+        const root = canvas.getChildByName('ExtendedOverclock') ?? new Node('ExtendedOverclock');
+        root.parent = canvas;
+        root.layer = Layers.Enum.UI_2D;
+        const controller = root.getComponent(ExtendedOverclockController) ?? root.addComponent(ExtendedOverclockController);
+        controller.chipHost = this.uiSafeArea();
+        controller.screenRectOf = (node) => this.uiScreenRect(node);
+        controller.onLayoutChanged = (reason) => this.scheduleUiLayoutDiagnostics(reason);
+        return controller;
+    }
+
+    /**
      * AUT-RBT-001 Reboot: a full-screen root (below the offline report root) holding the dim backdrop and a safe-area container for the modal;
      * the entry chip is built by the controller under the HUD safe-area container, on the second line under the HUD band. Hidden by scale.
      */
@@ -1215,6 +1303,8 @@ export class FactoryWorldBootstrap extends Component {
         wiring.settings.setSuppressed(wiring.offlineReport.isVisible() || rebootCard);
         // AUT-RBT-001: the Reboot chip is hidden (and an idle modal closed) while the offline report card or the Reboot title card is up.
         wiring.reboot.setSuppressed(wiring.offlineReport.isVisible() || rebootCard);
+        // AUT-056: the Extended Overclock chip follows the same suppression (it also stays hidden while the offline preview is pending).
+        wiring.extendedOverclock.setSuppressed(wiring.offlineReport.isVisible() || rebootCard);
     }
 
     /** AUT-RBT-001: true once after the binding reported a Reboot blocked by the pending offline report (then cleared). */
@@ -1338,6 +1428,9 @@ export class FactoryWorldBootstrap extends Component {
         rects.SettingsPanel = settingsNodes?.panel ? rectOf(settingsNodes.panel) : null;
         rects.SettingsClose = settingsNodes?.close ? rectOf(settingsNodes.close) : null;
         settingsNodes?.rows.forEach((node, index) => { rects[`SettingsRow${index}`] = node ? rectOf(node) : null; });
+        // AUT-056: the Extended Overclock chip, only while shown (null otherwise).
+        const extendedNode = this.sessionWiring?.extendedOverclock.getRectNode() ?? null;
+        rects.ExtendedOverclockAction = extendedNode ? rectOf(extendedNode) : null;
         // AUT-RBT-001: the Reboot chip, modal, REBOOT and CANCEL, only while shown / open (null otherwise).
         const rebootNodes = this.sessionWiring?.reboot.getRectNodes() ?? null;
         rects.RebootChip = rebootNodes?.chip ? rectOf(rebootNodes.chip) : null;

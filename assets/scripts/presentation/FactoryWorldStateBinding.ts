@@ -6,12 +6,15 @@ import type {
     LifecycleBonusCollectResult,
     LifecycleCollectResult,
     LifecycleCommandResult,
+    LifecycleExtendedOverclockOffer,
+    LifecycleExtendedOverclockResult,
     LifecycleOfflineDoubleOffer,
     LifecyclePermanentUpgradePurchaseResult,
     LifecycleRebootResult,
     LifecycleResumeResult,
     LifecycleSuspendResult,
     OfflineDoubleAdProof,
+    RewardedAdProof,
 } from '../lifecycle/LifecycleSessionCoordinator.ts';
 import type { OfflinePreviewResult } from '../offline/index.ts';
 import type { GameState } from '../state/GameState.ts';
@@ -38,6 +41,10 @@ export interface FactoryWorldSessionPort {
     getOfflineDoubleOffer?(): LifecycleOfflineDoubleOffer | null;
     /** AUT-055: the atomic, exactly-once x2 collection from a verified rewarded-ad proof. Optional so minimal ports still work. */
     collectPendingOfflineWithRewardedBonus?(proof: OfflineDoubleAdProof): Promise<LifecycleBonusCollectResult>;
+    /** AUT-056: the Extended Overclock offer (eligibility + activation preconditions). Optional so minimal ports still work. */
+    getExtendedOverclockOffer?(): LifecycleExtendedOverclockOffer;
+    /** AUT-056: starts the Extended Overclock from a verified rewarded-ad proof (boost + claim atomically, one critical save). Optional so minimal ports still work. */
+    activateExtendedOverclockWithRewardedProof?(proof: RewardedAdProof): Promise<LifecycleExtendedOverclockResult>;
     /** AUT-050: the permanent-upgrade purchase transaction (in-memory commit, then a critical save). Optional so minimal ports still work. */
     purchasePermanentUpgrade?(upgradeId: string): Promise<LifecyclePermanentUpgradePurchaseResult>;
 }
@@ -355,6 +362,35 @@ export class FactoryWorldStateBinding {
         }
         catch (error) {
             this.report('collect_offline_bonus', error);
+            return null;
+        }
+    }
+
+    /** AUT-056: the Extended Overclock offer (null when the port has no support or on error). */
+    getExtendedOverclockOffer(): LifecycleExtendedOverclockOffer | null {
+        let offer: LifecycleExtendedOverclockOffer | null = null;
+        this.guard('extended_overclock_offer', () => { offer = typeof this.session.getExtendedOverclockOffer === 'function' ? this.session.getExtendedOverclockOffer() : null; });
+        return offer;
+    }
+
+    /**
+     * AUT-056: starts the Extended Overclock from a verified rewarded-ad proof. An activation (durable or not) fans out its events
+     * (AUT-047 impulse + HUD refresh) and reports the command result; a not_granted changes and fans out nothing. Null when the port has
+     * no support or the call threw.
+     */
+    async activateExtendedOverclockWithProof(proof: RewardedAdProof): Promise<LifecycleExtendedOverclockResult | null> {
+        try {
+            if (typeof this.session.activateExtendedOverclockWithRewardedProof !== 'function') return null;
+            const result = await this.session.activateExtendedOverclockWithRewardedProof(proof);
+            if (result.status === 'activated_saved' || result.status === 'activated_persistence_failed') {
+                this.fanOut(result.execution.events);
+                const reportCommandResult = this.reportCommandResult;
+                if (reportCommandResult) this.guard('command_result', () => reportCommandResult(result.execution.command, { execution: result.execution, save: result.save }));
+            }
+            return result;
+        }
+        catch (error) {
+            this.report('activate_extended_overclock', error);
             return null;
         }
     }

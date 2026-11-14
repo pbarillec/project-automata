@@ -33,7 +33,7 @@ test('bootstrap loads the user settings BEFORE any UI is built, and builds the S
     assert.ok(start.indexOf('this.loadUserSettings();') < start.indexOf('this.createCoreHud();'), 'settings load before the HUD paints');
     assert.ok(start.indexOf('this.createPermanentUpgrades();') < start.indexOf('this.createSettings();'));
     assert.ok(start.indexOf('this.createSettings();') < start.indexOf('this.createOfflineReport();'), 'the offline report root stays the LAST Canvas child');
-    assert.match(start, /this\.sessionWiring = \{[^}]*settings, reboot \}/);
+    assert.match(start, /this\.sessionWiring = \{[^}]*settings, reboot, extendedOverclock \}/);
     // The load is synchronous and contained; later changes follow the store through its subscription.
     const load = methodBody(source, 'private loadUserSettings(): void {');
     assert.match(load, /new SettingsStore\(new CocosFileSystemPort\(\)/);
@@ -159,7 +159,7 @@ test('device: scenario, CLI (usage + seed command + options pass-through) and pa
     const cli = read('tools/device/cli.ts');
     assert.match(cli, /command === 'seed-aut052'/);
     assert.match(cli, /seed-aut052 \[--serial <id>\]/);
-    assert.match(cli, /aut051-short\|aut052\|rbt001\|aut055-success\|aut055-closed\|aut055-failed\|aut055-ineligible\]/);
+    assert.match(cli, /aut051-short\|aut052\|rbt001\|aut055-success\|aut055-closed\|aut055-failed\|aut055-ineligible\|aut056-success\|aut056-free-active\|aut056-resume\|aut056-closed\|aut056-failed\|aut056-quota\|aut056-interval\]/);
     // The AUT-050 omission must not repeat: the CLI hands expectSettings to the capture, and the capture hands it to the evaluator.
     assert.match(cli, /expectSettings: scenario\.expectSettings,/);
     const capture = read('tools/device/reveal_capture.ts');

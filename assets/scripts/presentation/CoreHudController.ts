@@ -1,7 +1,7 @@
 import { _decorator, Button, Color, Component, EventHandler, EventTouch, Graphics, Label, Layers, Node, Sprite, UITransform, Vec3 } from 'cc';
 import type { GameCommand } from '../domain/Commands.ts';
 import { resolveManualProduceAction, resolveNextGoalAction, resolveOverclockAction } from './CoreLoopActions.ts';
-import type { HudViewModel } from './HudViewModel.ts';
+import { resolveOverclockDisplayState, type HudViewModel } from './HudViewModel.ts';
 import { defaultHudTexts, formatHudTexts, type DisplayNameSource } from './PresentationText.ts';
 import { BOOST_HUD_OUTLINE_THICKNESS, resolveBoostHudPill, resolveOverclockRowText } from './BoostHudPill.ts';
 import { CORE_HUD_LAYOUT, HUD_ACTION_KEYS, cardActionFontSize, cardActionRect, cardHeight, cardRowCenterY, cardRowWidth, hudActionCard, type HudActionKey } from './UiLayout.ts';
@@ -65,8 +65,10 @@ export class CoreHudController extends Component {
         this.setText('ManualProduceAction', texts.manualProduceAction);
         this.setText('NextGoalAction', texts.nextGoalAction);
         this.applyActionStates();
-        this.applyOverclockPill(viewModel.freeOverclock.state);
-        this.applyOverclockRowText(viewModel.freeOverclock.state);
+        // AUT-056: while Extended Overclock is active the rows / pill show its ACTIVE look.
+        const overclockState = resolveOverclockDisplayState(viewModel);
+        this.applyOverclockPill(overclockState);
+        this.applyOverclockRowText(overclockState);
     }
 
     /** AUT-047: amber-filled active pill / amber-outlined paused pill behind the two Overclock rows; redrawn only when the style changes. */
@@ -142,6 +144,22 @@ export class CoreHudController extends Component {
     /** AUT-047 / AUT-UI-003: re-checks the latest snapshot (ready only) and emits the existing `activateFreeOverclock` command through commandEmitter. */
     public activateFreeOverclock(): void {
         if (this.latest?.freeOverclock.canActivate) this.commandEmitter?.({ type: 'activateFreeOverclock' });
+    }
+
+    /** DEBUG diagnostics only (AUT-056): what the two Overclock rows currently show. */
+    public getOverclockDiagnostic(): { state: string; freeState: string; remainingSeconds: number; multiplier: number; text: string; timerText: string } | null {
+        const latest = this.latest;
+        if (!latest) return null;
+        const texts = formatHudTexts(latest, this.displayNames);
+        const extended = latest.extendedOverclock.active;
+        return {
+            state: resolveOverclockDisplayState(latest),
+            freeState: latest.freeOverclock.state,
+            remainingSeconds: extended ? latest.extendedOverclock.remainingSeconds : latest.freeOverclock.remainingSeconds,
+            multiplier: extended ? latest.extendedOverclock.multiplier : latest.freeOverclock.multiplier,
+            text: texts.freeOverclock,
+            timerText: texts.freeOverclockTimer,
+        };
     }
 
     /** AUT-UI-003: locked / cooldown = dimmed text; ready / active / suspended keep their pill text. */

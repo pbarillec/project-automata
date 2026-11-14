@@ -36,6 +36,7 @@ import { AUT049_SEED_VARIANTS, isAut049SeedVariant, seedAut049 } from './seed_au
 import { AUT050_SEED_VARIANTS, isAut050SeedVariant, seedAut050 } from './seed_aut050.ts';
 import { AUT051_SEED_VARIANTS, isAut051SeedVariant, seedAut051 } from './seed_aut051.ts';
 import { AUT055_SEED_VARIANTS, isAut055Outcome, isAut055SeedVariant, seedAut055 } from './seed_aut055.ts';
+import { AUT056_SEED_VARIANTS, isAut056Outcome, isAut056SeedVariant, seedAut056 } from './seed_aut056.ts';
 import { DEBUG_ADS_OUTCOMES } from '../../assets/scripts/presentation/DebugAdsScriptFile.ts';
 import { seedAut052 } from './seed_aut052.ts';
 import { seedRbt001 } from './seed_rbt001.ts';
@@ -262,6 +263,20 @@ async function main(): Promise<number> {
         console.log(`seeded ${filesDir}save_main.json (${variant}) + debug_ads.json (${outcome}) and launched`);
         return 0;
     }
+    if (command === 'seed-aut056') {
+        // AUT-056 review: seed a save + the DEBUG mock-ad script (debug_ads.json) so the Extended Overclock chip shows (eligible / free_active) or is hidden (quota / interval); resume seeds Extended + a suspended Free Overclock.
+        const variant = flags.variant === undefined || flags.variant === true ? 'eligible' : flags.variant;
+        if (!isAut056SeedVariant(variant)) { console.log(`unknown --variant; expected one of ${AUT056_SEED_VARIANTS.join(', ')}`); return 1; }
+        const outcome = flags.outcome === undefined || flags.outcome === true ? 'rewarded' : flags.outcome;
+        if (!isAut056Outcome(outcome)) { console.log(`unknown --outcome; expected one of ${DEBUG_ADS_OUTCOMES.join(', ')}`); return 1; }
+        const driver = new AdbDeviceDriver();
+        const selection = selectDevice(await driver.devices(), typeof flags.serial === 'string' ? flags.serial : undefined);
+        if (!selection.ok) { console.log(JSON.stringify(selection, null, 2)); return 2; }
+        if (typeof flags.serial === 'string') driver.useSerial(flags.serial);
+        const filesDir = await seedAut056(driver, 'com.projectautomata.androidbaseline', 'com.cocos.game.AppActivity', variant, outcome);
+        console.log(`seeded ${filesDir}save_main.json (${variant}) + debug_ads.json (${outcome}) and launched`);
+        return 0;
+    }
     if (command === 'seed-ui003') {
         // AUT-UI-003 review: seed a Free Overclock READY save and launch (no install, no assertions).
         const driver = new AdbDeviceDriver();
@@ -304,6 +319,7 @@ async function main(): Promise<number> {
             expectReboot: scenario.expectReboot,
             expectOfflineReport: scenario.expectOfflineReport,
             expectOfflineDouble: scenario.expectOfflineDouble,
+            expectExtendedOverclock: scenario.expectExtendedOverclock,
             expectPermanentUpgrades: scenario.expectPermanentUpgrades,
             expectSettings: scenario.expectSettings,
             expectRebootUi: scenario.expectRebootUi,
@@ -323,7 +339,7 @@ async function main(): Promise<number> {
         console.log(restored ? 'restored tracked build config from temp/device/gate backup' : 'no backup found');
         return restored ? 0 : 1;
     }
-    console.log('usage: node tools/device/cli.ts devices | c3|int001|r036|ui001|r031|gp001|aut039 --apk <path> [--serial <id>] [--run-id <id>] [--skip-install] | seed-aut040 [--serial <id>] | seed-aut042 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut043 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut044 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut045 [--variant workshop|era2|era3] [--serial <id>] | seed-aut046 [--variant breakthrough] [--serial <id>] | seed-aut047 [--variant active|ready] [--serial <id>] | seed-aut048 [--variant era2|era3] [--serial <id>] | seed-aut049 [--variant reboot|post] [--serial <id>] | seed-aut050 [--variant mixed|maxed] [--serial <id>] | seed-aut051 [--variant first|compact|cap|reload|short] [--serial <id>] | seed-aut052 [--serial <id>] | seed-aut055 [--variant ready|short_ineligible|quota] [--outcome rewarded|closed|failed] [--serial <id>] | seed-rbt001 [--serial <id>] | seed-ui003 [--serial <id>] | reveal-capture [--scenario aut043|aut044|aut046|aut047|ui003|aut048|aut048-era3|aut048-era3-live|aut049|aut049-post|aut050|aut051|aut051-reload|aut051-short|aut052|rbt001|aut055-success|aut055-closed|aut055-failed|aut055-ineligible] [--label <l>] [--trigger next-goal|overclock|robot-line-build|none] | gate-build [--label <l>] | restore-build-config');
+    console.log('usage: node tools/device/cli.ts devices | c3|int001|r036|ui001|r031|gp001|aut039 --apk <path> [--serial <id>] [--run-id <id>] [--skip-install] | seed-aut040 [--serial <id>] | seed-aut042 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut043 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut044 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut045 [--variant workshop|era2|era3] [--serial <id>] | seed-aut046 [--variant breakthrough] [--serial <id>] | seed-aut047 [--variant active|ready] [--serial <id>] | seed-aut048 [--variant era2|era3] [--serial <id>] | seed-aut049 [--variant reboot|post] [--serial <id>] | seed-aut050 [--variant mixed|maxed] [--serial <id>] | seed-aut051 [--variant first|compact|cap|reload|short] [--serial <id>] | seed-aut052 [--serial <id>] | seed-aut055 [--variant ready|short_ineligible|quota] [--outcome rewarded|closed|failed] [--serial <id>] | seed-aut056 [--variant eligible|free_active|quota|interval|resume] [--outcome rewarded|closed|failed] [--serial <id>] | seed-rbt001 [--serial <id>] | seed-ui003 [--serial <id>] | reveal-capture [--scenario aut043|aut044|aut046|aut047|ui003|aut048|aut048-era3|aut048-era3-live|aut049|aut049-post|aut050|aut051|aut051-reload|aut051-short|aut052|rbt001|aut055-success|aut055-closed|aut055-failed|aut055-ineligible|aut056-success|aut056-free-active|aut056-resume|aut056-closed|aut056-failed|aut056-quota|aut056-interval] [--label <l>] [--trigger next-goal|overclock|robot-line-build|none] | gate-build [--label <l>] | restore-build-config');
     return command === 'help' ? 0 : 1;
 }
 

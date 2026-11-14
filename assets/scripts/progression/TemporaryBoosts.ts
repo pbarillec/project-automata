@@ -6,6 +6,12 @@ export const FREE_OVERCLOCK_BOOST_ID = 'free_overclock';
 export const FREE_OVERCLOCK_MULTIPLIER = 2;
 export const FREE_OVERCLOCK_DURATION_SECONDS = 60;
 export const FREE_OVERCLOCK_COOLDOWN_SECONDS = 240;
+/** AUT-056: Extended Overclock (rewarded). Defined once here; the runtime, coordinator and tooling import these. */
+export const EXTENDED_OVERCLOCK_BOOST_ID = 'extended_overclock';
+export const EXTENDED_OVERCLOCK_MULTIPLIER = 2;
+/** ACTIVE-SESSION seconds (closed app freezes it; offline progress is never boosted). */
+export const EXTENDED_OVERCLOCK_DURATION_SECONDS = 600;
+export const EXTENDED_OVERCLOCK_SOURCE = 'rewarded';
 export const WORKER_BOT_BREAKTHROUGH_ID = 'worker_bot';
 export const FIRST_ROBOT_PROGRESSION_FLAG_ID = 'first_robot';
 
@@ -110,6 +116,15 @@ export function activateFreeOverclock(state: GameState): ActivateFreeOverclockRe
         };
     }
 
+    // AUT-056: Free Overclock cannot start while Extended Overclock is active (it would only be suspended at once).
+    if (state.boosts.activeBoosts[EXTENDED_OVERCLOCK_BOOST_ID] !== undefined) {
+        return {
+            status: 'suspended',
+            boosts: cloneBoostState(state.boosts),
+            events: [],
+        };
+    }
+
     const cooldown = state.boosts.cooldowns[FREE_OVERCLOCK_BOOST_ID];
     if (cooldown !== undefined && cooldown.remainingSeconds > 0) {
         return {
@@ -128,6 +143,49 @@ export function activateFreeOverclock(state: GameState): ActivateFreeOverclockRe
         source: 'free',
         requestId: null,
     });
+}
+
+/**
+ * AUT-056: starts the rewarded Extended Overclock (x2, 600 active-session seconds, no cooldown). A running Free Overclock is
+ * suspended (remaining frozen, `suspendedByBoostId` set) and resumes automatically when Extended expires; the effective multiplier
+ * is the max of the non-suspended boosts, so it is never 4. Pure: eligibility and the claim record are the caller's concern.
+ */
+export function activateExtendedOverclock(state: GameState, requestId: string): ActivateFreeOverclockResult {
+    const id = readNonEmptyString(requestId, 'requestId');
+    if (!isFreeOverclockUnlocked(state)) {
+        return { status: 'locked', boosts: cloneBoostState(state.boosts), events: [] };
+    }
+
+    if (state.boosts.activeBoosts[EXTENDED_OVERCLOCK_BOOST_ID] !== undefined) {
+        return { status: 'already_active', boosts: cloneBoostState(state.boosts), events: [] };
+    }
+
+    let boosts = cloneBoostState(state.boosts);
+    const events: TemporaryBoostEvent[] = [];
+    const free = boosts.activeBoosts[FREE_OVERCLOCK_BOOST_ID];
+    if (free !== undefined && !free.isSuspended) {
+        const suspended = suspendTemporaryBoost(boosts, FREE_OVERCLOCK_BOOST_ID, EXTENDED_OVERCLOCK_BOOST_ID);
+        boosts = suspended.boosts;
+        events.push(...suspended.events);
+    }
+
+    const activated = activateTemporaryProductionBoost(boosts, {
+        boostId: EXTENDED_OVERCLOCK_BOOST_ID,
+        multiplier: EXTENDED_OVERCLOCK_MULTIPLIER,
+        durationSeconds: EXTENDED_OVERCLOCK_DURATION_SECONDS,
+        cooldownSeconds: 0,
+        source: EXTENDED_OVERCLOCK_SOURCE,
+        requestId: id,
+    });
+    if (activated.status !== 'activated') {
+        return { status: activated.status, boosts: cloneBoostState(state.boosts), events: [] };
+    }
+
+    return {
+        status: 'activated',
+        boosts: activated.boosts,
+        events: [...events, ...activated.events],
+    };
 }
 
 export function activateTemporaryProductionBoost(
@@ -221,7 +279,12 @@ export function advanceTemporaryBoosts(boostState: BoostState, elapsedSeconds: n
         decrementBoostCooldowns(boosts, stepSeconds);
         remainingElapsedSeconds = clampRemainingSeconds(remainingElapsedSeconds - stepSeconds);
 
-        for (const event of expireElapsedTemporaryBoosts(boosts)) {
+        const expiredEvents = expireElapsedTemporaryBoosts(boosts);
+        for (const event of expiredEvents) {
+            events.push(event);
+        }
+        // AUT-056: a boost whose suspender just expired resumes now, so it ticks for the rest of this same elapsed span.
+        for (const event of resumeBoostsSuspendedByExpired(boosts, expiredEvents)) {
             events.push(event);
         }
         normalizeElapsedZeroTimers(boosts);
@@ -384,6 +447,36 @@ function expireElapsedTemporaryBoosts(boosts: BoostState): TemporaryBoostExpired
             type: 'temporaryBoostExpired',
             boostId,
             source: boost.source,
+        });
+    }
+
+    return events;
+}
+
+function resumeBoostsSuspendedByExpired(boosts: BoostState, expired: readonly TemporaryBoostExpiredEvent[]): TemporaryBoostResumedEvent[] {
+    const events: TemporaryBoostResumedEvent[] = [];
+    if (expired.length === 0) {
+        return events;
+    }
+
+    const expiredIds = new Set(expired.map((event) => event.boostId));
+
+    for (const boostId of Object.keys(boosts.activeBoosts).sort()) {
+        const boost = boosts.activeBoosts[boostId];
+        if (!boost.isSuspended || boost.suspendedByBoostId === null || boost.suspendedByBoostId === undefined) {
+            continue;
+        }
+
+        if (!expiredIds.has(boost.suspendedByBoostId) || boosts.activeBoosts[boost.suspendedByBoostId] !== undefined) {
+            continue;
+        }
+
+        boost.isSuspended = false;
+        boost.suspendedByBoostId = null;
+        events.push({
+            type: 'temporaryBoostResumed',
+            boostId,
+            remainingSeconds: boost.remainingSeconds,
         });
     }
 

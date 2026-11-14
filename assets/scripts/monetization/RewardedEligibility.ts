@@ -43,6 +43,9 @@ export const OFFLINE_DOUBLE_MULTIPLIER = 2.0;
  */
 export const OFFLINE_DOUBLE_CLAIM_KEY = 'rewarded.offline_double';
 
+/** AUT-056: the stored `monetization.rewardedClaims` key and the ad placement id for Extended Overclock. */
+export const EXTENDED_OVERCLOCK_CLAIM_KEY = 'rewarded.extended_overclock';
+
 export const EXTENDED_OVERCLOCK_RULES: RewardedEligibilityRules = Object.freeze({
     maxClaimsPerRolling24h: 3,
     minimumIntervalMinutes: 60,

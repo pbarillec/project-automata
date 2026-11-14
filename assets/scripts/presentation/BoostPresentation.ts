@@ -184,8 +184,10 @@ export class BoostPresentationModel {
         }
         const after = snapshot.mode;
         this.mode = after;
-        if (before === after) return null;
-        const impulse = activated && after === 'active' && before !== 'active';
+        // AUT-056: an activation that lands while another boost already runs (Extended over an active Free Overclock) still gets its
+        // impulse; a resume (Free after Extended) is a silent state change.
+        if (before === after && !(activated && after === 'active')) return null;
+        const impulse = activated && after === 'active';
         if (impulse) this.impulseElapsed = 0;
         const source = boostEvent ? 'events' : 'state';
         if (after === 'active') return this.transition(before === 'suspended' ? 'resumed' : 'started', source, impulse);

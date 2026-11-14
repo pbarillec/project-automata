@@ -242,6 +242,9 @@ test('template params match exactly what PresentationText supplies', async () =>
         'offline.explain.manual': ['names'],
         'offline.explain.more': ['names', 'count'],
         'offline.double.button': ['value'],
+        // AUT-056 Extended Overclock.
+        'hud.extended_overclock.active': ['multiplier'],
+        'hud.extended_overclock.timer': ['minutes', 'seconds'],
         // AUT-050 AI Upgrades.
         'upgrades.chip': ['count'],
         'upgrades.balance': ['count'],
@@ -318,6 +321,11 @@ test('every catalogue entry is reachable from the composition paths (no dead key
     // AUT-055 Offline Double: the x2 label (with the projected total), its tag, and the calm "no bonus" note.
     offline.formatOfflineDoubleTexts(2_400_000, catalogue);
     offline.formatOfflineDoubleNotGranted(catalogue);
+    // AUT-056 Extended Overclock: the HUD rows (active + m:ss) and the chip (label, tag, calm note).
+    text.formatExtendedOverclockState(2, catalogue);
+    text.formatExtendedOverclockTimer(600, catalogue);
+    const extendedVm = await imp('assets/scripts/presentation/ExtendedOverclockViewModel.ts');
+    for (const showNote of [false, true]) extendedVm.createExtendedOverclockChipViewModel({ offer: true, blockedBy: null, inFlight: false, eligibility: null, adAvailable: true }, showNote, catalogue);
     // AUT-050 AI Upgrades: a fresh post-Reboot meta (locked rows resolve "Needs ..."), then a maxed row ("MAX").
     const upgrades = await imp('assets/scripts/presentation/PermanentUpgradePanelViewModel.ts');
     for (const ranks of [{}, { optimized_fabrication: 3 }]) {

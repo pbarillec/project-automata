@@ -457,7 +457,7 @@ test('AUT-048 device tooling: npm script, cli usage, scenarios, capture checks (
     const cli = read('tools/device/cli.ts');
     assert.match(cli, /command === 'seed-aut048'/);
     assert.match(cli, /seed-aut048 \[--variant era2\|era3\]/);
-    assert.match(cli, /aut048\|aut048-era3\|aut048-era3-live\|aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\|rbt001\|aut055-success\|aut055-closed\|aut055-failed\|aut055-ineligible\]/);
+    assert.match(cli, /aut048\|aut048-era3\|aut048-era3-live\|aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\|rbt001\|aut055-success\|aut055-closed\|aut055-failed\|aut055-ineligible\|aut056-success\|aut056-free-active\|aut056-resume\|aut056-closed\|aut056-failed\|aut056-quota\|aut056-interval\]/);
     assert.match(cli, /robot-line-build/);
     assert.match(cli, /expectEraTitle: scenario\.expectEraTitle/);
     const two = REVEAL_SCENARIOS.aut048;

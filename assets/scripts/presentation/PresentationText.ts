@@ -46,9 +46,14 @@ export function formatHudTexts(viewModel: HudViewModel, names: DisplayNameSource
         productionPerSecond: catalogue.resolveText('hud.production_per_second', { value: viewModel.productionPerSecond.formatted }),
         nextGoal: formatNextGoalText(viewModel.nextGoal, names, catalogue),
         nextGoalContext: formatNextGoalContext(viewModel.nextGoal, catalogue),
-        freeOverclock: formatFreeOverclockState(viewModel.freeOverclock.state, viewModel.freeOverclock.multiplier, catalogue),
+        // AUT-056: while Extended Overclock is active the two Overclock rows show it ("Extended Overclock: x2" + m:ss).
+        freeOverclock: viewModel.extendedOverclock?.active === true
+            ? formatExtendedOverclockState(viewModel.extendedOverclock.multiplier, catalogue)
+            : formatFreeOverclockState(viewModel.freeOverclock.state, viewModel.freeOverclock.multiplier, catalogue),
         // AUT-UI-003: a READY row must not read as a countdown, so its timer line is empty.
-        freeOverclockTimer: viewModel.freeOverclock.state === 'ready' ? '' : formatFreeOverclockTimer(viewModel.freeOverclock.remainingSeconds, catalogue),
+        freeOverclockTimer: viewModel.extendedOverclock?.active === true
+            ? formatExtendedOverclockTimer(viewModel.extendedOverclock.remainingSeconds, catalogue)
+            : viewModel.freeOverclock.state === 'ready' ? '' : formatFreeOverclockTimer(viewModel.freeOverclock.remainingSeconds, catalogue),
         manualProduceAction: catalogue.resolveText('hud.action.manual_produce'),
         nextGoalAction: formatNextGoalAction(resolveNextGoalAction(viewModel.nextGoal), viewModel.nextGoal, catalogue),
     });
@@ -113,6 +118,17 @@ export function formatNextGoalContext(goal: HudNextGoalViewModel, catalogue: Tex
 
 export function formatFreeOverclockState(state: FreeOverclockViewState, multiplier: number, catalogue: TextCatalogue = getDefaultTextCatalogue()): string {
     return catalogue.resolveText(`hud.free_overclock.${state}`, { multiplier });
+}
+
+/** AUT-056: "Extended Overclock: x2". */
+export function formatExtendedOverclockState(multiplier: number, catalogue: TextCatalogue = getDefaultTextCatalogue()): string {
+    return catalogue.resolveText('hud.extended_overclock.active', { multiplier });
+}
+
+/** AUT-056: the m:ss countdown (minutes unpadded, seconds two digits). */
+export function formatExtendedOverclockTimer(remainingSeconds: number, catalogue: TextCatalogue = getDefaultTextCatalogue()): string {
+    const total = Math.max(0, Math.ceil(remainingSeconds));
+    return catalogue.resolveText('hud.extended_overclock.timer', { minutes: Math.floor(total / 60), seconds: String(total % 60).padStart(2, '0') });
 }
 
 export function formatFreeOverclockTimer(remainingSeconds: number, catalogue: TextCatalogue = getDefaultTextCatalogue()): string {

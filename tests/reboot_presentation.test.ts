@@ -558,7 +558,7 @@ test('AUT-049 diagnostics, scenarios and capture checks', async () => {
     const cli = read('tools/device/cli.ts');
     assert.match(cli, /command === 'seed-aut049'/);
     assert.match(cli, /seed-aut049 \[--variant reboot\|post\]/);
-    assert.match(cli, /aut048-era3-live\|aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\|rbt001\|aut055-success\|aut055-closed\|aut055-failed\|aut055-ineligible\]/);
+    assert.match(cli, /aut048-era3-live\|aut049\|aut049-post\|aut050\|aut051\|aut051-reload\|aut051-short\|aut052\|rbt001\|aut055-success\|aut055-closed\|aut055-failed\|aut055-ineligible\|aut056-success\|aut056-free-active\|aut056-resume\|aut056-closed\|aut056-failed\|aut056-quota\|aut056-interval\]/);
     assert.match(cli, /expectReboot: scenario\.expectReboot/);
     assert.match(read('package.json'), /"device:seed-aut049": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools\/device\/cli\.ts seed-aut049"/);
     const live = REVEAL_SCENARIOS.aut049;

@@ -1,5 +1,6 @@
 export type {
     AdvanceAutomationCommand,
+    ActivateExtendedOverclockCommand,
     ActivateFreeOverclockCommand,
     BuyMaxProducerLevelsCommand,
     BuyProducerLevelsCommand,

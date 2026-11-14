@@ -2,6 +2,7 @@ import type { GameConfigRepository } from '../config/ConfigLoader.ts';
 import type { GameState } from '../state/GameState.ts';
 import { calculateCurrentProductionPerSecond } from '../runtime/index.ts';
 import {
+    EXTENDED_OVERCLOCK_BOOST_ID,
     FREE_OVERCLOCK_BOOST_ID,
     isFreeOverclockUnlocked,
     resolveNextGoal,
@@ -16,6 +17,24 @@ export interface HudViewModel {
     readonly productionPerSecond: { readonly value: number; readonly formatted: string; readonly labelKey: 'hud.production_per_second' };
     readonly nextGoal: HudNextGoalViewModel;
     readonly freeOverclock: FreeOverclockViewModel;
+    /** AUT-056: the rewarded Extended Overclock (the five Free Overclock states above stay unchanged). */
+    readonly extendedOverclock: ExtendedOverclockViewModel;
+}
+
+export interface ExtendedOverclockViewModel {
+    readonly active: boolean;
+    readonly multiplier: number;
+    readonly remainingSeconds: number;
+    /** m:ss countdown (empty text values stay with the catalogue: see formatExtendedOverclockTimer). */
+    readonly remainingFormatted: string;
+}
+
+/**
+ * AUT-056: the state the two Overclock rows / pill display. While Extended Overclock is active the rows show its ACTIVE pill (the Free
+ * Overclock view state keeps its own value, e.g. 'suspended', for the world presentation and tests).
+ */
+export function resolveOverclockDisplayState(viewModel: Pick<HudViewModel, 'freeOverclock' | 'extendedOverclock'>): FreeOverclockViewState {
+    return viewModel.extendedOverclock.active ? 'active' : viewModel.freeOverclock.state;
 }
 
 export interface HudNextGoalViewModel {
@@ -44,6 +63,8 @@ export function createHudViewModel(repository: GameConfigRepository, state: Game
     const productionPerSecond = calculateCurrentProductionPerSecond(repository, state);
     const active = state.boosts.activeBoosts[FREE_OVERCLOCK_BOOST_ID];
     const cooldown = state.boosts.cooldowns[FREE_OVERCLOCK_BOOST_ID];
+    const extended = state.boosts.activeBoosts[EXTENDED_OVERCLOCK_BOOST_ID];
+    const extendedActive = extended !== undefined && !extended.isSuspended;
     const unlocked = isFreeOverclockUnlocked(state);
     const overclockState: FreeOverclockViewState = !unlocked
         ? 'locked'
@@ -61,12 +82,18 @@ export function createHudViewModel(repository: GameConfigRepository, state: Game
         nextGoal: mapNextGoal(goal),
         freeOverclock: {
             state: overclockState,
-            canActivate: overclockState === 'ready',
+            canActivate: overclockState === 'ready' && !extendedActive,
             multiplier: active?.effect.multiplier ?? 2,
             remainingSeconds: active?.remainingSeconds ?? cooldown?.remainingSeconds ?? 0,
             cooldownSeconds: active?.cooldownSeconds ?? 240,
             remainingFormatted: formatSeconds(active?.remainingSeconds ?? cooldown?.remainingSeconds ?? 0),
             labelKey: 'hud.free_overclock',
+        },
+        extendedOverclock: {
+            active: extendedActive,
+            multiplier: extended?.effect.multiplier ?? 2,
+            remainingSeconds: extendedActive ? extended.remainingSeconds : 0,
+            remainingFormatted: formatMinutesSeconds(extendedActive ? extended.remainingSeconds : 0),
         },
     };
 }
@@ -97,6 +124,12 @@ function mapNextGoal(goal: NextGoal): HudNextGoalViewModel {
         blocking: goal.blocking,
         focusTarget: goal.focusTarget,
     };
+}
+
+/** m:ss of a (ceil-ed) second count. */
+export function formatMinutesSeconds(seconds: number): string {
+    const total = Math.max(0, Math.ceil(seconds));
+    return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
 function formatSeconds(seconds: number): string {
