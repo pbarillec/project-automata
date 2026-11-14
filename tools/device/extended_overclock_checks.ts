@@ -24,6 +24,8 @@ export const EXTENDED_OVERCLOCK_MIN_LABEL_FONT_UNITS = 21;
 export const EXTENDED_OVERCLOCK_RECT_TOLERANCE_PX = 1.5;
 /** Absolute tolerance for numbers the app reports with 2 decimals. */
 export const EXTENDED_OVERCLOCK_NUMBER_TOLERANCE = 0.011;
+/** The persisted boost can be up to ~one save interval (~1 s) older than the last HUD value seen before the kill, so a relaunch may show slightly MORE remaining. */
+export const EXTENDED_OVERCLOCK_SAVE_LAG_SECONDS = 2;
 /** The HUD countdown must have ticked at least this much between the first and a later HUD report. */
 export const EXTENDED_OVERCLOCK_MIN_TICK_SECONDS = 5;
 export const EXTENDED_OVERCLOCK_NOTE_TEXT = 'No bonus this time.';
@@ -158,7 +160,7 @@ export function evaluateExtendedOverclock(events: readonly ExtendedOverclockTime
         const relaunchRemaining = Number(hudRelaunch?.event.remainingSeconds ?? Number.NaN);
         checks.push({
             id: 'extended_boost_active_after_relaunch',
-            ok: markerIndex >= 0 && hudRelaunch !== undefined && hudRelaunch.event.state === 'active' && Number.isFinite(relaunchRemaining) && relaunchRemaining <= lastRemaining + EXTENDED_OVERCLOCK_NUMBER_TOLERANCE && relaunchRemaining >= lastRemaining - 15 && (expect !== 'free_active' || hudRelaunch.event.freeState === 'suspended'),
+            ok: markerIndex >= 0 && hudRelaunch !== undefined && hudRelaunch.event.state === 'active' && Number.isFinite(relaunchRemaining) && relaunchRemaining <= lastRemaining + EXTENDED_OVERCLOCK_SAVE_LAG_SECONDS && relaunchRemaining >= lastRemaining - 15 && (expect !== 'free_active' || hudRelaunch.event.freeState === 'suspended'),
             detail: hudRelaunch ? JSON.stringify({ state: hudRelaunch.event.state, freeState: hudRelaunch.event.freeState, remainingSeconds: relaunchRemaining, lastBefore: lastRemaining }) : 'no hud event after the relaunch',
         });
         const chipAfter = after.filter((e) => e.event.evt === 'ui_layout' && rectOf(e.event, 'ExtendedOverclockAction') !== null);
