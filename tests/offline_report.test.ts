@@ -168,10 +168,10 @@ test('text: card strings compose from the catalogue (reward via NumberFormatter,
     const texts = text.formatOfflineReportTexts(model, ctx.repo, catalogue);
     assert.equal(texts.title, 'FACTORY REPORT');
     assert.equal(texts.timeAway, 'Away 8h');
-    assert.equal(texts.capReached, 'Offline limit 8h reached');
+    assert.equal(texts.capReached, 'Offline cap reached (8h)');
     assert.match(texts.reward, /^\+[\d.]+[KMBT]? Industrial Output$/);
     assert.equal(texts.robots, null);
-    assert.equal(texts.explain, 'Automated producers kept working. Not automated: Assembly Station.');
+    assert.equal(texts.explain, 'Automated producers kept working. Manual: Assembly Station.');
     assert.equal(texts.collect, 'COLLECT');
     assert.deepEqual(reports, []);
     const rawKey = /\b[a-z_]+(\.[a-z0-9_]+)+\b/;
@@ -180,6 +180,8 @@ test('text: card strings compose from the catalogue (reward via NumberFormatter,
     assert.equal(short.timeAway, 'Away 3h 20m');
     assert.equal(short.capReached, null);
     assert.equal(short.robots, '+1.2K Robots Built');
+    assert.equal(text.formatOfflineReportTexts({ ...model, showRobotsRow: true, robotsDelta: 1 }, ctx.repo, catalogue).robots, '+1 Robot Built');
+    assert.equal(text.formatOfflineReportTexts({ ...model, showRobotsRow: true, robotsDelta: 2 }, ctx.repo, catalogue).robots, '+2 Robots Built');
     assert.equal(text.formatOfflineCollectFailed(catalogue), "Couldn't collect. Tap to try again.");
 });
 
@@ -191,26 +193,26 @@ test('text: the educational line names at most two producers, then "and N more";
     const line = (list) => text.formatOfflineExplainLine(list, ctx.repo, catalogue);
     assert.equal(line([]), null);
     assert.equal(line(['nope']), null);
-    assert.equal(line(ids.slice(0, 1)), 'Automated producers kept working. Not automated: Fabricator.');
-    assert.equal(line(ids.slice(0, 2)), 'Automated producers kept working. Not automated: Fabricator, Assembly Station.');
-    assert.equal(line(ids.slice(0, 3)), 'Automated producers kept working. Not automated: Fabricator, Assembly Station and 1 more.');
-    assert.equal(line(ids), 'Automated producers kept working. Not automated: Fabricator, Assembly Station and 3 more.');
-    assert.equal(line(['nope', ...ids.slice(0, 1)]), 'Automated producers kept working. Not automated: Fabricator.');
+    assert.equal(line(ids.slice(0, 1)), 'Automated producers kept working. Manual: Fabricator.');
+    assert.equal(line(ids.slice(0, 2)), 'Automated producers kept working. Manual: Fabricator, Assembly Station.');
+    assert.equal(line(ids.slice(0, 3)), 'Automated producers kept working. Manual: Fabricator, Assembly Station and 1 more.');
+    assert.equal(line(ids), 'Automated producers kept working. Manual: Fabricator, Assembly Station and 3 more.');
+    assert.equal(line(['nope', ...ids.slice(0, 1)]), 'Automated producers kept working. Manual: Fabricator.');
     assert.equal(text.formatOfflineExplainLine(ids, null, catalogue), null);
     assert.equal(vm.OFFLINE_REPORT_MAX_NAMED_PRODUCERS, 2);
 });
 
-test('text: every offline.* key lives in en.json and in the embedded catalogue; the catalogue holds 64 entries', async () => {
+test('text: every offline.* key lives in en.json and in the embedded catalogue; the catalogue holds 65 entries', async () => {
     const { localization } = await modules();
     const parsed = JSON.parse(await read('localization/en.json'));
-    const keys = ['offline.title', 'offline.time_away', 'offline.cap_reached', 'offline.reward', 'offline.robots', 'offline.explain.manual', 'offline.explain.more', 'offline.collect', 'offline.collect_failed'];
+    const keys = ['offline.title', 'offline.time_away', 'offline.cap_reached', 'offline.reward', 'offline.robots', 'offline.robot_single', 'offline.explain.manual', 'offline.explain.more', 'offline.collect', 'offline.collect_failed'];
     const embedded = localization.getDefaultTextCatalogue();
     for (const key of keys) {
         assert.equal(typeof parsed.entries[key], 'string', key);
         assert.ok(embedded.has(key), `${key} embedded`);
         assert.equal(embedded.template(key), parsed.entries[key]);
     }
-    assert.equal(Object.keys(parsed.entries).length, 64);
+    assert.equal(Object.keys(parsed.entries).length, 65);
 });
 
 // ---------------------------------------------------------------- layout
@@ -559,6 +561,111 @@ test('D1: with no pending report ordinary saves still stamp "now" (behaviour unc
     assert.equal(await savedAtOf(ctx), iso(NOW_MS + 120_000));
 });
 
+// ---------------------------------------------------------------- AUT-051b: sub-minute absences produce no card
+
+test('AUT-051b: boundary 59.9 s hides the card (auto-collect), 60 s shows it; the gate uses the raw absence', async () => {
+    const { vm } = await modules();
+    assert.equal(vm.OFFLINE_REPORT_MIN_ABSENCE_SECONDS, 60);
+    const ctx = await startSession();
+    const base = ctx.startup.offlinePreview;
+    const at = (rawAbsenceSeconds, extra = {}) => vm.createOfflineReportViewModel({ ...base, rawAbsenceSeconds, effectiveOfflineSeconds: rawAbsenceSeconds, ...extra });
+    for (const [seconds, visible] of [[0.5, false], [30, false], [59, false], [59.9, false], [60, true], [60.1, true], [3600, true]]) {
+        const model = at(seconds);
+        assert.equal(model.visible, visible, `${seconds}s visible`);
+        assert.equal(model.autoCollect, !visible, `${seconds}s autoCollect`);
+    }
+    // Capped absence: the raw absence (before the cap) decides, so a capped report is always above the threshold.
+    const capped = vm.createOfflineReportViewModel({ ...base, rawAbsenceSeconds: 10 * 3600, effectiveOfflineSeconds: 8 * 3600, capApplied: true });
+    assert.equal(capped.visible, true);
+    assert.equal(capped.capApplied, true);
+    // Raw absence missing: the effective seconds are used.
+    assert.equal(vm.createOfflineReportViewModel({ ...base, rawAbsenceSeconds: undefined, effectiveOfflineSeconds: 30 }).autoCollect, true);
+    // Non-collectible previews are neither shown nor auto-collected (nothing pending).
+    for (const none of [null, undefined, { ...base, status: 'no_reward' }]) assert.equal(vm.createOfflineReportViewModel(none).autoCollect, false);
+});
+
+test('AUT-051b: a zero-reward preview at / above 60 s never shows "+0": it auto-collects without a card', async () => {
+    const { vm } = await modules();
+    const ctx = await startSession();
+    const zero = vm.createOfflineReportViewModel({ ...ctx.startup.offlinePreview, totalIndustrialOutputReward: 0 });
+    assert.equal(zero.visible, false);
+    assert.equal(zero.autoCollect, true);
+    assert.equal(vm.createOfflineReportViewModel({ ...ctx.startup.offlinePreview, totalIndustrialOutputReward: Number.NaN }).visible, false);
+});
+
+test('AUT-051b cold launch: a ~30 s absence has no card; the silent auto-collect applies the reward through the normal critical save and Reboot is not blocked', async () => {
+    const ctx = await startSession({ variant: 'short' });
+    const { vm } = ctx.m;
+    const { binding, hud, errors } = await bindingFor(ctx);
+    const pending = binding.getPendingOfflinePreview();
+    const model = vm.createOfflineReportViewModel(pending);
+    assert.equal(pending.status, 'preview_ready');
+    assert.equal(model.visible, false);
+    assert.equal(model.autoCollect, true);
+    assert.ok(model.rawSeconds < 60 && model.reward > 0);
+    const before = ctx.session.getStateSnapshot().run.industrialOutput;
+    binding.init();
+    hud.models.length = 0;
+    // What the controller does for autoCollect: the same collect path as COLLECT.
+    const result = await binding.collectOfflineReport();
+    assert.equal(result.status, 'collected_saved');
+    assert.equal(result.save.reason, 'offline_collect');
+    assert.equal(result.save.intent, 'critical');
+    assert.equal(ctx.session.getStateSnapshot().run.industrialOutput, before + model.reward, 'the reward is still applied');
+    assert.equal(binding.getPendingOfflinePreview(), null);
+    assert.equal(await savedAtOf(ctx), iso(NOW_MS), 'the collection cursor advanced');
+    assert.equal(hud.models.length, 1);
+    assert.deepEqual(errors, []);
+    const reboot = await ctx.session.rebootCivilizationConfirmed();
+    assert.notEqual(reboot.status, 'pending_offline_preview');
+});
+
+test('AUT-051b resume path: 59 s away auto-collects, 60 s away shows the card, a capped absence always shows it', async () => {
+    const ctx = await startSession();
+    const { vm } = ctx.m;
+    await ctx.session.collectPendingOffline();
+    const away = async (seconds) => {
+        await ctx.session.suspend();
+        ctx.clock.advanceUtcSeconds(seconds);
+        ctx.clock.advanceMonotonicSeconds(seconds);
+        const resumed = ctx.session.resume();
+        assert.equal(resumed.status, 'preview_created', `${seconds}s`);
+        return vm.createOfflineReportViewModel(ctx.session.getPendingOfflinePreview());
+    };
+    const short = await away(59);
+    assert.deepEqual([short.visible, short.autoCollect, short.rawSeconds], [false, true, 59]);
+    assert.equal((await ctx.session.collectPendingOffline()).status, 'collected_saved');
+    const boundary = await away(60);
+    assert.deepEqual([boundary.visible, boundary.autoCollect, boundary.rawSeconds], [true, false, 60]);
+    await ctx.session.collectPendingOffline();
+    const capped = await away(12 * 3600);
+    assert.equal(capped.visible, true);
+    assert.equal(capped.capApplied, true);
+    assert.ok(capped.rawSeconds > capped.effectiveSeconds);
+});
+
+test('AUT-051b D1: a reload scenario with hours of absence still shows the same card (the gate does not touch persistence)', async () => {
+    const first = await startSession({ variant: 'reload' });
+    const { vm } = first.m;
+    assert.equal(vm.createOfflineReportViewModel(first.session.getPendingOfflinePreview()).visible, true);
+    const second = await startSession({ storage: first.storage, offsetMs: 8_000 });
+    const model = vm.createOfflineReportViewModel(second.session.getPendingOfflinePreview());
+    assert.equal(model.visible, true);
+    assert.equal(model.effectiveSeconds, 3 * 3600 + 8);
+});
+
+test('AUT-051b source pins: the controller auto-collects silently through the collect emitter and reports auto_collected; no economy change', async () => {
+    const source = await read('assets/scripts/presentation/OfflineReportController.ts');
+    assert.match(source, /viewModel\.autoCollect/);
+    assert.match(source, /autoCollectSilently/);
+    assert.match(source, /'auto_collected'/);
+    assert.match(source, /rawSeconds: viewModel\.rawSeconds, reward: viewModel\.reward, saveOk/);
+    const diagnostics = await read('assets/scripts/presentation/DeviceDiagnostics.ts');
+    assert.match(diagnostics, /'auto_collected'/);
+    const offlineDir = fs.readdirSync(path.join(repoRoot, 'assets/scripts/offline')).filter((name) => name.endsWith('.ts'));
+    for (const name of offlineDir) assert.doesNotMatch(fs.readFileSync(path.join(repoRoot, 'assets/scripts/offline', name), 'utf8'), /OFFLINE_REPORT_MIN_ABSENCE_SECONDS/);
+});
+
 // ---------------------------------------------------------------- source pins
 
 test('source pins: pure files are engine-free, explicit .ts imports, no constructor parameter properties', async () => {
@@ -641,7 +748,7 @@ test('source pins: offline_report is in the diagnostics allow-list and the revea
 
 test('seed: variants build valid saves with the intended absence and producer automation', async () => {
     const { seed, persistence, lifecycle, time, vm } = await modules();
-    assert.deepEqual([...seed.AUT051_SEED_VARIANTS], ['first', 'compact', 'cap', 'reload']);
+    assert.deepEqual([...seed.AUT051_SEED_VARIANTS], ['first', 'compact', 'cap', 'reload', 'short']);
     assert.equal(seed.isAut051SeedVariant('cap'), true);
     assert.equal(seed.isAut051SeedVariant('nope'), false);
     for (const [variant, hours, educational, capApplied] of [['first', 3, true, false], ['compact', 3, false, false], ['cap', 10, true, true], ['reload', 3, true, false]]) {
@@ -659,6 +766,14 @@ test('seed: variants build valid saves with the intended absence and producer au
         assert.equal(model.capApplied, capApplied, variant);
         assert.equal(model.effectiveSeconds, Math.min(hours * 3600, 8 * 3600), variant);
     }
+    // AUT-051b: the short variant (~30 s) is under the minimum: no card, a silent auto-collect with a positive reward.
+    const shortText = seed.buildAut051SeededSave('short', NOW_MS + 700);
+    assert.equal(JSON.parse(shortText).savedAtUtc, iso(NOW_MS - 30_000));
+    const shortBoot = await lifecycle.bootstrapGameSession({ storage: new persistence.InMemorySaveStorage({ [persistence.SAVE_MAIN_NAME]: shortText }), timeService: new time.ManualTimeService({ utcIso: iso(NOW_MS), monotonicSeconds: 0 }) });
+    const shortModel = vm.createOfflineReportViewModel(shortBoot.startup.offlinePreview);
+    assert.equal(shortModel.visible, false);
+    assert.equal(shortModel.autoCollect, true);
+    assert.ok(shortModel.reward > 0);
     const state = seed.buildAut051SeededState('first');
     assert.equal(state.run.automation.fabricator.isAutomated, true);
     assert.equal(state.run.automation.fabricator.isOfflineEligible, true);
@@ -696,8 +811,11 @@ test('device: scenarios, CLI usage and package script are registered', async () 
     assert.equal(reload.expectOfflineReport, 'reload');
     const cli = await read('tools/device/cli.ts');
     assert.match(cli, /command === 'seed-aut051'/);
-    assert.match(cli, /seed-aut051 \[--variant first\|compact\|cap\|reload\]/);
-    assert.match(cli, /aut049\|aut049-post\|aut051\|aut051-reload\]/);
+    assert.match(cli, /seed-aut051 \[--variant first\|compact\|cap\|reload\|short\]/);
+    assert.match(cli, /aut049\|aut049-post\|aut051\|aut051-reload\|aut051-short\]/);
+    const short = REVEAL_SCENARIOS['aut051-short'];
+    assert.equal(short.trigger, 'none');
+    assert.equal(short.expectOfflineReport, 'short');
     assert.match(await read('package.json'), /"device:seed-aut051": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools\/device\/cli\.ts seed-aut051"/);
 });
 
@@ -724,6 +842,9 @@ test('device checks: collect scenario passes on a full chain and fails on regres
     assert.ok(failing(good.map((e) => (e.event.phase === 'collect_result' ? ev(3050, 'offline_report', { phase: 'collect_result', status: 'collected_persistence_failed', saveOk: false }) : e)), 'offline_collect_saved'));
     assert.ok(failing([ev(100, 'offline_report', { ...shown.event, texts: { collect: 'Watch ad for x2' } }), ...good.slice(1)], 'offline_no_ad_affordance'));
     assert.ok(failing(good.slice(1), 'offline_card_shown_on_launch'));
+    // AUT-051b: the sub-minute relaunch gap is silent (a card after the relaunch fails even when small).
+    assert.ok(failing([...good.slice(0, 5), ev(9000, 'offline_report', { phase: 'shown', reward: 10, effectiveSeconds: 8, cardRect: rect, collectRect: rect })], 'offline_relaunch_gap_silent'));
+    assert.ok(run([...good.slice(0, 5), ev(9000, 'offline_report', { phase: 'auto_collected', status: 'collected_saved', saveOk: true, rawSeconds: 8, reward: 10 })]).every((c) => c.ok));
 });
 
 test('device checks: reload scenario needs the card again after the kill with an equivalent reward and no Collect', async () => {

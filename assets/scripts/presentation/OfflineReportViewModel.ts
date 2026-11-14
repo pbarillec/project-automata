@@ -16,9 +16,19 @@ export const OFFLINE_REPORT_SHOW_EDUCATIONAL_LINE = true;
 /** At most this many producer names are listed in the educational line; the rest become "and N more". */
 export const OFFLINE_REPORT_MAX_NAMED_PRODUCERS = 2;
 
+/**
+ * AUT-051b MVP rule (owner decision): an absence shorter than this many seconds (raw, measured BEFORE the offline cap) produces no
+ * report card; the pending preview is auto-collected silently (the reward is still applied, no ad offer). Boundary: >= 60 s shows
+ * the card. Presentation-only gate: offline formulas, economy and the save format are untouched. (Unrelated to the rewarded x2
+ * eligibility `minimumOfflineMinutes` in MONETIZATION.md.)
+ */
+export const OFFLINE_REPORT_MIN_ABSENCE_SECONDS = 60;
+
 export interface OfflineReportViewModel {
-    /** True only for a collectible preview (`preview_ready`). */
+    /** True only for a collectible preview (`preview_ready`) that is worth a card (>= the minimum absence and a positive reward). */
     readonly visible: boolean;
+    /** A collectible preview that must NOT show a card: the presentation auto-collects it silently (never "+0", never a sub-minute card). */
+    readonly autoCollect: boolean;
     readonly effectiveSeconds: number;
     readonly rawSeconds: number;
     readonly capApplied: boolean;
@@ -39,6 +49,7 @@ export interface OfflineReportViewModelOptions {
 
 export const HIDDEN_OFFLINE_REPORT_VIEW_MODEL: OfflineReportViewModel = Object.freeze({
     visible: false,
+    autoCollect: false,
     effectiveSeconds: 0,
     rawSeconds: 0,
     capApplied: false,
@@ -59,11 +70,15 @@ export function createOfflineReportViewModel(
     const notAutomatedProducerIds = Object.freeze(
         preview.producerContributions.filter((contribution) => contribution.reason === 'not_automated').map((contribution) => contribution.producerId),
     );
+    const rawSeconds = preview.rawAbsenceSeconds ?? preview.effectiveOfflineSeconds;
+    const rewardPositive = Number.isFinite(preview.totalIndustrialOutputReward) && preview.totalIndustrialOutputReward > 0;
+    const worthACard = rawSeconds >= OFFLINE_REPORT_MIN_ABSENCE_SECONDS && rewardPositive;
     const robotsDelta = Number.isFinite(preview.robotsBuiltDelta) && preview.robotsBuiltDelta > 0 ? Math.floor(preview.robotsBuiltDelta) : 0;
     return Object.freeze({
-        visible: true,
+        visible: worthACard,
+        autoCollect: !worthACard,
         effectiveSeconds: preview.effectiveOfflineSeconds,
-        rawSeconds: preview.rawAbsenceSeconds ?? preview.effectiveOfflineSeconds,
+        rawSeconds,
         capApplied: preview.capApplied,
         capSeconds: preview.capSeconds,
         reward: preview.totalIndustrialOutputReward,

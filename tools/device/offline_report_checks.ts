@@ -6,7 +6,7 @@
 import type { ParsedDeviceEvent } from '../../assets/scripts/presentation/DeviceDiagnostics.ts';
 import { toRect } from './ui_geometry.ts';
 
-export type OfflineReportExpectation = 'collect' | 'reload';
+export type OfflineReportExpectation = 'collect' | 'reload' | 'short';
 
 export interface OfflineTimelineEvent { readonly tMs: number; readonly event: ParsedDeviceEvent }
 export interface OfflineCheck { readonly id: string; readonly ok: boolean; readonly detail: string }
@@ -25,6 +25,19 @@ export function evaluateOfflineReport(events: readonly OfflineTimelineEvent[], e
     const after = markerIndex < 0 ? [] : events.slice(markerIndex + 1);
     const phaseOf = (list: readonly OfflineTimelineEvent[], phase: string) => list.filter((e) => e.event.evt === 'offline_report' && e.event.phase === phase);
     const checks: OfflineCheck[] = [];
+    if (expect === 'short') {
+        // AUT-051b: a sub-minute absence shows no card; the preview is collected silently (normal critical save).
+        const cards = events.filter((e) => e.event.evt === 'offline_report' && (e.event.phase === 'shown' || e.event.phase === 'refreshed'));
+        const auto = phaseOf(events, 'auto_collected')[0];
+        checks.push({ id: 'offline_short_no_card', ok: cards.length === 0, detail: `${cards.length} card event(s)` });
+        checks.push({
+            id: 'offline_short_auto_collected',
+            ok: auto !== undefined && auto.event.status === 'collected_saved' && auto.event.saveOk === true && Number(auto.event.reward ?? 0) > 0 && Number(auto.event.rawSeconds ?? Number.POSITIVE_INFINITY) < 60,
+            detail: auto ? `status=${String(auto.event.status)} saveOk=${String(auto.event.saveOk)} rawSeconds=${String(auto.event.rawSeconds)} reward=${String(auto.event.reward)}` : 'no auto_collected',
+        });
+        checks.push({ id: 'offline_short_no_collect_tap', ok: phaseOf(events, 'collect_tapped').length === 0, detail: 'no COLLECT interaction was needed' });
+        return checks;
+    }
     const shown = phaseOf(before, 'shown')[0];
     const cardRect = toRect(shown?.event.cardRect);
     const collectRect = toRect(shown?.event.collectRect);
@@ -70,6 +83,8 @@ export function evaluateOfflineReport(events: readonly OfflineTimelineEvent[], e
     const reshown = phaseOf(after, 'shown');
     const regrant = reshown.some((e) => Number(e.event.reward ?? 0) > originalReward * 0.05 || Number(e.event.effectiveSeconds ?? 0) > originalSeconds * 0.05);
     checks.push({ id: 'offline_no_original_report_after_relaunch', ok: markerIndex >= 0 && !regrant, detail: `${reshown.length} card(s) after the relaunch, original report re-shown: ${String(regrant)}` });
+    // AUT-051b: the relaunch gap is under 60 s, so it is auto-collected silently: no card at all after the relaunch.
+    checks.push({ id: 'offline_relaunch_gap_silent', ok: markerIndex >= 0 && reshown.length === 0, detail: `${reshown.length} card(s), ${phaseOf(after, 'auto_collected').length} auto_collected after the relaunch` });
     checks.push({ id: 'offline_collect_persisted', ok: result?.event.saveOk === true && markerIndex >= 0 && !regrant, detail: 'saved collect; the original report is not re-granted after the relaunch (only the small relaunch gap may show)' });
     return checks;
 }

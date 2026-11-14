@@ -285,6 +285,7 @@ test('every catalogue entry is reachable from the composition paths (no dead key
     for (const ids of [[], producerIds.slice(0, 2), producerIds.slice(0, 4)]) {
         offline.formatOfflineReportTexts({ ...offlineVm.HIDDEN_OFFLINE_REPORT_VIEW_MODEL, visible: true, effectiveSeconds: 12_000, capApplied: true, capSeconds: 28_800, reward: 1_200_000, robotsDelta: 3, showRobotsRow: true, notAutomatedProducerIds: ids, explainShown: true }, repository, catalogue);
     }
+    offline.formatOfflineReportTexts({ ...offlineVm.HIDDEN_OFFLINE_REPORT_VIEW_MODEL, visible: true, effectiveSeconds: 12_000, reward: 5, robotsDelta: 1, showRobotsRow: true }, repository, catalogue);
     offline.formatOfflineCollectFailed(catalogue);
     assert.deepEqual(base.keys().filter((key) => !used.has(key)), []);
 });

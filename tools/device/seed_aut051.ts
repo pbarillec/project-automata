@@ -8,6 +8,7 @@
  *   - `compact`: every built producer is automated (Fabricator only), 3 h away: NO educational line.
  *   - `cap`: as `first` but 10 h away: the 8 h offline limit is applied ("Offline limit 8h reached").
  *   - `reload`: as `first` (3 h); used by the reload scenario that force-stops BEFORE Collect and relaunches without reseeding.
+ *   - `short` (AUT-051b): as `first` but only ~30 s away: NO card (under the 60 s minimum); the preview is auto-collected silently.
  * The seeds use the host UTC clock (like seed_aut049); a large device clock skew would shift the absence. Requires the FactoryWorld DEBUG APK (run-as).
  */
 import { GAME_SESSION_DEV_GAME_VERSION } from '../../assets/scripts/lifecycle/GameSessionBootstrap.ts';
@@ -22,11 +23,11 @@ import { SAVE_FILE_NAMES } from './scenarios/int001_session_persistence.ts';
 
 const economy = () => loadGameConfigFromSources(getEmbeddedEconomyConfigSources());
 
-export const AUT051_SEED_VARIANTS = ['first', 'compact', 'cap', 'reload'] as const;
+export const AUT051_SEED_VARIANTS = ['first', 'compact', 'cap', 'reload', 'short'] as const;
 export type Aut051SeedVariant = typeof AUT051_SEED_VARIANTS[number];
 
-/** Hours of absence per variant (the offline cap is 8 h). */
-export const AUT051_ABSENCE_HOURS: Readonly<Record<Aut051SeedVariant, number>> = Object.freeze({ first: 3, compact: 3, cap: 10, reload: 3 });
+/** Seconds of absence per variant (the offline cap is 8 h; AUT-051b: under 60 s no card is shown). */
+export const AUT051_ABSENCE_SECONDS: Readonly<Record<Aut051SeedVariant, number>> = Object.freeze({ first: 3 * 3600, compact: 3 * 3600, cap: 10 * 3600, reload: 3 * 3600, short: 30 });
 
 export function isAut051SeedVariant(value: unknown): value is Aut051SeedVariant {
     return typeof value === 'string' && (AUT051_SEED_VARIANTS as readonly string[]).includes(value);
@@ -47,7 +48,7 @@ export function buildAut051SeededState(variant: Aut051SeedVariant): GameState {
 }
 
 export function buildAut051SeededSave(variant: Aut051SeedVariant, nowMs: number): string {
-    const absenceMs = AUT051_ABSENCE_HOURS[variant] * 3_600_000;
+    const absenceMs = AUT051_ABSENCE_SECONDS[variant] * 1000;
     return serializeGameStateToSaveJson(buildAut051SeededState(variant), {
         saveVersion: CURRENT_SAVE_VERSION,
         gameVersion: GAME_SESSION_DEV_GAME_VERSION,

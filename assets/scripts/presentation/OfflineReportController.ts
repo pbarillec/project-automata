@@ -55,6 +55,7 @@ export class OfflineReportController extends Component {
     private built = false;
     private visible = false;
     private inFlight = false;
+    private autoCollecting = false;
     private retryShown = false;
     private viewModel: OfflineReportViewModel = HIDDEN_OFFLINE_REPORT_VIEW_MODEL;
     private texts: OfflineReportTexts | null = null;
@@ -96,6 +97,10 @@ export class OfflineReportController extends Component {
      */
     public show(preview: OfflinePreviewResult | null, reason: OfflineReportShowReason): void {
         const viewModel = createOfflineReportViewModel(preview);
+        if (viewModel.autoCollect) {
+            this.autoCollectSilently(viewModel, reason);
+            return;
+        }
         if (!viewModel.visible) {
             if (this.visible) this.hide('no_collectible_preview');
             else this.emitReport('skipped', { reason, status: preview?.status ?? 'none' });
@@ -111,6 +116,25 @@ export class OfflineReportController extends Component {
         this.node.setScale(1, 1, 1);
         this.emitReport(wasVisible ? 'refreshed' : 'shown', { reason, status: preview?.status ?? 'none' });
         this.onLayoutChanged?.(wasVisible ? 'offline_report_refreshed' : 'offline_report_shown');
+    }
+
+    /**
+     * AUT-051b MVP rule: a pending preview that is too short (raw absence < OFFLINE_REPORT_MIN_ABSENCE_SECONDS) or has no reward gets no
+     * card; it is collected through the same binding path as COLLECT (normal critical save, no ad offer) so Reboot is never blocked.
+     */
+    private autoCollectSilently(viewModel: OfflineReportViewModel, reason: OfflineReportShowReason): void {
+        if (this.autoCollecting) return;
+        const emitter = this.collectEmitter;
+        if (!emitter) return;
+        this.autoCollecting = true;
+        this.viewModel = viewModel;
+        const finish = (result: LifecycleCollectResult | null): void => {
+            this.autoCollecting = false;
+            const saveOk = result !== null && result.status !== 'no_pending_preview' && result.status !== 'collect_failed' ? result.save.ok : null;
+            this.emitReport('auto_collected', { reason, status: result?.status ?? 'collect_error', rawSeconds: viewModel.rawSeconds, reward: viewModel.reward, saveOk });
+            if (this.visible && resolveOfflineCollectOutcome(result) !== 'keep_retry') this.hide('auto_collected');
+        };
+        void emitter().then(finish, () => finish(null));
     }
 
     public hide(reason: string): void {

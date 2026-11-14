@@ -632,6 +632,11 @@ Show a short **Factory Report**:
 
 Avoid excessive statistics.
 
+MVP decision (owner, AUT-051b): an absence under 60 seconds shows no
+Factory Report; its reward is collected silently so brief app switches
+never interrupt play. At 60 seconds or more the report is shown. The
+threshold is measured on the absence before the offline cap.
+
 After collection, immediately surface what the reward enables or
 advances.
 

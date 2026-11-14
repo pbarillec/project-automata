@@ -63,7 +63,7 @@ export function formatOfflineReportTexts(viewModel: OfflineReportViewModel, name
         timeAway: catalogue.resolveText('offline.time_away', { duration: formatOfflineDuration(viewModel.effectiveSeconds) }),
         capReached: viewModel.capApplied ? catalogue.resolveText('offline.cap_reached', { duration: formatOfflineDuration(viewModel.capSeconds) }) : null,
         reward: catalogue.resolveText('offline.reward', { value: formatCompactNumber(viewModel.reward) }),
-        robots: viewModel.showRobotsRow ? catalogue.resolveText('offline.robots', { count: formatCompactNumber(viewModel.robotsDelta) }) : null,
+        robots: !viewModel.showRobotsRow ? null : viewModel.robotsDelta === 1 ? catalogue.resolveText('offline.robot_single') : catalogue.resolveText('offline.robots', { count: formatCompactNumber(viewModel.robotsDelta) }),
         explain,
         collect: catalogue.resolveText('offline.collect'),
     });

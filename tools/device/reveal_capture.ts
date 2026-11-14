@@ -119,6 +119,8 @@ export const REVEAL_SCENARIOS: Readonly<Record<string, RevealScenario>> = Object
     // AUT-051: Offline Factory Report. aut051: seeded 3 h absence (Assembly manual -> educational line), screenshot with the card, tap COLLECT at the reported rect, screenshot after, force-stop + relaunch WITHOUT reseeding (no card, reward persisted).
     aut051: { id: 'aut051', label: 'aut051-offline-report', seed: (d, pkg, act) => seedAut051(d, pkg, act, 'first'), expectConstruction: null, expectFocus: false, trigger: 'offline-collect', durationMs: 4_000, intervalMs: 500, expectOfflineReport: 'collect' },
     // AUT-051: the report survives a kill: launch with the seed, force-stop BEFORE Collect, relaunch without reseeding: the card shows again with the same (equivalent) reward.
+    // AUT-051b: ~30 s absence: NO card (under the 60 s minimum), the preview is auto-collected silently (offline_report auto_collected).
+    'aut051-short': { id: 'aut051-short', label: 'aut051-offline-short', seed: (d, pkg, act) => seedAut051(d, pkg, act, 'short'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 500, expectOfflineReport: 'short' },
     'aut051-reload': { id: 'aut051-reload', label: 'aut051-offline-reload', seed: (d, pkg, act) => seedAut051(d, pkg, act, 'reload'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 4_000, intervalMs: 500, expectOfflineReport: 'reload' },
     'aut048-era3': { id: 'aut048-era3', label: 'aut048-era3-silent-load', seed: (d, pkg, act) => seedAut048(d, pkg, act, 'era3'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 400, expectEraTitle: 'none' },
 });
@@ -349,7 +351,7 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
             } else {
                 tapDetail = 'OfflineReportCollect rect or display size missing';
             }
-        } else {
+        } else if (options.expectOfflineReport === 'reload') {
             await reloadWait();
         }
     }
