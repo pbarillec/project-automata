@@ -101,3 +101,8 @@ tap and the tester completes the sheet by hand. `expectBilling` is passed throug
   ack-after-grant ordering, save failure => no acknowledge, timeout fail-closed, late delivery; build selection; static native / config scans; billing checks incl. ENVIRONMENT_BLOCKED).
 - NOT verified: anything against the real Play store (purchase sheet, pending, refunds, acknowledge, query, localized price), the event reaching the JS thread while the Play sheet pauses the
   activity, the overlay gate with the real sheet, the gate-build compile of the Java, and the three `aut060-*` captures (they require the owner-supplied items above).
+
+## Orchestrator verification (2026-11-15) — PARTIAL
+
+- `npm run check` 1260 tests green; gate build (`temp/gate/ProjectAutomata-aut060-*-factoryworld.apk`) compiled the native Java in the real Gradle build.
+- Device (serial 1100a155): mock regression `aut059-purchase-success` PASS. Real provider (`seed-aut060`, `aut060-license-tester-purchase`): billing client initialised, 0 error events, product query returned no price -> **ENVIRONMENT_BLOCKED** (Play Console product / testing-track install not available). Real purchase, pending, cancel, ack and restore behaviour, and JS event delivery during the Play sheet, remain **pending human/owner** (see owner-supplied items above).
