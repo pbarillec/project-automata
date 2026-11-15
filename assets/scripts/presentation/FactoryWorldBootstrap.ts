@@ -64,6 +64,7 @@ import { IDENTITY_PRODUCER_IDS, identityZoneOf, aiCoreSummary } from './Automata
 import { drawnIconWorldCorners, getDrawnIcons } from './IdentityGraphics';
 import { milestoneToastTopOffset } from './MilestoneToastLayout.ts';
 import { MILESTONE_ACCENT_RGB, producerZoneName } from './MilestoneFeedback.ts';
+import { boxMaterialKey, boxMeshKey, KeyedCache } from './BoxPrimitiveCache.ts';
 import { ERA_ENV_BOXES, ERA_ENV_GROUP_IDS, ERA_ENV_GROUP_NODE_NAMES, ERA_ENV_ROOT_NODE_NAME } from './EraEnvironmentLayout.ts';
 import { ROBOT_LINE_FOUNDATION_SLAB, ROBOT_LINE_LAMP_IDS, ROBOT_LINE_LAMPS, ROBOT_LINE_OUTPUT_LIP, ROBOT_LINE_REVEAL_TARGET, ROBOT_LINE_SPARK_ANCHOR, robotLineLocal } from './RobotLineLayout.ts';
 import { FirstRobotPresentationController, ROBOT_BAY_LAMP_OFF_NODE_NAME, ROBOT_BAY_LAMP_ON_NODE_NAME } from './FirstRobotPresentationController';
@@ -104,6 +105,10 @@ import { ZONE_LAYOUT } from './FactoryZoneLayout.ts';
 import { CAMERA_PAN_BOUNDS_MARGIN, resolveCameraPanBounds } from './CameraPanBounds.ts';
 
 const { ccclass, property } = _decorator;
+
+/** AUT-068: shared primitive-box meshes (per size) and unlit materials (per colour) for boxes whose colour is never mutated. */
+const boxMeshCache = new KeyedCache<Mesh>();
+const boxMaterialCache = new KeyedCache<Material>();
 
 export const FACTORY_ZONE_IDS = [
     'Fabricator',
@@ -779,10 +784,10 @@ export class FactoryWorldBootstrap extends Component {
     }
 
     private createShell(parent: Node): void {
-        this.createBox(parent, 'SiteBoundary', new Vec3(20, 0.2, 16), new Vec3(0, -0.1, 1), new Color(76, 82, 87, 255));
+        this.createBox(parent, 'SiteBoundary', new Vec3(20, 0.2, 16), new Vec3(0, -0.1, 1), new Color(76, 82, 87, 255), true);
         this.createBox(parent, 'OpeningWorkshopFoundation', new Vec3(6, 0.18, 4.8), new Vec3(-5.2, 0.05, -2.7), new Color(120, 125, 126, 255));
-        this.createBox(parent, 'MainLogisticsSpine', new Vec3(13, 0.12, 0.7), new Vec3(0.2, 0.18, -0.3), new Color(92, 101, 104, 255));
-        this.createBox(parent, 'FutureAccessBarrier', new Vec3(0.18, 1.2, 11), new Vec3(8.8, 0.6, 3), new Color(52, 59, 62, 255));
+        this.createBox(parent, 'MainLogisticsSpine', new Vec3(13, 0.12, 0.7), new Vec3(0.2, 0.18, -0.3), new Color(92, 101, 104, 255), true);
+        this.createBox(parent, 'FutureAccessBarrier', new Vec3(0.18, 1.2, 11), new Vec3(8.8, 0.6, 3), new Color(52, 59, 62, 255), true);
     }
 
     private createZones(parent: Node): void {
@@ -911,7 +916,7 @@ export class FactoryWorldBootstrap extends Component {
             for (const box of ERA_ENV_BOXES) {
                 if (box.group !== group || groupNode.getChildByName(box.id)) continue;
                 const color = box.color ?? { r: 128, g: 128, b: 128 };
-                this.createBox(groupNode, box.id, new Vec3(box.size.x, box.size.y, box.size.z), new Vec3(box.center.x, box.center.y, box.center.z), new Color(color.r, color.g, color.b, 255));
+                this.createBox(groupNode, box.id, new Vec3(box.size.x, box.size.y, box.size.z), new Vec3(box.center.x, box.center.y, box.center.z), new Color(color.r, color.g, color.b, 255), box.role !== undefined || box.id === 'teaser_seam');
             }
         }
     }
@@ -1119,7 +1124,7 @@ export class FactoryWorldBootstrap extends Component {
             construction.registerTarget('assembly_station', visual);
             if (construction.sparkNodes.length === 0) {
                 for (let index = 0; index < 6; index += 1) {
-                    const spark = this.createBox(composition, `ConstructionSpark_${index}`, new Vec3(1, 1, 1), new Vec3(0, 0, 0), index % 2 === 0 ? new Color(82, 206, 224, 255) : new Color(255, 190, 80, 255));
+                    const spark = this.createBox(composition, `ConstructionSpark_${index}`, new Vec3(1, 1, 1), new Vec3(0, 0, 0), index % 2 === 0 ? new Color(82, 206, 224, 255) : new Color(255, 190, 80, 255), true);
                     spark.setScale(0, 0, 0);
                     construction.sparkNodes.push(spark);
                 }
@@ -1849,21 +1854,30 @@ export class FactoryWorldBootstrap extends Component {
         });
     }
 
-    private createBox(parent: Node, name: string, size: Vec3, position: Vec3, color: Color): Node {
+    /**
+     * AUT-068: boxes share ONE mesh per size and ONE (GPU-instanced) unlit material per colour. A box whose colour is changed at runtime
+     * (era palette, teaser seam pulse, construction / milestone sparks) must pass `uniqueMaterial = true` so it keeps its own material.
+     */
+    private createBox(parent: Node, name: string, size: Vec3, position: Vec3, color: Color, uniqueMaterial = false): Node {
         const node = new Node(name);
         node.layer = Layers.Enum.DEFAULT;
         node.parent = parent;
         node.setPosition(position);
         const renderer = node.addComponent(MeshRenderer);
-        const primitive = primitives.box({ width: size.x, height: size.y, length: size.z });
-        const meshFactory = utils as unknown as { MeshUtils?: { createMesh(geometry: unknown): Mesh }; createMesh?: (geometry: unknown) => Mesh };
-        const mesh = meshFactory.MeshUtils?.createMesh(primitive) ?? meshFactory.createMesh?.(primitive);
-        if (!mesh) throw new Error('Cocos mesh creation utility is unavailable for FactoryWorld shell.');
-        renderer.mesh = mesh;
-        const material = new Material();
-        material.initialize({ effectName: 'builtin-unlit', defines: { USE_COLOR: true } });
-        material.setProperty('mainColor', color);
-        renderer.setMaterial(material, 0);
+        renderer.mesh = boxMeshCache.getOrCreate(boxMeshKey(size), () => {
+            const primitive = primitives.box({ width: size.x, height: size.y, length: size.z });
+            const meshFactory = utils as unknown as { MeshUtils?: { createMesh(geometry: unknown): Mesh }; createMesh?: (geometry: unknown) => Mesh };
+            const created = meshFactory.MeshUtils?.createMesh(primitive) ?? meshFactory.createMesh?.(primitive);
+            if (!created) throw new Error('Cocos mesh creation utility is unavailable for FactoryWorld shell.');
+            return created;
+        });
+        const createMaterial = (): Material => {
+            const material = new Material();
+            material.initialize({ effectName: 'builtin-unlit', defines: { USE_COLOR: true, USE_INSTANCING: !uniqueMaterial } });
+            material.setProperty('mainColor', color);
+            return material;
+        };
+        renderer.setMaterial(uniqueMaterial ? createMaterial() : boxMaterialCache.getOrCreate(boxMaterialKey(color), createMaterial), 0);
         return node;
     }
 }
