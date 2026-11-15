@@ -76,7 +76,7 @@ import { PRODUCTS } from '../services/PlatformServiceTypes.ts';
 import type { PurchaseService } from '../services/PurchaseService';
 import { getFounderSurgeChargesRemaining, hasFounderSurgeGrantBeenRecorded, isFounderPackOwned, isFounderRobotCosmeticOwned } from '../monetization/FounderOffer.ts';
 import { OverlayBackgroundGate } from './OverlayBackgroundGate.ts';
-import { createAndroidAdsTransport } from '../platform/android/AndroidNativeBridge';
+import { createAndroidAdsTransport, createAndroidBillingTransport } from '../platform/android/AndroidNativeBridge';
 import { PlatformOverlayTracker } from '../services/PlatformOverlay';
 import { OfflineDoubleFlow } from './OfflineDoubleFlow.ts';
 import { ExtendedOverclockController } from './ExtendedOverclockController';
@@ -281,7 +281,12 @@ export class FactoryWorldBootstrap extends Component {
         this.platformOverlay.subscribe((event) => emitDeviceEvent('ads_state', { phase: 'overlay', state: event.phase, kind: event.kind, requestId: event.requestId }));
         // AUT-059: the purchase provider is chosen at build time: release / no script = the no-op (no Founder entry); DEBUG + debug_purchase.json = the scriptable mock.
         this.debugPurchaseScript = this.readDebugPurchaseScript();
-        const purchaseSelection = createBuildPurchaseService(DEBUG === true, this.debugPurchaseScript);
+        // AUT-060: release = the Google Play Billing provider (NoOp without the native bridge); DEBUG = the mock script, or the real provider only for `provider: "play_billing"`.
+        const purchaseSelection = createBuildPurchaseService(DEBUG === true, this.debugPurchaseScript, {
+            androidTransport: createAndroidBillingTransport(),
+            overlay: this.platformOverlay,
+            onDiagnostic: (phase, payload) => emitDeviceEvent('founder_shop', { phase: `billing_${phase}`, ...payload }),
+        });
         this.purchases = purchaseSelection.service;
         this.purchaseSource = purchaseSelection.source;
         bootstrapGameSession({ storage, timeService: new DefaultTimeService() }).then((result) => {
@@ -426,6 +431,13 @@ export class FactoryWorldBootstrap extends Component {
                 },
                 entitlementSource: this.purchaseSource,
                 now: () => Date.now(),
+                // AUT-060: the store acknowledge runs ONLY after the flow saw applied_saved / already_applied (grant durable); a failed acknowledge throws so it is logged and retried by the next redelivery.
+                acknowledge: typeof purchases.acknowledgePurchase === 'function'
+                    ? async (result) => {
+                        const acknowledged = await purchases.acknowledgePurchase?.(result);
+                        if (acknowledged?.ok !== true) throw new Error(acknowledged?.reason ?? 'acknowledge_failed');
+                    }
+                    : undefined,
                 onChange: () => shop.onFlowChanged(),
                 onDiagnostic: (phase, payload) => {
                     emitDeviceEvent('founder_shop', { phase, ...payload });
@@ -439,6 +451,8 @@ export class FactoryWorldBootstrap extends Component {
                 },
             });
             shop.flow = flow;
+            // AUT-060: purchases arriving outside a purchase() call (pending that completes, late result, store redelivery) take the same grant-then-acknowledge path.
+            purchases.onPurchaseDelivery?.((result) => { void flow.deliver(result); });
             shop.requestRefresh();
             this.startPurchaseProvider(purchases);
         }
@@ -500,6 +514,10 @@ export class FactoryWorldBootstrap extends Component {
         void purchases.initialize().then((state) => {
             emitDeviceEvent('founder_shop', { phase: 'store_initialized', status: state.status, reason: state.reason ?? null });
             this.sessionWiring?.founderShop.requestRefresh();
+            // AUT-060: a real store provider redelivers unacknowledged / pending purchases once per start (crash between payment and grant). AUT-061 owns the restore flow proper.
+            if (state.status === 'ready' && typeof purchases.onPurchaseDelivery === 'function') {
+                void purchases.restorePurchases().then((query) => emitDeviceEvent('founder_shop', { phase: 'store_query', ok: query.ok, status: query.status, reason: query.reason ?? null })).catch(() => undefined);
+            }
         }).catch(() => undefined);
     }
 

@@ -10,10 +10,15 @@
  * price. `metadata: "missing"` makes the mock product query report the product as missing (neutral state, BUY disabled); omitting `price`
  * with the product present gives metadata without a usable price. `outcomes` are the scripted results of the next purchases (at most 4,
  * allow-listed); `duplicateCallback` redelivers each completed purchase once more. Anything else yields null (ignored, never executed).
+ *
+ * AUT-060: optional `"provider": "play_billing"` selects the REAL Google Play Billing provider (license-tester device runs) for that launch only.
+ * Without the key a DEBUG build keeps the mock (script present) or the no-op (no script). A mock field (price / outcomes / metadata) next to it
+ * wins: the mock takes precedence. Any other provider value yields null.
  */
 export const DEBUG_PURCHASE_FILE = 'debug_purchase.json';
 export const DEBUG_PURCHASE_MAX_STEPS = 4;
 export const DEBUG_PURCHASE_MAX_PRICE_LENGTH = 32;
+export const DEBUG_PURCHASE_PROVIDER_PLAY_BILLING = 'play_billing';
 export const DEBUG_PURCHASE_OUTCOMES = ['completed', 'pending', 'cancelled', 'failed', 'unavailable', 'timeout', 'already_owned'] as const;
 export type DebugPurchaseOutcome = typeof DEBUG_PURCHASE_OUTCOMES[number];
 
@@ -23,6 +28,8 @@ export interface DebugPurchaseScript {
     readonly metadataMissing: boolean;
     readonly outcomes: readonly DebugPurchaseOutcome[];
     readonly duplicateCallback: boolean;
+    /** Present only for `play_billing` (real provider); absent = the mock. */
+    readonly provider?: typeof DEBUG_PURCHASE_PROVIDER_PLAY_BILLING;
 }
 
 export function parseDebugPurchaseScriptFile(text: string | undefined): DebugPurchaseScript | null {
@@ -30,7 +37,8 @@ export function parseDebugPurchaseScriptFile(text: string | undefined): DebugPur
     let raw: unknown;
     try { raw = JSON.parse(text); } catch { return null; }
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
-    const { price, outcomes, duplicateCallback, metadata } = raw as { price?: unknown; outcomes?: unknown; duplicateCallback?: unknown; metadata?: unknown };
+    const { price, outcomes, duplicateCallback, metadata, provider } = raw as { price?: unknown; outcomes?: unknown; duplicateCallback?: unknown; metadata?: unknown; provider?: unknown };
+    if (provider !== undefined && provider !== DEBUG_PURCHASE_PROVIDER_PLAY_BILLING) return null;
     if (price !== undefined && (typeof price !== 'string' || price.trim().length === 0 || price.length > DEBUG_PURCHASE_MAX_PRICE_LENGTH)) return null;
     if (metadata !== undefined && metadata !== 'missing') return null;
     if (duplicateCallback !== undefined && typeof duplicateCallback !== 'boolean') return null;
@@ -47,5 +55,6 @@ export function parseDebugPurchaseScriptFile(text: string | undefined): DebugPur
         metadataMissing: metadata === 'missing',
         outcomes: Object.freeze(parsed),
         duplicateCallback: duplicateCallback === true,
+        ...(provider === DEBUG_PURCHASE_PROVIDER_PLAY_BILLING ? { provider: DEBUG_PURCHASE_PROVIDER_PLAY_BILLING } : {}),
     });
 }

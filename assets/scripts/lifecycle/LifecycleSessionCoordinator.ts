@@ -293,6 +293,8 @@ export class LifecycleSessionCoordinator {
     private readonly rewardClaimLedger: { tryConsume(requestId: string): boolean };
     private runtime: GameRuntime;
     private pendingOfflinePreview: OfflinePreviewResult | null;
+    /** AUT-060: true while a Founder grant exists in memory whose critical save failed (a replay retries the save before reporting success). */
+    private founderEntitlementUnsaved = false;
     private openAbsenceBoundaryUtcIso: UtcTimestampIsoString | null = null;
     private lastClosedAbsenceUtcIso: UtcTimestampIsoString | null = null;
     /**
@@ -736,11 +738,22 @@ export class LifecycleSessionCoordinator {
 
         const changed = execution.events.some((event) => event.type === 'founderPackApplied' && event.changed);
         if (!changed) {
+            if (this.founderEntitlementUnsaved) {
+                // AUT-060: an earlier delivery applied in memory but its save failed. A replay must not report durable ownership (and so must not
+                // let the store acknowledge the purchase) until a critical save succeeds.
+                this.persistence.markDirty();
+                const retry = await this.requestSave({ intent: 'critical', reason: 'founder_entitlement' });
+                this.founderEntitlementUnsaved = !retry.ok;
+                return retry.ok
+                    ? Object.freeze({ status: 'applied_saved' as const, execution, save: retry })
+                    : Object.freeze({ status: 'applied_persistence_failed' as const, execution, save: retry });
+            }
             return Object.freeze({ status: 'already_applied' as const, execution, save: null });
         }
 
         this.persistence.markDirty();
         const save = await this.requestSave({ intent: 'critical', reason: 'founder_entitlement' });
+        this.founderEntitlementUnsaved = !save.ok;
         return save.ok
             ? Object.freeze({ status: 'applied_saved' as const, execution, save })
             : Object.freeze({ status: 'applied_persistence_failed' as const, execution, save });

@@ -653,7 +653,7 @@ test('AUT-059 wiring: controller is thin (no commands, no state, no strings), th
     assert.ok(rebootAt > 0 && founderAt > rebootAt && offlineAt > founderAt, 'created after the other modals and BEFORE the offline report root (which stays topmost)');
     assert.match(bootstrap, /founderShop\.setSuppressed\(wiring\.offlineReport\.isVisible\(\) \|\| rebootCard\)/);
     assert.match(bootstrap, /founderShop\.setModalBlocked\(wiring\.settings\.isOpen\(\) \|\| wiring\.permanentUpgrades\.isOpen\(\) \|\| wiring\.reboot\.isOpen\(\)\)/);
-    assert.match(bootstrap, /createBuildPurchaseService\(DEBUG === true, this\.debugPurchaseScript\)/);
+    assert.match(bootstrap, /createBuildPurchaseService\(DEBUG === true, this\.debugPurchaseScript, \{/);
     assert.match(bootstrap, /rects\.FounderChip/);
     assert.match(bootstrap, /rects\.FounderBuy/);
     assert.match(bootstrap, /DEBUG_PURCHASE_FILE/);
@@ -664,7 +664,9 @@ test('AUT-059 wiring: controller is thin (no commands, no state, no strings), th
     // the NoOp store is the only non-DEBUG provider: the mock is referenced only by the build selector
     assert.doesNotMatch(bootstrap, /MockPurchaseService/);
     const build = code('assets/scripts/presentation/BuildPlatformServices.ts');
-    assert.match(build, /if \(debug !== true \|\| script === undefined\) return \{ service: new NoOpPurchaseService\(\), source: 'store' \}/);
+    // AUT-060: release = the real provider or the no-op (never the mock); DEBUG without a script = the no-op.
+    assert.match(build, /if \(debug !== true\) return android\(\) \?\? \{ service: new NoOpPurchaseService\(\), source: 'store' \};/);
+    assert.match(build, /if \(script === undefined\) return \{ service: new NoOpPurchaseService\(\), source: 'store' \};/);
     assert.match(read('assets/scripts/presentation/DeviceDiagnostics.ts'), /'founder_shop',/);
 });
 

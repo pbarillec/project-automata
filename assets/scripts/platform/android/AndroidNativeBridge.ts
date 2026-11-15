@@ -1,5 +1,6 @@
 import { native, sys } from 'cc';
 import type { AndroidAdsTransport } from './AndroidAdsService';
+import type { AndroidBillingTransport } from './AndroidPurchaseService';
 
 const AUTOMATA_PLATFORM_BRIDGE_CLASS = 'com/cocos/game/AutomataPlatformBridge';
 
@@ -69,4 +70,12 @@ export function createAndroidAdsTransport(): AndroidAdsTransport | null {
             };
         },
     };
+}
+
+/**
+ * AUT-060: the real transport for the pure AndroidPurchaseService (Google Play Billing). Same native bridge and event wrapper as the ads
+ * transport; null outside an Android native build, so the caller falls back to the no-op purchase service (the Founder entry stays hidden).
+ */
+export function createAndroidBillingTransport(): AndroidBillingTransport | null {
+    return createAndroidAdsTransport();
 }

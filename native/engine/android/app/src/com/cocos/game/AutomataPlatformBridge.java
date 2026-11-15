@@ -41,38 +41,31 @@ public final class AutomataPlatformBridge {
         return AutomataAdsController.show(requestJson);
     }
 
+    // AUT-060: Google Play Billing is served by AutomataBillingController. Every method returns immediately; the slow results
+    // (connection state, product metadata, purchase result, acknowledge, store query) arrive as "automata.billing.*" script events.
     public static String initializePurchases() {
-        return unavailableOperation();
+        return AutomataBillingController.initialize();
     }
 
     public static String getPurchaseStatus() {
-        return unavailableService();
+        return AutomataBillingController.getStatus();
     }
 
     public static String queryProductDetails(String productIdsCsv) {
-        return "{"
-            + "\"ok\":false,"
-            + "\"status\":\"unavailable\","
-            + "\"products\":[],"
-            + "\"missingProductIds\":" + csvToJsonArray(productIdsCsv) + ","
-            + "\"reason\":\"" + COMPILE_ONLY_REASON + "\""
-            + "}";
+        return AutomataBillingController.queryProductDetails(productIdsCsv);
     }
 
     public static String purchaseProduct(String requestJson) {
-        String productId = extractJsonString(requestJson, "productId");
-        String requestId = extractJsonString(requestJson, "requestId");
+        return AutomataBillingController.purchase(requestJson);
+    }
 
-        return "{"
-            + "\"status\":\"unavailable\","
-            + "\"productId\":\"" + escape(productId) + "\","
-            + "\"requestId\":\"" + escape(requestId) + "\","
-            + "\"reason\":\"" + COMPILE_ONLY_REASON + "\""
-            + "}";
+    // Called by the script ONLY after the entitlement is durably applied.
+    public static String acknowledgePurchase(String requestJson) {
+        return AutomataBillingController.acknowledge(requestJson);
     }
 
     public static String restorePurchases() {
-        return unavailableOperation();
+        return AutomataBillingController.restore();
     }
 
     public static String initializeEntitlements() {
@@ -106,32 +99,6 @@ public final class AutomataPlatformBridge {
 
     private static String unavailableOperation() {
         return unavailableService();
-    }
-
-    private static String csvToJsonArray(String csv) {
-        if (csv == null || csv.trim().isEmpty()) {
-            return "[]";
-        }
-
-        StringBuilder builder = new StringBuilder("[");
-        String[] parts = csv.split(",");
-        boolean wroteItem = false;
-
-        for (String part : parts) {
-            String value = part.trim();
-            if (value.isEmpty()) {
-                continue;
-            }
-
-            if (wroteItem) {
-                builder.append(',');
-            }
-            builder.append('"').append(escape(value)).append('"');
-            wroteItem = true;
-        }
-
-        builder.append(']');
-        return builder.toString();
     }
 
     static String extractJsonStringValue(String json, String key) {

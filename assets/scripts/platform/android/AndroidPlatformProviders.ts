@@ -5,20 +5,14 @@ import type {
 import type {
     PlatformOperationResult,
     PlatformServiceState,
-    ProductId,
     EntitlementId,
 } from '../../services/PlatformServiceTypes';
-import type {
-    ProductDetails,
-    ProductDetailsResult,
-    PurchaseRequest,
-    PurchaseResult,
-    PurchaseService,
-} from '../../services/PurchaseService';
 import { callAutomataStaticString } from './AndroidNativeBridge';
 
 // AUT-057: the ads provider is pure (injected transport) and lives in AndroidAdsService.ts; re-exported here for existing importers.
 export { AndroidAdsService } from './AndroidAdsService';
+// AUT-060: the Google Play Billing provider is pure (injected transport) and lives in AndroidPurchaseService.ts.
+export { AndroidPurchaseService } from './AndroidPurchaseService';
 
 type NativeObject = Record<string, unknown>;
 
@@ -41,31 +35,6 @@ function booleanField(source: NativeObject, key: string, fallback = false): bool
     return typeof value === 'boolean' ? value : fallback;
 }
 
-function productArrayField(source: NativeObject): ProductDetails[] {
-    const products = source.products;
-    if (!Array.isArray(products)) {
-        return [];
-    }
-
-    return products
-        .filter((product): product is NativeObject => product !== null && typeof product === 'object')
-        .map((product) => ({
-            productId: stringField(product, 'productId'),
-            type: stringField(product, 'type', 'durable') === 'consumable' ? 'consumable' : 'durable',
-            available: booleanField(product, 'available'),
-            title: stringField(product, 'title') || undefined,
-            description: stringField(product, 'description') || undefined,
-            localizedPrice: stringField(product, 'localizedPrice') || undefined,
-            reason: stringField(product, 'reason') || undefined,
-        }))
-        .filter((product) => product.productId.length > 0);
-}
-
-function stringArrayField(source: NativeObject, key: string): string[] {
-    const value = source[key];
-    return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
-}
-
 function serviceState(kind: PlatformServiceState['kind'], source: NativeObject): PlatformServiceState {
     return {
         kind,
@@ -82,52 +51,6 @@ function operationResult(source: NativeObject): PlatformOperationResult {
         reason: stringField(source, 'reason') || undefined,
         message: stringField(source, 'message') || undefined,
     };
-}
-
-export class AndroidPurchaseService implements PurchaseService {
-    public async initialize(): Promise<PlatformServiceState> {
-        return serviceState('purchase', parseNativeObject(callAutomataStaticString('initializePurchases')));
-    }
-
-    public getStatus(): PlatformServiceState {
-        return serviceState('purchase', parseNativeObject(callAutomataStaticString('getPurchaseStatus')));
-    }
-
-    public async queryProductDetails(productIds: ProductId[]): Promise<ProductDetailsResult> {
-        const source = parseNativeObject(callAutomataStaticString(
-            'queryProductDetails',
-            '(Ljava/lang/String;)Ljava/lang/String;',
-            productIds.join(','),
-        ));
-
-        return {
-            ok: booleanField(source, 'ok'),
-            products: productArrayField(source),
-            missingProductIds: stringArrayField(source, 'missingProductIds'),
-            reason: stringField(source, 'reason') || undefined,
-        };
-    }
-
-    public async purchase(request: PurchaseRequest): Promise<PurchaseResult> {
-        const source = parseNativeObject(callAutomataStaticString(
-            'purchaseProduct',
-            '(Ljava/lang/String;)Ljava/lang/String;',
-            JSON.stringify(request),
-        ));
-
-        return {
-            status: stringField(source, 'status', 'failed') as PurchaseResult['status'],
-            productId: stringField(source, 'productId', request.productId),
-            requestId: stringField(source, 'requestId', request.requestId),
-            transactionId: stringField(source, 'transactionId') || undefined,
-            reason: stringField(source, 'reason') || undefined,
-            message: stringField(source, 'message') || undefined,
-        };
-    }
-
-    public async restorePurchases(): Promise<PlatformOperationResult> {
-        return operationResult(parseNativeObject(callAutomataStaticString('restorePurchases')));
-    }
 }
 
 export class AndroidEntitlementService implements EntitlementService {
