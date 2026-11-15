@@ -28,6 +28,8 @@ import { seedAut052 } from './seed_aut052.ts';
 import { seedAut055 } from './seed_aut055.ts';
 import { seedAut056 } from './seed_aut056.ts';
 import { seedAut057 } from './seed_aut057.ts';
+import { seedAut059 } from './seed_aut059.ts';
+import { FOUNDER_SHOP_RELAUNCH_MARKER_EVT, evaluateFounderShop, type FounderShopExpectation } from './founder_shop_checks.ts';
 import { ADMOB_AVAILABILITY_WAIT_MS, ADMOB_RESULT_WAIT_AFTER_BACK_MS, ADMOB_RESULT_WAIT_BEFORE_BACK_MS, evaluateAdmob, type AdmobExpectation } from './admob_checks.ts';
 import { EXTENDED_OVERCLOCK_RELAUNCH_MARKER_EVT, evaluateExtendedOverclock, type ExtendedOverclockExpectation } from './extended_overclock_checks.ts';
 import { OFFLINE_DOUBLE_RELAUNCH_MARKER_EVT, evaluateOfflineDouble, type OfflineDoubleExpectation } from './offline_double_checks.ts';
@@ -66,6 +68,8 @@ export interface RevealCaptureOptions {
     readonly expectExtendedOverclock?: ExtendedOverclockExpectation;
     /** AUT-057 (REAL AdMob test ads, best-effort): 'offline_double' / 'extended' = REAL tap on the x2 action / chip, wait ~30 s for the ad result, BACK, wait ~15 s more; 'no_fill' = network OFF (seed), no x2 / chip, free COLLECT works; the network is restored at the end. */
     readonly expectAdmob?: AdmobExpectation;
+    /** AUT-059: Founder's Pack shop (MOCK store via debug_purchase.json): 'available' = chip + modal, no purchase; 'purchase_success' = REAL taps chip -> BUY (completed + duplicate callback), owned with 2 Surges once, persisted across a relaunch; 'pending' / 'cancel' / 'fail' = nothing granted; 'owned' = seeded owned (no BUY); 'hidden' = no chip (locked or no store). */
+    readonly expectFounderShop?: FounderShopExpectation;
     /** AUT-050: 'purchase' = tap the AI chip, open the panel, buy an affordable row with a real tap, switch tab, force-stop + relaunch WITHOUT reseeding (balance / rank persisted). */
     readonly expectPermanentUpgrades?: PermanentUpgradeExpectation;
     /** AUT-052: 'toggle_persist' = tap the Settings chip, open the panel, toggle Music OFF with a real tap, close, force-stop + relaunch WITHOUT reseeding (the file survives), toggle it back ON, close. */
@@ -99,7 +103,7 @@ export interface RevealCaptureResult {
 
 export const DEFAULT_REVEAL_EVENT_TYPES: readonly string[] = Object.freeze([
     'scene_ready', 'session_state', 'ui_layout', 'command_result', 'construction_state', 'camera_focus', 'reveal_state',
-    'milestone_presentation', 'era_transition', 'reboot_presentation', 'offline_report', 'offline_double', 'extended_overclock', 'ads_state', 'permanent_upgrades', 'reboot_ui', 'settings', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'error',
+    'milestone_presentation', 'era_transition', 'reboot_presentation', 'offline_report', 'offline_double', 'extended_overclock', 'founder_shop', 'ads_state', 'permanent_upgrades', 'reboot_ui', 'settings', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'error',
 ]);
 
 /** A named live-reveal scenario: the seed (unbuilt variant), the producer whose construction must be observed and whether a camera focus is expected. */
@@ -174,6 +178,16 @@ export const REVEAL_SCENARIOS: Readonly<Record<string, RevealScenario>> = Object
     // AUT-057 (REAL AdMob test ads via debug_ads.json provider admob_test; best-effort outcome, see admob_checks.ts). Network access required; no-fill switches Wi-Fi + data OFF (USB adb) and restores them.
     'aut057-offline-double': { id: 'aut057-offline-double', label: 'aut057-admob-offline-double', seed: (d, pkg, act) => seedAut057(d, pkg, act, 'offline_double'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectAdmob: 'offline_double' },
     'aut057-extended': { id: 'aut057-extended', label: 'aut057-admob-extended', seed: (d, pkg, act) => seedAut057(d, pkg, act, 'extended'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectAdmob: 'extended' },
+    // AUT-059: Founder's Pack shop (MOCK store, price = test metadata). The seed writes the DEBUG-only debug_purchase.json (read once) with the product metadata + scripted outcomes. trigger 'none': REAL taps at the rects `ui_layout` reports.
+    'aut059-available': { id: 'aut059-available', label: 'aut059-founder-available', seed: (d, pkg, act) => seedAut059(d, pkg, act, 'available'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectFounderShop: 'available' },
+    'aut059-purchase-success': { id: 'aut059-purchase-success', label: 'aut059-founder-purchase-success', seed: (d, pkg, act) => seedAut059(d, pkg, act, 'available', { outcomes: ['completed'], duplicateCallback: true }), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectFounderShop: 'purchase_success' },
+    'aut059-pending': { id: 'aut059-pending', label: 'aut059-founder-pending', seed: (d, pkg, act) => seedAut059(d, pkg, act, 'available', { outcomes: ['pending'] }), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectFounderShop: 'pending' },
+    'aut059-cancel': { id: 'aut059-cancel', label: 'aut059-founder-cancel', seed: (d, pkg, act) => seedAut059(d, pkg, act, 'available', { outcomes: ['cancelled'] }), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectFounderShop: 'cancel' },
+    'aut059-fail': { id: 'aut059-fail', label: 'aut059-founder-fail', seed: (d, pkg, act) => seedAut059(d, pkg, act, 'available', { outcomes: ['failed'] }), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectFounderShop: 'fail' },
+    'aut059-owned': { id: 'aut059-owned', label: 'aut059-founder-owned', seed: (d, pkg, act) => seedAut059(d, pkg, act, 'owned'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectFounderShop: 'owned' },
+    // Hidden entry: no store (NoOp purchase, like a release build) and locked (no Worker Bot yet): no chip at all.
+    'aut059-hidden': { id: 'aut059-hidden', label: 'aut059-founder-hidden-no-store', seed: (d, pkg, act) => seedAut059(d, pkg, act, 'no_store'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectFounderShop: 'hidden' },
+    'aut059-locked': { id: 'aut059-locked', label: 'aut059-founder-hidden-locked', seed: (d, pkg, act) => seedAut059(d, pkg, act, 'locked'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectFounderShop: 'hidden' },
     'aut057-no-fill': { id: 'aut057-no-fill', label: 'aut057-admob-no-fill', seed: (d, pkg, act) => seedAut057(d, pkg, act, 'offline_double', { networkOff: true }), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectAdmob: 'no_fill' },
     'aut048-era3': { id: 'aut048-era3', label: 'aut048-era3-silent-load', seed: (d, pkg, act) => seedAut048(d, pkg, act, 'era3'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 400, expectEraTitle: 'none' },
 });
@@ -184,7 +198,7 @@ export function resolveRevealScenario(id: unknown): RevealScenario | null {
 }
 
 /** Objective checks over a timeline (pure, unit-tested). `tMs` is relative to the trigger (negative = before). */
-export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectOfflineDouble?: OfflineDoubleExpectation; expectExtendedOverclock?: ExtendedOverclockExpectation; expectAdmob?: AdmobExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation; expectSettings?: SettingsExpectation; expectRebootUi?: RebootUiExpectation }): RevealCheck[] {
+export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectOfflineDouble?: OfflineDoubleExpectation; expectExtendedOverclock?: ExtendedOverclockExpectation; expectAdmob?: AdmobExpectation; expectFounderShop?: FounderShopExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation; expectSettings?: SettingsExpectation; expectRebootUi?: RebootUiExpectation }): RevealCheck[] {
     const checks: RevealCheck[] = [];
     const errors = events.filter((e) => e.event.evt === 'error');
     checks.push({ id: 'no_error_events', ok: errors.length === 0, detail: `${errors.length} error events` });
@@ -219,6 +233,7 @@ export function evaluateRevealTimeline(events: readonly TimelineEvent[], options
     if (options.expectOfflineDouble !== undefined) checks.push(...evaluateOfflineDouble(events, options.expectOfflineDouble));
     if (options.expectExtendedOverclock !== undefined) checks.push(...evaluateExtendedOverclock(events, options.expectExtendedOverclock));
     if (options.expectAdmob !== undefined) checks.push(...evaluateAdmob(events, options.expectAdmob));
+    if (options.expectFounderShop !== undefined) checks.push(...evaluateFounderShop(events, options.expectFounderShop));
     if (options.expectPermanentUpgrades !== undefined) checks.push(...evaluatePermanentUpgrades(events, options.expectPermanentUpgrades));
     if (options.expectSettings !== undefined) checks.push(...evaluateSettings(events, options.expectSettings));
     if (options.expectRebootUi !== undefined) checks.push(...evaluateRebootUi(events, options.expectRebootUi));
@@ -731,6 +746,100 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
         }
         tapDetail = details.join('; ');
     }
+    // AUT-059: the Founder shop drive: REAL taps at the rects `ui_layout` reports (chip, BUY / CLOSE). 'hidden' taps nothing. After a successful purchase: force-stop + relaunch WITHOUT reseeding (no purchase script = the NoOp store) and open the chip again.
+    if (layout && options.expectFounderShop) {
+        const expectation = options.expectFounderShop;
+        const display = pngSize(await driver.screencap());
+        const screenSize = { w: layout.screen.w, h: layout.screen.h };
+        const rectNow = async (name: string, waitMs = 8_000): Promise<{ x: number; y: number; w: number; h: number } | null> => {
+            const pick = () => toRect((stream.allEvents().filter((e) => e.evt === 'ui_layout' && toRect((e.rects as Record<string, unknown> | undefined)?.[name]) !== null).pop()?.rects as Record<string, unknown> | undefined)?.[name]);
+            const until = Date.now() + waitMs;
+            while (pick() === null && Date.now() < until) await sleep(200);
+            return pick();
+        };
+        const tapRect = async (name: string, waitMs?: number): Promise<string | null> => {
+            const rect = await rectNow(name, waitMs);
+            if (!display || !rect) return null;
+            const point = cocosToAdb(rectCentre(rect), screenSize, display);
+            await driver.tap(Math.round(point.x), Math.round(point.y));
+            return `${name} at ${Math.round(point.x)},${Math.round(point.y)}`;
+        };
+        const founderEvent = (cursorFrom: number, phase: string, timeoutMs = 10_000) => stream.waitFor((e) => e.evt === 'founder_shop' && e.phase === phase, cursorFrom, timeoutMs);
+        const details: string[] = [];
+        if (expectation === 'hidden') {
+            await sleep(4_000);
+            await frame('post');
+            triggered = true;
+            details.push('no tap (the Founder chip must not be offered)');
+        } else {
+            await rectNow('FounderChip', 10_000);
+            await sleep(500);
+            await frame('pre');
+            const openCursor = stream.cursor;
+            const chipTap = await tapRect('FounderChip', 2_000);
+            if (chipTap) {
+                details.push(`tapped ${chipTap}`);
+                await founderEvent(openCursor, 'opened');
+                await sleep(800);
+                await frame('post');
+                if (expectation === 'available' || expectation === 'owned') {
+                    const closeCursor = stream.cursor;
+                    const closeTap = await tapRect('FounderClose');
+                    if (closeTap) {
+                        triggered = true;
+                        details.push(`closed via ${closeTap}`);
+                        await founderEvent(closeCursor, 'closed');
+                        await sleep(600);
+                        await frame('post');
+                    }
+                } else {
+                    const buyCursor = stream.cursor;
+                    t0 = Date.now();
+                    const buyTap = await tapRect('FounderBuy');
+                    if (buyTap) {
+                        triggered = true;
+                        details.push(`tapped ${buyTap}`);
+                        await founderEvent(buyCursor, 'buy_result');
+                        await sleep(900);
+                        await frame('post');
+                        await sleep(1_500);
+                        await frame('post');
+                    }
+                    const closeCursor = stream.cursor;
+                    const closeTap = await tapRect('FounderClose', 3_000);
+                    if (closeTap) {
+                        details.push(`closed via ${closeTap}`);
+                        await founderEvent(closeCursor, 'closed');
+                        await sleep(600);
+                        await frame('post');
+                    }
+                    if (expectation === 'purchase_success') {
+                        collect(Date.now());
+                        events.push({ tMs: Date.now() - t0, event: { v: 1, seq: 0, evt: FOUNDER_SHOP_RELAUNCH_MARKER_EVT, phase: 'relaunch' } });
+                        await driver.forceStop(packageName);
+                        const relaunchCursor = stream.cursor;
+                        await driver.launch(packageName, activity);
+                        await stream.waitFor((e) => e.evt === 'ui_layout', relaunchCursor, options.layoutTimeoutMs ?? 60_000);
+                        await sleep(options.preMs ?? 2_000);
+                        await frame('post');
+                        const reopenCursor = stream.cursor;
+                        const reopenTap = await tapRect('FounderChip', 8_000);
+                        if (reopenTap) {
+                            details.push(`after relaunch tapped ${reopenTap}`);
+                            await founderEvent(reopenCursor, 'opened');
+                            await sleep(800);
+                            await frame('post');
+                            await tapRect('FounderClose', 3_000);
+                            await sleep(500);
+                        }
+                    }
+                }
+            } else {
+                details.push('FounderChip rect or display size missing');
+            }
+        }
+        tapDetail = details.join('; ');
+    }
     // AUT-RBT-001: the Reboot UI drive: REAL taps at the rects `ui_layout` reports (chip, CANCEL, chip, REBOOT), frames through the AUT-049 sequence, then force-stop + relaunch without reseeding.
     if (layout && options.expectRebootUi) {
         const display = pngSize(await driver.screencap());
@@ -812,9 +921,9 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
     collect(Date.now());
     await driver.stopLogcat();
 
-    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport, expectOfflineDouble: options.expectOfflineDouble, expectExtendedOverclock: options.expectExtendedOverclock, expectAdmob: options.expectAdmob, expectPermanentUpgrades: options.expectPermanentUpgrades, expectSettings: options.expectSettings, expectRebootUi: options.expectRebootUi });
+    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport, expectOfflineDouble: options.expectOfflineDouble, expectExtendedOverclock: options.expectExtendedOverclock, expectAdmob: options.expectAdmob, expectFounderShop: options.expectFounderShop, expectPermanentUpgrades: options.expectPermanentUpgrades, expectSettings: options.expectSettings, expectRebootUi: options.expectRebootUi });
     checks.unshift({ id: 'ui_layout_ready', ok: layout !== null, detail: layout ? 'ui_layout received' : 'no ui_layout (app did not reach the HUD)' });
-    if (options.expectPermanentUpgrades || options.expectSettings || options.expectRebootUi || options.expectOfflineDouble || options.expectExtendedOverclock || options.expectAdmob) checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
+    if (options.expectPermanentUpgrades || options.expectSettings || options.expectRebootUi || options.expectOfflineDouble || options.expectExtendedOverclock || options.expectAdmob || options.expectFounderShop) checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
     if (trigger !== 'none') checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
     writeFileSync(path.join(outDir, 'timeline.json'), `${JSON.stringify({ label: options.label, frames, events, checks }, null, 2)}\n`);
     writeFileSync(path.join(outDir, 'summary.md'), renderRevealSummary(options.label, frames, events, checks));

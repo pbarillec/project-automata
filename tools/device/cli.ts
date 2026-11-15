@@ -38,6 +38,8 @@ import { AUT051_SEED_VARIANTS, isAut051SeedVariant, seedAut051 } from './seed_au
 import { AUT055_SEED_VARIANTS, isAut055Outcome, isAut055SeedVariant, seedAut055 } from './seed_aut055.ts';
 import { AUT056_SEED_VARIANTS, isAut056Outcome, isAut056SeedVariant, seedAut056 } from './seed_aut056.ts';
 import { AUT057_SEED_VARIANTS, isAut057SeedVariant, seedAut057 } from './seed_aut057.ts';
+import { AUT059_SEED_VARIANTS, isAut059Outcome, isAut059SeedVariant, seedAut059 } from './seed_aut059.ts';
+import { DEBUG_PURCHASE_OUTCOMES } from '../../assets/scripts/presentation/DebugPurchaseScriptFile.ts';
 import { DEBUG_ADS_OUTCOMES } from '../../assets/scripts/presentation/DebugAdsScriptFile.ts';
 import { seedAut052 } from './seed_aut052.ts';
 import { seedRbt001 } from './seed_rbt001.ts';
@@ -290,6 +292,23 @@ async function main(): Promise<number> {
         console.log(`seeded ${filesDir}save_main.json (${variant}) + debug_ads.json (provider admob_test) and launched`);
         return 0;
     }
+    if (command === 'seed-aut059') {
+        // AUT-059 review: seed a save + the DEBUG mock-store script (debug_purchase.json: product metadata with a TEST price string + scripted outcomes) so the Founder chip shows (available / owned), or is hidden (locked; no_store = no script = NoOp store like a release build).
+        const variant = flags.variant === undefined || flags.variant === true ? 'available' : flags.variant;
+        if (!isAut059SeedVariant(variant)) { console.log(`unknown --variant; expected one of ${AUT059_SEED_VARIANTS.join(', ')}`); return 1; }
+        const outcomes: Array<(typeof DEBUG_PURCHASE_OUTCOMES)[number]> = [];
+        if (flags.outcome !== undefined && flags.outcome !== true) {
+            if (!isAut059Outcome(flags.outcome)) { console.log(`unknown --outcome; expected one of ${DEBUG_PURCHASE_OUTCOMES.join(', ')}`); return 1; }
+            outcomes.push(flags.outcome);
+        }
+        const driver = new AdbDeviceDriver();
+        const selection = selectDevice(await driver.devices(), typeof flags.serial === 'string' ? flags.serial : undefined);
+        if (!selection.ok) { console.log(JSON.stringify(selection, null, 2)); return 2; }
+        if (typeof flags.serial === 'string') driver.useSerial(flags.serial);
+        const filesDir = await seedAut059(driver, 'com.projectautomata.androidbaseline', 'com.cocos.game.AppActivity', variant, { outcomes, duplicateCallback: flags.duplicate === true, metadataMissing: flags['missing-metadata'] === true });
+        console.log(`seeded ${filesDir}save_main.json (${variant}) + ${variant === 'no_store' ? 'NO debug_purchase.json (NoOp store)' : `debug_purchase.json (${outcomes.join(',') || 'no scripted outcome'})`} and launched`);
+        return 0;
+    }
     if (command === 'seed-ui003') {
         // AUT-UI-003 review: seed a Free Overclock READY save and launch (no install, no assertions).
         const driver = new AdbDeviceDriver();
@@ -334,6 +353,7 @@ async function main(): Promise<number> {
             expectOfflineDouble: scenario.expectOfflineDouble,
             expectExtendedOverclock: scenario.expectExtendedOverclock,
             expectAdmob: scenario.expectAdmob,
+            expectFounderShop: scenario.expectFounderShop,
             expectPermanentUpgrades: scenario.expectPermanentUpgrades,
             expectSettings: scenario.expectSettings,
             expectRebootUi: scenario.expectRebootUi,
@@ -353,7 +373,7 @@ async function main(): Promise<number> {
         console.log(restored ? 'restored tracked build config from temp/device/gate backup' : 'no backup found');
         return restored ? 0 : 1;
     }
-    console.log('usage: node tools/device/cli.ts devices | c3|int001|r036|ui001|r031|gp001|aut039 --apk <path> [--serial <id>] [--run-id <id>] [--skip-install] | seed-aut040 [--serial <id>] | seed-aut042 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut043 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut044 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut045 [--variant workshop|era2|era3] [--serial <id>] | seed-aut046 [--variant breakthrough] [--serial <id>] | seed-aut047 [--variant active|ready] [--serial <id>] | seed-aut048 [--variant era2|era3] [--serial <id>] | seed-aut049 [--variant reboot|post] [--serial <id>] | seed-aut050 [--variant mixed|maxed] [--serial <id>] | seed-aut051 [--variant first|compact|cap|reload|short] [--serial <id>] | seed-aut052 [--serial <id>] | seed-aut055 [--variant ready|short_ineligible|quota] [--outcome rewarded|closed|failed] [--serial <id>] | seed-aut056 [--variant eligible|free_active|quota|interval|resume] [--outcome rewarded|closed|failed] [--serial <id>] | seed-aut057 [--variant offline_double|extended] [--serial <id>] | seed-rbt001 [--serial <id>] | seed-ui003 [--serial <id>] | reveal-capture [--scenario aut043|aut044|aut046|aut047|ui003|aut048|aut048-era3|aut048-era3-live|aut049|aut049-post|aut050|aut051|aut051-reload|aut051-short|aut052|rbt001|aut055-success|aut055-closed|aut055-failed|aut055-ineligible|aut056-success|aut056-free-active|aut056-resume|aut056-closed|aut056-failed|aut056-quota|aut056-interval|aut057-offline-double|aut057-extended|aut057-no-fill] [--label <l>] [--trigger next-goal|overclock|robot-line-build|none] | gate-build [--label <l>] | restore-build-config');
+    console.log('usage: node tools/device/cli.ts devices | c3|int001|r036|ui001|r031|gp001|aut039 --apk <path> [--serial <id>] [--run-id <id>] [--skip-install] | seed-aut040 [--serial <id>] | seed-aut042 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut043 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut044 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut045 [--variant workshop|era2|era3] [--serial <id>] | seed-aut046 [--variant breakthrough] [--serial <id>] | seed-aut047 [--variant active|ready] [--serial <id>] | seed-aut048 [--variant era2|era3] [--serial <id>] | seed-aut049 [--variant reboot|post] [--serial <id>] | seed-aut050 [--variant mixed|maxed] [--serial <id>] | seed-aut051 [--variant first|compact|cap|reload|short] [--serial <id>] | seed-aut052 [--serial <id>] | seed-aut055 [--variant ready|short_ineligible|quota] [--outcome rewarded|closed|failed] [--serial <id>] | seed-aut056 [--variant eligible|free_active|quota|interval|resume] [--outcome rewarded|closed|failed] [--serial <id>] | seed-aut057 [--variant offline_double|extended] [--serial <id>] | seed-aut059 [--variant available|owned|locked|no_store] [--outcome completed|pending|cancelled|failed] [--duplicate] [--missing-metadata] [--serial <id>] | seed-rbt001 [--serial <id>] | seed-ui003 [--serial <id>] | reveal-capture [--scenario aut043|aut044|aut046|aut047|ui003|aut048|aut048-era3|aut048-era3-live|aut049|aut049-post|aut050|aut051|aut051-reload|aut051-short|aut052|rbt001|aut055-success|aut055-closed|aut055-failed|aut055-ineligible|aut056-success|aut056-free-active|aut056-resume|aut056-closed|aut056-failed|aut056-quota|aut056-interval|aut057-offline-double|aut057-extended|aut057-no-fill] [AUT-059 scenarios: aut059-available|aut059-purchase-success|aut059-pending|aut059-cancel|aut059-fail|aut059-owned|aut059-hidden|aut059-locked] [--label <l>] [--trigger next-goal|overclock|robot-line-build|none] | gate-build [--label <l>] | restore-build-config');
     return command === 'help' ? 0 : 1;
 }
 

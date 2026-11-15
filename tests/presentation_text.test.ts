@@ -264,6 +264,9 @@ test('template params match exactly what PresentationText supplies', async () =>
         'reboot.reward': ['count'],
         'reboot.civilization': ['from', 'to'],
         'reboot.progress': ['percent'],
+        // AUT-059 Founder's Pack.
+        'founder.content.surges': ['count', 'multiplier', 'minutes'],
+        'founder.buy.with_price': ['price'],
         // AUT-052 toasts (moved from MILESTONE_TEXT_TEMPLATES, identical wording).
         'toast.producer_milestone': ['name', 'level'],
         'toast.automation': ['name'],
@@ -356,6 +359,11 @@ test('every catalogue entry is reachable from the composition paths (no dead key
         rebootState.run.prestigePowerPeak = repository.getPrestigeConfig().p0PrestigePower * (reward === 1 ? 0.05 : 1.2);
         assert.equal(rebootVm.createRebootPanelViewModel(repository, rebootState, catalogue).visible, true);
     }
+    // AUT-059 Founder's Pack: available (with price / loading / missing), in flight, pending, owned and every calm note.
+    const founderVm = await imp('assets/scripts/presentation/FounderShopViewModel.ts');
+    const founderBase = { offer: 'available', store: 'ready', price: 'P 1', purchase: 'idle', note: null };
+    for (const flowState of [founderBase, { ...founderBase, price: null }, { ...founderBase, store: 'loading', price: null }, { ...founderBase, purchase: 'in_flight' }, { ...founderBase, purchase: 'pending' }, { ...founderBase, offer: 'owned', price: null }]) founderVm.createFounderShopViewModel(flowState, catalogue);
+    for (const note of ['cancelled', 'failed', 'unavailable', 'not_saved']) founderVm.createFounderShopViewModel({ ...founderBase, note }, catalogue);
     assert.deepEqual(base.keys().filter((key) => !used.has(key)), []);
 });
 

@@ -68,7 +68,13 @@ import { ASSEMBLY_FOUNDATION_SLAB, assemblyLocal, FIRST_ROBOT_REVEAL_TARGET, ROB
 import { CocosFileSystemPort } from '../app/CocosFileSystemPort';
 import { DEBUG_COMMAND_FILE, parseDebugCommandFile } from './DebugCommandFile.ts';
 import { DEBUG_ADS_FILE, parseDebugAdsScriptFile, type DebugAdsScript } from './DebugAdsScriptFile.ts';
-import { createBuildAdsService } from './BuildPlatformServices.ts';
+import { createBuildAdsService, createBuildPurchaseService } from './BuildPlatformServices.ts';
+import { DEBUG_PURCHASE_FILE, parseDebugPurchaseScriptFile, type DebugPurchaseScript } from './DebugPurchaseScriptFile.ts';
+import { FounderShopController } from './FounderShopController';
+import { FounderShopFlow } from './FounderShopFlow.ts';
+import { PRODUCTS } from '../services/PlatformServiceTypes.ts';
+import type { PurchaseService } from '../services/PurchaseService';
+import { getFounderSurgeChargesRemaining, hasFounderSurgeGrantBeenRecorded, isFounderPackOwned, isFounderRobotCosmeticOwned } from '../monetization/FounderOffer.ts';
 import { OverlayBackgroundGate } from './OverlayBackgroundGate.ts';
 import { createAndroidAdsTransport } from '../platform/android/AndroidNativeBridge';
 import { PlatformOverlayTracker } from '../services/PlatformOverlay';
@@ -137,11 +143,15 @@ export class FactoryWorldBootstrap extends Component {
     private offlineAds: AdsService | null = null;
     /** AUT-057: ONE overlay tracker shared by the ads provider and the lifecycle consumer (overlay hide != player absence). */
     private readonly platformOverlay = new PlatformOverlayTracker();
+    /** AUT-059: the build-selected purchase provider (mock only in DEBUG with a debug_purchase.json script, otherwise the no-op: no Founder entry). */
+    private purchases: PurchaseService | null = null;
+    private purchaseSource: 'store' | 'mock' = 'store';
+    private debugPurchaseScript: DebugPurchaseScript | undefined;
     private readonly overlayGate = new OverlayBackgroundGate();
     private adsAvailabilitySignature = '';
     private adsProviderStarted = false;
     private extendedHudSeconds = 0;
-    private sessionWiring: { hud: CoreHudController; panel: ProducerPanelController; batch: AssemblyBatchActionController; selection: ProducerSelectionController; presentation: PresentationController | null; offlineReport: OfflineReportController; permanentUpgrades: PermanentUpgradeController; settings: SettingsController; reboot: RebootController; extendedOverclock: ExtendedOverclockController } | null = null;
+    private sessionWiring: { hud: CoreHudController; panel: ProducerPanelController; batch: AssemblyBatchActionController; selection: ProducerSelectionController; presentation: PresentationController | null; offlineReport: OfflineReportController; permanentUpgrades: PermanentUpgradeController; settings: SettingsController; reboot: RebootController; extendedOverclock: ExtendedOverclockController; founderShop: FounderShopController } | null = null;
     /** AUT-RBT-001: set by the binding's pending-offline callback and consumed by the Reboot modal to tell "blocked" from "exception" (both return null). */
     private rebootBlockedByPendingOffline = false;
     /** AUT-052: device preferences (own file, loaded before the first UI paint) and the silent audio / no-op haptics services that follow them. */
@@ -205,6 +215,8 @@ export class FactoryWorldBootstrap extends Component {
         const reboot = this.createReboot();
         // AUT-056: the Extended Overclock chip (fixed slot, second line under the HUD band) also sits below the offline card root.
         const extendedOverclock = this.createExtendedOverclock();
+        // AUT-059: the Founder's Pack chip (third line, right) and modal also sit below the offline card root.
+        const founderShop = this.createFounderShop();
         const offlineReport = this.createOfflineReport();
         selection.onSelectionChanged = (producerId) => {
             panel.replaceSelection(producerId);
@@ -212,7 +224,7 @@ export class FactoryWorldBootstrap extends Component {
         };
         this.reportUiLayoutAfterSelection(selection);
         const presentation = site.getChildByName('PresentationAnchors')?.getComponent(PresentationController) ?? null;
-        this.sessionWiring = { hud, panel, batch, selection, presentation, offlineReport, permanentUpgrades, settings, reboot, extendedOverclock };
+        this.sessionWiring = { hud, panel, batch, selection, presentation, offlineReport, permanentUpgrades, settings, reboot, extendedOverclock, founderShop };
         this.startPersistentSession(presentation);
     }
 
@@ -267,6 +279,11 @@ export class FactoryWorldBootstrap extends Component {
             onDiagnostic: (phase, payload) => emitDeviceEvent('ads_state', { phase, ...payload }),
         });
         this.platformOverlay.subscribe((event) => emitDeviceEvent('ads_state', { phase: 'overlay', state: event.phase, kind: event.kind, requestId: event.requestId }));
+        // AUT-059: the purchase provider is chosen at build time: release / no script = the no-op (no Founder entry); DEBUG + debug_purchase.json = the scriptable mock.
+        this.debugPurchaseScript = this.readDebugPurchaseScript();
+        const purchaseSelection = createBuildPurchaseService(DEBUG === true, this.debugPurchaseScript);
+        this.purchases = purchaseSelection.service;
+        this.purchaseSource = purchaseSelection.source;
         bootstrapGameSession({ storage, timeService: new DefaultTimeService() }).then((result) => {
             if (!result.startup.ok) {
                 this.emitSessionState('load_failed', result.startup.status, null, false);
@@ -327,6 +344,26 @@ export class FactoryWorldBootstrap extends Component {
         }
     }
 
+    /**
+     * DEBUG / capture-only (AUT-059): reads `debug_purchase.json` ONCE, deletes it and returns the allow-listed purchase script for the mock provider.
+     * Guarded by `DEBUG === true` AND enabled device diagnostics, so release builds never read it.
+     */
+    private readDebugPurchaseScript(): DebugPurchaseScript | undefined {
+        if (DEBUG !== true || !isDeviceDiagnosticsEnabled()) return undefined;
+        try {
+            const port = new CocosFileSystemPort();
+            const text = port.readText(DEBUG_PURCHASE_FILE);
+            if (text === undefined) return undefined;
+            port.remove(DEBUG_PURCHASE_FILE);
+            const script = parseDebugPurchaseScriptFile(text);
+            emitDeviceEvent('founder_shop', { phase: 'script', accepted: script !== null, price: script?.price ?? null, metadataMissing: script?.metadataMissing ?? false, outcomes: script?.outcomes ?? [], duplicateCallback: script?.duplicateCallback ?? false });
+            return script ?? undefined;
+        } catch (error) {
+            this.reportSessionError('debug_purchase', error);
+            return undefined;
+        }
+    }
+
     private activateSessionBinding(binding: FactoryWorldStateBinding, status: string, displayNames: DisplayNameSource): void {
         const wiring = this.sessionWiring;
         if (!wiring) return;
@@ -375,6 +412,36 @@ export class FactoryWorldBootstrap extends Component {
             });
             chip.requestRefresh();
         }
+        // AUT-059: the Founder shop flow (store product metadata + purchase result -> session grant, all through the binding). The entry stays hidden without a selling provider.
+        const purchases = this.purchases;
+        if (purchases) {
+            const shop = wiring.founderShop;
+            const duplicateCallback = this.debugPurchaseScript?.duplicateCallback === true;
+            const flow: FounderShopFlow = new FounderShopFlow({
+                purchases,
+                session: {
+                    getFounderOfferStatus: () => binding.getFounderOfferStatus(),
+                    applyFounderPackPurchase: (request) => binding.applyFounderPackPurchase(request),
+                    reconcileFounderEntitlement: (report) => binding.reconcileFounderEntitlement(report),
+                },
+                entitlementSource: this.purchaseSource,
+                now: () => Date.now(),
+                onChange: () => shop.onFlowChanged(),
+                onDiagnostic: (phase, payload) => {
+                    emitDeviceEvent('founder_shop', { phase, ...payload });
+                    if (phase === 'applied') this.emitFounderState(binding, 'applied');
+                    // DEBUG duplicate callback: the store redelivers the same completed purchase right away; the flow must treat it as a no-op.
+                    if (phase === 'purchase_result' && duplicateCallback && payload.status === 'completed' && payload.duplicate !== true) {
+                        const requestId = String(payload.requestId);
+                        const transactionId = typeof payload.transactionId === 'string' ? payload.transactionId : undefined;
+                        void Promise.resolve().then(() => flow.deliver({ status: 'completed', productId: PRODUCTS.founderPack, requestId, transactionId }));
+                    }
+                },
+            });
+            shop.flow = flow;
+            shop.requestRefresh();
+            this.startPurchaseProvider(purchases);
+        }
         if (wiring.presentation?.milestonePresentation) wiring.presentation.milestonePresentation.setNameSource(displayNames);
         // AUT-057: initialise the ads provider only now (session ready), never on the startup path; availability never blocks anything.
         if (offlineAds) this.startAdsProvider(offlineAds);
@@ -392,6 +459,7 @@ export class FactoryWorldBootstrap extends Component {
             emitDeviceEvent('extended_overclock', { phase: 'claims', claimCount: extendedClaim?.claimCount ?? 0, claimsInWindow: extendedClaim?.recentClaimUtcMs.length ?? 0 });
             this.emitExtendedOverclockHud('session_ready');
         }
+        this.emitFounderState(binding, 'session_ready');
         this.showOfflineReport('startup');
         this.runDebugCommandFile(binding);
         // DEBUG-only (emitDeviceEvent is a no-op unless enabled from DEBUG): the restored automation state.
@@ -427,6 +495,22 @@ export class FactoryWorldBootstrap extends Component {
      * AUT-057: initialises the ads provider (fire and forget) and, while the first ads load, re-reads the availability every 3 s (up to 2 min, stops once
      * both placements are available) so the x2 / Extended actions appear when an ad becomes ready. Later changes are picked up by the existing refresh points.
      */
+    /** AUT-059: initialises the purchase provider only once the session is ready (never on the startup path); availability never blocks anything. */
+    private startPurchaseProvider(purchases: PurchaseService): void {
+        void purchases.initialize().then((state) => {
+            emitDeviceEvent('founder_shop', { phase: 'store_initialized', status: state.status, reason: state.reason ?? null });
+            this.sessionWiring?.founderShop.requestRefresh();
+        }).catch(() => undefined);
+    }
+
+    /** AUT-059 DEBUG: the persisted Founder facts (entitlement, cosmetic, grant-once flag, Surge charges) so a capture can prove exactly-once and persistence. */
+    private emitFounderState(binding: FactoryWorldStateBinding, reason: string): void {
+        if (!isDeviceDiagnosticsEnabled()) return;
+        const state = binding.getStateSnapshot();
+        if (!state) return;
+        emitDeviceEvent('founder_shop', { phase: 'state', reason, owned: isFounderPackOwned(state), cosmetic: isFounderRobotCosmeticOwned(state), grantRecorded: hasFounderSurgeGrantBeenRecorded(state), surgeCharges: getFounderSurgeChargesRemaining(state) });
+    }
+
     private startAdsProvider(ads: AdsService): void {
         if (this.adsProviderStarted) return;
         this.adsProviderStarted = true;
@@ -488,6 +572,7 @@ export class FactoryWorldBootstrap extends Component {
         this.showOfflineReport('resumed');
         // AUT-056: the offer is re-read after a resume (a preview may now be pending, claims may have aged out).
         this.sessionWiring?.extendedOverclock.requestRefresh();
+        this.sessionWiring?.founderShop.requestRefresh();
     }
 
     /** AUT-051: shows / refreshes the Offline Factory Report card from the session's pending preview (a non-collectible preview shows nothing). */
@@ -1294,6 +1379,34 @@ export class FactoryWorldBootstrap extends Component {
     }
 
     /**
+     * AUT-059 Founder's Pack: a full-screen root (below the offline report root) holding the dim backdrop and a safe-area container for the modal;
+     * the entry chip is built by the controller under the HUD safe-area container, on the third line under the HUD band, right-aligned. Hidden by scale.
+     */
+    private createFounderShop(): FounderShopController {
+        const canvas = this.node.getChildByName('CoreHudCanvas');
+        if (!canvas) throw new Error('createUiRoot() must run before the Founder shop is built.');
+        const stretched = (parent: Node, name: string): Node => {
+            const node = parent.getChildByName(name) ?? new Node(name);
+            node.parent = parent;
+            node.layer = Layers.Enum.UI_2D;
+            node.getComponent(UITransform) ?? node.addComponent(UITransform);
+            this.stretchWidget(node.getComponent(Widget) ?? node.addComponent(Widget));
+            return node;
+        };
+        const root = stretched(canvas, 'FounderShop');
+        const backdrop = stretched(root, 'FounderShopBackdrop');
+        const safe = stretched(root, 'FounderShopSafeArea');
+        safe.getComponent(SafeArea) ?? safe.addComponent(SafeArea);
+        const controller = root.getComponent(FounderShopController) ?? root.addComponent(FounderShopController);
+        controller.backdropNode = backdrop;
+        controller.safeNode = safe;
+        controller.chipHost = this.uiSafeArea();
+        controller.screenRectOf = (node) => this.uiScreenRect(node);
+        controller.onLayoutChanged = (reason) => this.scheduleUiLayoutDiagnostics(reason);
+        return controller;
+    }
+
+    /**
      * AUT-RBT-001 Reboot: a full-screen root (below the offline report root) holding the dim backdrop and a safe-area container for the modal;
      * the entry chip is built by the controller under the HUD safe-area container, on the second line under the HUD band. Hidden by scale.
      */
@@ -1366,6 +1479,9 @@ export class FactoryWorldBootstrap extends Component {
         wiring.reboot.setSuppressed(wiring.offlineReport.isVisible() || rebootCard);
         // AUT-056: the Extended Overclock chip follows the same suppression (it also stays hidden while the offline preview is pending).
         wiring.extendedOverclock.setSuppressed(wiring.offlineReport.isVisible() || rebootCard);
+        // AUT-059: the Founder chip follows the same suppression (modal closed, chip hidden) and cannot open while Settings / AI Upgrades / Reboot is open.
+        wiring.founderShop.setSuppressed(wiring.offlineReport.isVisible() || rebootCard);
+        wiring.founderShop.setModalBlocked(wiring.settings.isOpen() || wiring.permanentUpgrades.isOpen() || wiring.reboot.isOpen());
     }
 
     /** AUT-RBT-001: true once after the binding reported a Reboot blocked by the pending offline report (then cleared). */
@@ -1492,6 +1608,12 @@ export class FactoryWorldBootstrap extends Component {
         // AUT-056: the Extended Overclock chip, only while shown (null otherwise).
         const extendedNode = this.sessionWiring?.extendedOverclock.getRectNode() ?? null;
         rects.ExtendedOverclockAction = extendedNode ? rectOf(extendedNode) : null;
+        // AUT-059: the Founder chip, modal, BUY and CLOSE, only while shown / open (null otherwise).
+        const founderNodes = this.sessionWiring?.founderShop.getRectNodes() ?? null;
+        rects.FounderChip = founderNodes?.chip ? rectOf(founderNodes.chip) : null;
+        rects.FounderPanel = founderNodes?.panel ? rectOf(founderNodes.panel) : null;
+        rects.FounderBuy = founderNodes?.buy ? rectOf(founderNodes.buy) : null;
+        rects.FounderClose = founderNodes?.close ? rectOf(founderNodes.close) : null;
         // AUT-RBT-001: the Reboot chip, modal, REBOOT and CANCEL, only while shown / open (null otherwise).
         const rebootNodes = this.sessionWiring?.reboot.getRectNodes() ?? null;
         rects.RebootChip = rebootNodes?.chip ? rectOf(rebootNodes.chip) : null;

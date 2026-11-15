@@ -149,6 +149,26 @@
     "reboot.keep.account": "Settings and purchases",
     "reboot.confirm": "REBOOT",
     "reboot.cancel": "CANCEL",
-    "reboot.failed": "Couldn't reboot. Try again."
+    "reboot.failed": "Couldn't reboot. Try again.",
+    "founder.chip": "Founder's Pack",
+    "founder.chip.tag.available": "Optional pack",
+    "founder.chip.tag.pending": "Payment pending",
+    "founder.chip.tag.owned": "Owned",
+    "founder.title": "FOUNDER'S FACTORY PACK",
+    "founder.content.robot": "Founder Robot variant",
+    "founder.content.surges": "{count} Factory Surges: ×{multiplier} for {minutes} min each",
+    "founder.price_label": "Price",
+    "founder.price.loading": "Checking the store...",
+    "founder.price.unavailable": "Price unavailable right now",
+    "founder.buy": "BUY",
+    "founder.buy.with_price": "BUY — {price}",
+    "founder.status.in_progress": "Waiting for the store...",
+    "founder.status.pending": "Payment pending. The pack arrives once the store confirms it.",
+    "founder.status.owned": "Owned. Thank you for supporting the game!",
+    "founder.note.cancelled": "Purchase cancelled. No changes were made.",
+    "founder.note.failed": "Couldn't complete the purchase. Try again later.",
+    "founder.note.unavailable": "The store isn't available right now.",
+    "founder.note.not_saved": "Purchase received. We'll finish saving it shortly.",
+    "founder.close": "CLOSE"
   }
 }

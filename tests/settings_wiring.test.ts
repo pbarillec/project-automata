@@ -33,7 +33,7 @@ test('bootstrap loads the user settings BEFORE any UI is built, and builds the S
     assert.ok(start.indexOf('this.loadUserSettings();') < start.indexOf('this.createCoreHud();'), 'settings load before the HUD paints');
     assert.ok(start.indexOf('this.createPermanentUpgrades();') < start.indexOf('this.createSettings();'));
     assert.ok(start.indexOf('this.createSettings();') < start.indexOf('this.createOfflineReport();'), 'the offline report root stays the LAST Canvas child');
-    assert.match(start, /this\.sessionWiring = \{[^}]*settings, reboot, extendedOverclock \}/);
+    assert.match(start, /this\.sessionWiring = \{[^}]*settings, reboot, extendedOverclock, founderShop \}/);
     // The load is synchronous and contained; later changes follow the store through its subscription.
     const load = methodBody(source, 'private loadUserSettings(): void {');
     assert.match(load, /new SettingsStore\(new CocosFileSystemPort\(\)/);

@@ -7,6 +7,7 @@ import type {
     LifecycleCollectResult,
     LifecycleCommandResult,
     LifecycleExtendedOverclockOffer,
+    LifecycleFounderResult,
     LifecycleExtendedOverclockResult,
     LifecycleOfflineDoubleOffer,
     LifecyclePermanentUpgradePurchaseResult,
@@ -16,6 +17,7 @@ import type {
     OfflineDoubleAdProof,
     RewardedAdProof,
 } from '../lifecycle/LifecycleSessionCoordinator.ts';
+import { resolveFounderOfferStatus, type FounderEntitlementSource, type FounderOfferStatus } from '../monetization/FounderOffer.ts';
 import type { OfflinePreviewResult } from '../offline/index.ts';
 import type { GameState } from '../state/GameState.ts';
 import { createAssemblyBatchViewModel, type AssemblyBatchViewModel } from './AssemblyBatchViewModel.ts';
@@ -45,6 +47,10 @@ export interface FactoryWorldSessionPort {
     getExtendedOverclockOffer?(): LifecycleExtendedOverclockOffer;
     /** AUT-056: starts the Extended Overclock from a verified rewarded-ad proof (boost + claim atomically, one critical save). Optional so minimal ports still work. */
     activateExtendedOverclockWithRewardedProof?(proof: RewardedAdProof): Promise<LifecycleExtendedOverclockResult>;
+    /** AUT-059: the Founder pack purchase delivery (exactly-once grant, then a critical save). Optional so minimal ports still work. */
+    applyFounderPackPurchase?(request: { readonly requestId: string; readonly source: FounderEntitlementSource }): Promise<LifecycleFounderResult>;
+    /** AUT-059: a store entitlement report (restore-style; never grants Surges). Optional so minimal ports still work. */
+    reconcileFounderEntitlement?(report: { readonly owned: boolean | null; readonly source: FounderEntitlementSource }): Promise<LifecycleFounderResult>;
     /** AUT-050: the permanent-upgrade purchase transaction (in-memory commit, then a critical save). Optional so minimal ports still work. */
     purchasePermanentUpgrade?(upgradeId: string): Promise<LifecyclePermanentUpgradePurchaseResult>;
 }
@@ -391,6 +397,44 @@ export class FactoryWorldStateBinding {
         }
         catch (error) {
             this.report('activate_extended_overclock', error);
+            return null;
+        }
+    }
+
+    /** AUT-059: the Founder offer status from the authoritative state (null when there is no snapshot / on error). Never includes a store outage (a view concern). */
+    getFounderOfferStatus(): FounderOfferStatus | null {
+        let status: FounderOfferStatus | null = null;
+        this.guard('founder_offer_status', () => { status = resolveFounderOfferStatus(this.session.getStateSnapshot()); });
+        return status;
+    }
+
+    /**
+     * AUT-059: applies a completed Founder purchase delivery through the session (exactly-once Surges + critical save). A change (durable or not)
+     * fans out its events and reports the command result; an already-applied replay changes nothing. Null when the port has no support or threw.
+     */
+    async applyFounderPackPurchase(request: { readonly requestId: string; readonly source: FounderEntitlementSource }): Promise<LifecycleFounderResult | null> {
+        return this.runFounder('apply_founder_pack', () => this.session.applyFounderPackPurchase?.(request) ?? null);
+    }
+
+    /** AUT-059: a store entitlement report (restore-style). Same fan-out / null contract as applyFounderPackPurchase. */
+    async reconcileFounderEntitlement(report: { readonly owned: boolean | null; readonly source: FounderEntitlementSource }): Promise<LifecycleFounderResult | null> {
+        return this.runFounder('reconcile_founder', () => this.session.reconcileFounderEntitlement?.(report) ?? null);
+    }
+
+    private async runFounder(context: string, call: () => Promise<LifecycleFounderResult> | null): Promise<LifecycleFounderResult | null> {
+        try {
+            const pending = call();
+            if (pending === null) return null;
+            const result = await pending;
+            if (result.status === 'applied_saved' || result.status === 'applied_persistence_failed') {
+                this.fanOut(result.execution.events);
+                const reportCommandResult = this.reportCommandResult;
+                if (reportCommandResult) this.guard('command_result', () => reportCommandResult(result.execution.command, { execution: result.execution, save: result.save }));
+            }
+            return result;
+        }
+        catch (error) {
+            this.report(context, error);
             return null;
         }
     }

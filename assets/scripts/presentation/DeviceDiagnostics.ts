@@ -73,6 +73,8 @@ export const DEVICE_EVENT_TYPES = [
     'reboot_ui',
     // AUT-052: Settings chip / panel and the user settings file: { phase: 'chip_shown' | 'chip_hidden' | 'opened' | 'closed' | 'toggled' | 'loaded' | 'saved' | 'save_failed' | 'load_failed' | 'missing_text', setting, value, saved, source ('file' | 'default' | 'corrupt'), settings, missingText, chipRect, panelRect, rowRects, closeRect, suppressed, scale }.
     'settings',
+    // AUT-059 (DEBUG only): Founder's Pack shop: { phase: 'script' | 'store_initialized' | 'refresh' | 'purchase_started' | 'purchase_result' | 'duplicate_ignored' | 'pending' | 'applied' | 'acknowledged' | 'state' | 'chip_shown' | 'chip_hidden' | 'opened' | 'buy_tapped' | 'buy_result' | 'closed'; script: price, metadataMissing, outcomes, duplicateCallback; refresh: offer, store, priceShown, price, pending; purchase_result: status, requestId, transactionId, duplicate, reason; applied: status (applied_saved | already_applied | ...), restoreOnly, requestId; state: reason, owned, cosmetic, grantRecorded, surgeCharges; UI phases: state (available | pending | owned), chipVisible, chipLabel, chipTag, open, priceText, priceFromStore, buyVisible, buyEnabled, buyLabel, status, note, contents, chipRect, panelRect, buyRect, closeRect, chipLabelFontSize, chipTagFontSize, buyFontSize, suppressed, outcome }. Rects are also ui_layout FounderChip / FounderPanel / FounderBuy / FounderClose.
+    'founder_shop',
     // AUT-047: temporary boost presentation: { phase: 'synced' | 'started' | 'ended' | 'suspended' | 'resumed' | 'stopped' | 'settled' | 'effect_applied', ... } (effect_applied: anchorResolved, timeScale, plate / spark scale + worldPos).
     'boost_presentation',
     'error',

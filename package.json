@@ -27,6 +27,7 @@
     "device:seed-aut055": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-aut055",
     "device:seed-aut056": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-aut056",
     "device:seed-aut057": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-aut057",
+    "device:seed-aut059": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-aut059",
     "device:seed-aut052": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-aut052",
     "device:seed-rbt001": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-rbt001",
     "device:seed-ui003": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-ui003",

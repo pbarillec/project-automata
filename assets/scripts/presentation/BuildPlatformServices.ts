@@ -1,10 +1,13 @@
 import type { AdsService } from '../services/AdsService';
+import { PRODUCTS } from '../services/PlatformServiceTypes.ts';
+import type { PurchaseService } from '../services/PurchaseService';
 import { EXTENDED_OVERCLOCK_CLAIM_KEY, OFFLINE_DOUBLE_CLAIM_KEY } from '../monetization/RewardedEligibility.ts';
 import { AndroidAdsService, type AndroidAdsDiagnostic, type AndroidAdsTransport } from '../platform/android/AndroidAdsService.ts';
-import { MockAdsService } from '../platform/mock/MockPlatformProviders.ts';
-import { NoOpAdsService } from '../platform/noop/NoOpPlatformProviders.ts';
+import { MockAdsService, MockPurchaseService } from '../platform/mock/MockPlatformProviders.ts';
+import { NoOpAdsService, NoOpPurchaseService } from '../platform/noop/NoOpPlatformProviders.ts';
 import type { PlatformOverlayTracker } from '../services/PlatformOverlay';
 import { DEBUG_ADS_PROVIDER_ADMOB_TEST, type DebugAdsScript } from './DebugAdsScriptFile.ts';
+import type { DebugPurchaseScript } from './DebugPurchaseScriptFile.ts';
 
 /**
  * AUT-055 build-time ads provider selection (pure, engine-free). The ONLY presentation file that references MockAdsService.
@@ -39,4 +42,28 @@ export function createBuildAdsService(debug: boolean, script?: DebugAdsScript, d
     const extendedSteps = (script?.extendedOverclock ?? []).map((outcome) => ({ outcome, duplicateCallback: script?.duplicateCallback === true }));
     if (extendedSteps.length > 0) ads.enqueueOutcomes(EXTENDED_OVERCLOCK_CLAIM_KEY, ...extendedSteps);
     return ads;
+}
+
+/**
+ * AUT-059 build-time purchase provider selection (pure, engine-free). The ONLY presentation file that references MockPurchaseService.
+ *
+ * - DEBUG build (`debug === true`) WITH a parsed `debug_purchase.json` script: a MockPurchaseService (initialised) whose Founder product carries the
+ *   scripted STORE metadata (price text, or missing), with the scripted outcomes. Entitlement source `mock`.
+ * - Anything else, including a DEBUG build without the script and EVERY release build: NoOpPurchaseService (never sells, the Founder entry stays
+ *   hidden). Real billing arrives with AUT-060 behind this same function. No mock purchase ever ships.
+ */
+export interface BuildPurchaseSelection {
+    readonly service: PurchaseService;
+    readonly source: 'store' | 'mock';
+}
+
+export function createBuildPurchaseService(debug: boolean, script?: DebugPurchaseScript): BuildPurchaseSelection {
+    if (debug !== true || script === undefined) return { service: new NoOpPurchaseService(), source: 'store' };
+    const products = script.metadataMissing
+        ? []
+        : [{ productId: PRODUCTS.founderPack, type: 'durable' as const, available: true, ...(script.price !== null ? { localizedPrice: script.price } : {}) }];
+    const purchases = new MockPurchaseService({ initialStatus: 'uninitialized', products });
+    const steps = script.outcomes.map((outcome) => ({ outcome }));
+    if (steps.length > 0) purchases.enqueueOutcomes(PRODUCTS.founderPack, ...steps);
+    return { service: purchases, source: 'mock' };
 }
