@@ -43,6 +43,8 @@ export const DEVICE_EVENT_TYPES = [
     // AUT-041 DEBUG benchmark: { visible, window, frames, seconds, avgMs, p95Ms, maxMs, fps } per sampled window; `robot_benchmark` once when the override is read.
     'robot_perf',
     'robot_benchmark',
+    // AUT-062: Founder Robot variant: { phase: 'synced' | 'changed' | 'sample', owned, founderRanks (0 = Worker Bot, slot + 1 = pooled), visible, pooled, shellTinted (per founder robot), fallbackShell, applied, crest? ([{ rank, rect: { x, y, w, h } }] window pixels, bottom-left origin; sample only), screen? }.
+    'robot_founder',
     // AUT-042: Robot Line / Era II reveal hook: { phase: 'synced' | 'construction_started' | 'activated' | 'focus_requested' | 'item_cycle', ... }.
     'robot_line_state',
     // AUT-043: Automated Cell: { phase: 'synced' | 'construction_started' | 'activated' | 'focus_requested' | 'item_cycle', ... }.

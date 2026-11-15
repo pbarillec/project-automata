@@ -29,6 +29,7 @@
     "device:seed-aut057": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-aut057",
     "device:seed-aut059": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-aut059",
     "device:seed-aut060": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-aut060",
+    "device:seed-aut062": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-aut062",
     "device:seed-aut061": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-aut061",
     "device:seed-aut052": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-aut052",
     "device:seed-rbt001": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-rbt001",

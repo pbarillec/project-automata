@@ -32,6 +32,8 @@ import { seedAut059 } from './seed_aut059.ts';
 import { seedAut060 } from './seed_aut060.ts';
 import { seedAut061 } from './seed_aut061.ts';
 import { evaluateRestore, type RestoreExpectation } from './restore_checks.ts';
+import { seedAut062 } from './seed_aut062.ts';
+import { evaluateFounderRobot, type FounderRobotExpectation } from './founder_robot_checks.ts';
 import { BILLING_CHIP_WAIT_MS, BILLING_RESULT_WAIT_MS, BILLING_SHEET_SETTLE_MS, evaluateBilling, type BillingExpectation } from './billing_checks.ts';
 import { FOUNDER_SHOP_RELAUNCH_MARKER_EVT, evaluateFounderShop, type FounderShopExpectation } from './founder_shop_checks.ts';
 import { ADMOB_AVAILABILITY_WAIT_MS, ADMOB_RESULT_WAIT_AFTER_BACK_MS, ADMOB_RESULT_WAIT_BEFORE_BACK_MS, evaluateAdmob, type AdmobExpectation } from './admob_checks.ts';
@@ -78,6 +80,8 @@ export interface RevealCaptureOptions {
     readonly expectBilling?: BillingExpectation;
     /** AUT-061 (MOCK store with a scripted `restore` mode, no taps): 'reinstall' = fresh save + store owned -> entitlement / cosmetic restored, 0 Surges, chip Owned; 'local_owned_store_error' = owned locally + failed store query -> still Owned (never revoked). */
     readonly expectRestore?: RestoreExpectation;
+    /** AUT-062 (Founder Robot variant, MOCK store only for mid_session): 'not_owned' = no Founder robot; 'owned_first' = tap Next Goal, the first Worker Bot reveal is the Founder robot; 'owned_many' = rank 0 + one pooled robot among 7; 'mid_session' = REAL taps chip -> BUY, the variant swaps in place; 'reload' = force-stop + relaunch WITHOUT reseeding, same Founder ranks. Objective wiring checks only (founder_robot_checks.ts); readability stays with visual QA. */
+    readonly expectFounderRobot?: FounderRobotExpectation;
     /** AUT-050: 'purchase' = tap the AI chip, open the panel, buy an affordable row with a real tap, switch tab, force-stop + relaunch WITHOUT reseeding (balance / rank persisted). */
     readonly expectPermanentUpgrades?: PermanentUpgradeExpectation;
     /** AUT-052: 'toggle_persist' = tap the Settings chip, open the panel, toggle Music OFF with a real tap, close, force-stop + relaunch WITHOUT reseeding (the file survives), toggle it back ON, close. */
@@ -111,7 +115,7 @@ export interface RevealCaptureResult {
 
 export const DEFAULT_REVEAL_EVENT_TYPES: readonly string[] = Object.freeze([
     'scene_ready', 'session_state', 'ui_layout', 'command_result', 'construction_state', 'camera_focus', 'reveal_state',
-    'milestone_presentation', 'era_transition', 'reboot_presentation', 'offline_report', 'offline_double', 'extended_overclock', 'founder_shop', 'ads_state', 'permanent_upgrades', 'reboot_ui', 'settings', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'error',
+    'milestone_presentation', 'era_transition', 'reboot_presentation', 'offline_report', 'offline_double', 'extended_overclock', 'founder_shop', 'ads_state', 'permanent_upgrades', 'reboot_ui', 'settings', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'robot_founder', 'robot_perf', 'error',
 ]);
 
 /** A named live-reveal scenario: the seed (unbuilt variant), the producer whose construction must be observed and whether a camera focus is expected. */
@@ -136,6 +140,8 @@ export interface RevealScenario {
     readonly expectPermanentUpgrades?: PermanentUpgradeExpectation;
     readonly expectSettings?: SettingsExpectation;
     readonly expectRebootUi?: RebootUiExpectation;
+    readonly expectRestore?: RestoreExpectation;
+    readonly expectFounderRobot?: FounderRobotExpectation;
 }
 
 export const DEFAULT_REVEAL_SCENARIO_ID = 'aut043';
@@ -203,6 +209,12 @@ export const REVEAL_SCENARIOS: Readonly<Record<string, RevealScenario>> = Object
     // AUT-061: purchase restore / reconciliation with the MOCK store (debug_purchase.json `restore` mode); no taps, objective checks only (restore_checks.ts).
     'aut061-restore-reinstall': { id: 'aut061-restore-reinstall', label: 'aut061-restore-reinstall', seed: (d, pkg, act) => seedAut061(d, pkg, act, 'reinstall'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 500, expectRestore: 'reinstall' },
     'aut061-restore-store-error': { id: 'aut061-restore-store-error', label: 'aut061-restore-store-error', seed: (d, pkg, act) => seedAut061(d, pkg, act, 'local_owned_store_error'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 500, expectRestore: 'local_owned_store_error' },
+    // AUT-062: Founder Robot / UNIT 0001 variant. Objective wiring checks only (founder_robot_checks.ts); the screenshots go to the visual QA.
+    'aut062-not-owned': { id: 'aut062-not-owned', label: 'aut062-founder-robot-not-owned', seed: (d, pkg, act) => seedAut062(d, pkg, act, 'not_owned'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 500, expectFounderRobot: 'not_owned' },
+    'aut062-owned-first': { id: 'aut062-owned-first', label: 'aut062-founder-robot-owned-first', seed: (d, pkg, act) => seedAut062(d, pkg, act, 'owned_before_first_robot'), expectConstruction: null, expectFocus: true, trigger: 'next-goal', durationMs: 10_000, intervalMs: 500, expectCommands: ['purchaseBreakthrough'], expectFounderRobot: 'owned_first' },
+    'aut062-owned-many': { id: 'aut062-owned-many', label: 'aut062-founder-robot-owned-many', seed: (d, pkg, act) => seedAut062(d, pkg, act, 'owned_many_robots'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 8_000, intervalMs: 500, expectFounderRobot: 'owned_many' },
+    'aut062-mid-session': { id: 'aut062-mid-session', label: 'aut062-founder-robot-mid-session', seed: (d, pkg, act) => seedAut062(d, pkg, act, 'mid_session'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 4_000, intervalMs: 500, expectFounderShop: 'purchase_success', expectFounderRobot: 'mid_session' },
+    'aut062-reload': { id: 'aut062-reload', label: 'aut062-founder-robot-reload', seed: (d, pkg, act) => seedAut062(d, pkg, act, 'owned_many_robots'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 4_000, intervalMs: 500, expectFounderRobot: 'reload' },
     'aut057-no-fill': { id: 'aut057-no-fill', label: 'aut057-admob-no-fill', seed: (d, pkg, act) => seedAut057(d, pkg, act, 'offline_double', { networkOff: true }), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectAdmob: 'no_fill' },
     'aut048-era3': { id: 'aut048-era3', label: 'aut048-era3-silent-load', seed: (d, pkg, act) => seedAut048(d, pkg, act, 'era3'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 400, expectEraTitle: 'none' },
 });
@@ -213,7 +225,7 @@ export function resolveRevealScenario(id: unknown): RevealScenario | null {
 }
 
 /** Objective checks over a timeline (pure, unit-tested). `tMs` is relative to the trigger (negative = before). */
-export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectOfflineDouble?: OfflineDoubleExpectation; expectExtendedOverclock?: ExtendedOverclockExpectation; expectAdmob?: AdmobExpectation; expectFounderShop?: FounderShopExpectation; expectBilling?: BillingExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation; expectSettings?: SettingsExpectation; expectRebootUi?: RebootUiExpectation; expectRestore?: RestoreExpectation }): RevealCheck[] {
+export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectOfflineDouble?: OfflineDoubleExpectation; expectExtendedOverclock?: ExtendedOverclockExpectation; expectAdmob?: AdmobExpectation; expectFounderShop?: FounderShopExpectation; expectBilling?: BillingExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation; expectSettings?: SettingsExpectation; expectRebootUi?: RebootUiExpectation; expectRestore?: RestoreExpectation; expectFounderRobot?: FounderRobotExpectation }): RevealCheck[] {
     const checks: RevealCheck[] = [];
     const errors = events.filter((e) => e.event.evt === 'error');
     checks.push({ id: 'no_error_events', ok: errors.length === 0, detail: `${errors.length} error events` });
@@ -251,6 +263,7 @@ export function evaluateRevealTimeline(events: readonly TimelineEvent[], options
     if (options.expectFounderShop !== undefined) checks.push(...evaluateFounderShop(events, options.expectFounderShop));
     if (options.expectBilling !== undefined) checks.push(...evaluateBilling(events, options.expectBilling));
     if (options.expectRestore !== undefined) checks.push(...evaluateRestore(events, options.expectRestore));
+    if (options.expectFounderRobot !== undefined) checks.push(...evaluateFounderRobot(events, options.expectFounderRobot));
     if (options.expectPermanentUpgrades !== undefined) checks.push(...evaluatePermanentUpgrades(events, options.expectPermanentUpgrades));
     if (options.expectSettings !== undefined) checks.push(...evaluateSettings(events, options.expectSettings));
     if (options.expectRebootUi !== undefined) checks.push(...evaluateRebootUi(events, options.expectRebootUi));
@@ -988,6 +1001,20 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
         }
         tapDetail = details.join('; ');
     }
+    // AUT-062: 'reload' = force-stop + relaunch WITHOUT reseeding; the Founder ranks must come back identical (derived from the saved cosmetic ownership only).
+    if (layout && options.expectFounderRobot === 'reload') {
+        await sleep(options.durationMs ?? 4_000);
+        await frame('pre');
+        collect(Date.now());
+        events.push({ tMs: Date.now() - t0, event: { v: 1, seq: 0, evt: FOUNDER_SHOP_RELAUNCH_MARKER_EVT, phase: 'relaunch' } });
+        await driver.forceStop(packageName);
+        const relaunchCursor = stream.cursor;
+        await driver.launch(packageName, activity);
+        await stream.waitFor((e) => e.evt === 'ui_layout', relaunchCursor, options.layoutTimeoutMs ?? 60_000);
+        await sleep(options.preMs ?? 2_000);
+        await frame('post');
+        tapDetail = 'force-stop + relaunch without reseeding';
+    }
     const end = Date.now() + (options.durationMs ?? 9_000);
     while (Date.now() < end) {
         await frame(triggered ? 'post' : 'pre');
@@ -996,7 +1023,7 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
     collect(Date.now());
     await driver.stopLogcat();
 
-    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectRestore: options.expectRestore, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport, expectOfflineDouble: options.expectOfflineDouble, expectExtendedOverclock: options.expectExtendedOverclock, expectAdmob: options.expectAdmob, expectFounderShop: options.expectFounderShop, expectBilling: options.expectBilling, expectPermanentUpgrades: options.expectPermanentUpgrades, expectSettings: options.expectSettings, expectRebootUi: options.expectRebootUi });
+    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectRestore: options.expectRestore, expectFounderRobot: options.expectFounderRobot, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport, expectOfflineDouble: options.expectOfflineDouble, expectExtendedOverclock: options.expectExtendedOverclock, expectAdmob: options.expectAdmob, expectFounderShop: options.expectFounderShop, expectBilling: options.expectBilling, expectPermanentUpgrades: options.expectPermanentUpgrades, expectSettings: options.expectSettings, expectRebootUi: options.expectRebootUi });
     checks.unshift({ id: 'ui_layout_ready', ok: layout !== null, detail: layout ? 'ui_layout received' : 'no ui_layout (app did not reach the HUD)' });
     if (options.expectPermanentUpgrades || options.expectSettings || options.expectRebootUi || options.expectOfflineDouble || options.expectExtendedOverclock || options.expectAdmob || options.expectFounderShop || options.expectBilling) checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
     if (trigger !== 'none') checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });

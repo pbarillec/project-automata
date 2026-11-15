@@ -3,9 +3,12 @@ import type { Prefab } from 'cc';
 import type { DomainEvent } from '../domain/Events.ts';
 import type { GameState } from '../state/GameState.ts';
 import { MobileCameraController } from '../camera/MobileCameraController';
+import { isFounderRobotCosmeticOwned } from '../monetization/FounderOffer.ts';
 import { assemblyLocal, WORKER_BOT_SCALE } from './AssemblySliceLayout.ts';
 import { AssemblyVisualController } from './AssemblyVisualController';
 import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
+import { applyFounderRobotVariant } from './FounderRobotVisual';
+import { resolveFounderRobotSlots } from './FounderRobotVariant.ts';
 import { FirstRobotPresentationViewModel, type FirstRobotPresentationSnapshot } from './FirstRobotPresentationViewModel.ts';
 import { getPresentationTimeScale } from './PresentationTimeScale.ts';
 import { WorkerBotRoutePlayer,type WorkerBotClip, type WorkerBotPose } from './WorkerBotRoute.ts';
@@ -51,6 +54,8 @@ export class FirstRobotPresentationController extends Component {
     private robotY: number | null = null;
     private revealAwaitingBeat = false;
     private revealFocusRequested = false;
+    /** AUT-062: Founder Robot cosmetic owned (derived from `meta.cosmeticOwnership` on every sync / domain-event batch). */
+    private founderOwned = false;
 
     public onLoad(): void {
         this.assemblyVisual ??= this.node.getComponent(AssemblyVisualController);
@@ -65,7 +70,9 @@ export class FirstRobotPresentationController extends Component {
     /** Initial / restored state (AUT-INT-001 init): rebuilds the robot in its loop, never replays the reveal. */
     public sync(state: GameState): FirstRobotPresentationSnapshot {
         this.snapshotValue = this.viewModel.syncFromState(state);
+        this.founderOwned = isFounderRobotCosmeticOwned(state);
         this.applySnapshot();
+        this.applyFounderVariant();
         if (isDeviceDiagnosticsEnabled()) {
             emitDeviceEvent('robot_state', { phase: 'synced', source: 'session', ...this.describe() });
         }
@@ -75,7 +82,9 @@ export class FirstRobotPresentationController extends Component {
     public consumeDomainEvents(state: GameState, events: readonly DomainEvent[]): FirstRobotPresentationSnapshot {
         const before = this.viewModel.mode;
         this.snapshotValue = this.viewModel.consumeEvents(state, events);
+        this.founderOwned = isFounderRobotCosmeticOwned(state);
         this.applySnapshot();
+        this.applyFounderVariant();
         if (this.snapshotValue.revealRequested) this.startReveal();
         else if (before === 'hidden' && this.snapshotValue.robotMode === 'loop' && isDeviceDiagnosticsEnabled()) {
             // Civilization 2+ (deferred acknowledgement) or a state that gained the robot without the event.
@@ -141,6 +150,12 @@ export class FirstRobotPresentationController extends Component {
             const pose = this.player.pose();
             if (pose) this.applyPose(pose, 0, true);
         }
+    }
+
+    /** AUT-062: rank 0 (this first Worker Bot node) is the Founder robot whenever the cosmetic is owned, even before its first reveal; swapped in place, no pose / clip reset. */
+    private applyFounderVariant(): void {
+        this.ensureRobot();
+        if (this.robotNode) applyFounderRobotVariant(this.robotNode, resolveFounderRobotSlots(this.founderOwned, 0).workerBot);
     }
 
     private startReveal(): void {

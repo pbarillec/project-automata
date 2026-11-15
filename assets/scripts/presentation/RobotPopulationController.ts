@@ -1,13 +1,18 @@
-import { _decorator, Animation, Component, instantiate, Node } from 'cc';
+import { _decorator, Animation, Camera, Component, director, instantiate, Node, screen, Vec3 } from 'cc';
 import { DEBUG } from 'cc/env';
 import type { Prefab } from 'cc';
 import { CocosFileSystemPort } from '../app/CocosFileSystemPort';
+import { MobileCameraController } from '../camera/MobileCameraController';
+import { isFounderRobotCosmeticOwned } from '../monetization/FounderOffer.ts';
 import { FramePerfSampler } from './FramePerfSampler.ts';
 import type { DomainEvent } from '../domain/Events.ts';
 import type { GameState } from '../state/GameState.ts';
 import { assemblyLocal, WORKER_BOT_SCALE } from './AssemblySliceLayout.ts';
 import { getPresentationTimeScale } from './PresentationTimeScale.ts';
 import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
+import { WORKER_BOT_NODE_NAME } from './FirstRobotPresentationController';
+import { applyFounderRobotVariant, getFounderCrestWorldPoints, getFounderRobotInfo } from './FounderRobotVisual';
+import { founderRanks, resolveFounderRobotSlots } from './FounderRobotVariant.ts';
 import {
     POPULATION_BENCHMARK_FILE,
     robotSlotVariation,
@@ -25,6 +30,9 @@ const { ccclass } = _decorator;
 export const POPULATION_ROBOT_NODE_PREFIX = 'PopulationRobot_';
 const SCALE_IN_SECONDS = 0.6;
 const CLIP_CROSS_FADE_SECONDS = 0.2;
+/** AUT-062 DEBUG: seconds between `robot_founder` samples (crest screen rect) and the maximum number of samples. */
+const FOUNDER_SAMPLE_SECONDS = 2;
+const FOUNDER_SAMPLE_MAX = 12;
 
 interface PooledRobot {
     readonly node: Node;
@@ -59,6 +67,11 @@ export class RobotPopulationController extends Component {
     private clock = 0;
     private clipSpeed = 1;
     private perf: FramePerfSampler | null = null;
+    /** AUT-062: Founder Robot cosmetic owned (derived from `meta.cosmeticOwnership` on every sync / domain-event batch; no save change). */
+    private founderOwned = false;
+    private founderKey = '';
+    private founderSampleClock = 0;
+    private founderSamples = 0;
 
     /** AUT-041 benchmark (DEBUG builds only): reads the override file and starts frame-time sampling. */
     public onLoad(): void {
@@ -77,10 +90,12 @@ export class RobotPopulationController extends Component {
     }
 
     public sync(state: GameState): RobotPopulationSnapshot {
+        this.founderOwned = isFounderRobotCosmeticOwned(state);
         return this.apply(this.viewModel.sync(state), 'synced', 'session');
     }
 
     public consumeDomainEvents(state: GameState, _events: readonly DomainEvent[]): RobotPopulationSnapshot {
+        this.founderOwned = isFounderRobotCosmeticOwned(state);
         return this.apply(this.viewModel.sync(state), 'changed', 'runtime');
     }
 
@@ -95,6 +110,7 @@ export class RobotPopulationController extends Component {
     public update(deltaSeconds: number): void {
         const window = this.perf?.add(deltaSeconds) ?? null;
         if (window) emitDeviceEvent('robot_perf', { visible: (this.snapshotValue?.visible ?? 0), pooled: this.pool.visible, ...window });
+        this.sampleFounder(deltaSeconds);
         if (this.pool.visible === 0 && this.robots.every((robot) => !robot.visible)) return;
         // AUT-047: presentation time scale (Overclock ~1.3x) speeds the route clock and the clip playback; ramps / scale-in stay real time.
         const speed = getPresentationTimeScale();
@@ -153,7 +169,82 @@ export class RobotPopulationController extends Component {
                 });
             }
         }
+        this.applyFounder(snapshot, phase);
         return snapshot;
+    }
+
+    /**
+     * AUT-062: the Founder variant follows `resolveFounderRobotSlots(owned, visible)`: rank 0 (applied by the Worker Bot controller on its own
+     * node) plus at most one pooled slot once 4+ robots are visible. Swapped in place on a mid-session purchase (no fanfare, pose / clip untouched).
+     */
+    private applyFounder(snapshot: RobotPopulationSnapshot, phase: 'synced' | 'changed'): void {
+        const slots = resolveFounderRobotSlots(this.founderOwned, snapshot.visible);
+        for (const robot of this.robots) applyFounderRobotVariant(robot.node, slots.poolSlots.includes(robot.variation.slot));
+        const key = `${this.founderOwned}|${snapshot.visible}|${slots.poolSlots.join(',')}`;
+        if (key === this.founderKey && phase !== 'synced') return;
+        this.founderKey = key;
+        if (isDeviceDiagnosticsEnabled()) this.emitFounder(snapshot.visible, snapshot.pooled, phase);
+    }
+
+    private founderNodes(): { rank: number; node: Node }[] {
+        const slots = resolveFounderRobotSlots(this.founderOwned, this.snapshotValue?.visible ?? 0);
+        const nodes: { rank: number; node: Node }[] = [];
+        const workerBot = this.node.getChildByName(WORKER_BOT_NODE_NAME);
+        if (slots.workerBot && workerBot) nodes.push({ rank: 0, node: workerBot });
+        for (const slot of slots.poolSlots) {
+            const robot = this.robots[slot];
+            if (robot) nodes.push({ rank: slot + 1, node: robot.node });
+        }
+        return nodes;
+    }
+
+    /** DEBUG `robot_founder`: ownership, which ranks are Founder robots, the visible count and (best effort) the crest rectangle in window pixels (bottom-left origin). */
+    private emitFounder(visible: number, pooled: number, phase: string, withRect = false): void {
+        const slots = resolveFounderRobotSlots(this.founderOwned, visible);
+        const infos = this.founderNodes().map(({ rank, node }) => ({ rank, ...getFounderRobotInfo(node) }));
+        const payload: Record<string, unknown> = {
+            phase,
+            owned: this.founderOwned,
+            founderRanks: founderRanks(slots),
+            visible,
+            pooled,
+            shellTinted: infos.map((info) => info.shellTinted),
+            fallbackShell: infos.some((info) => info.fallbackShell),
+            applied: infos.map((info) => info.applied),
+        };
+        if (withRect) Object.assign(payload, this.crestRects());
+        emitDeviceEvent('robot_founder', payload);
+    }
+
+    private crestRects(): Record<string, unknown> {
+        try {
+            const camera = this.node.scene?.getComponentInChildren(MobileCameraController)?.getComponent(Camera) ?? director.getScene()?.getComponentInChildren(Camera) ?? null;
+            if (!camera) return { crest: [] };
+            const size = screen.windowSize;
+            const crest = this.founderNodes().flatMap(({ rank, node }) => {
+                const points = getFounderCrestWorldPoints(node);
+                if (points.length === 0) return [];
+                let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+                for (const point of points) {
+                    const projected = camera.worldToScreen(point, new Vec3());
+                    minX = Math.min(minX, projected.x); minY = Math.min(minY, projected.y); maxX = Math.max(maxX, projected.x); maxY = Math.max(maxY, projected.y);
+                }
+                return [{ rank, rect: { x: minX, y: minY, w: maxX - minX, h: maxY - minY } }];
+            });
+            return { crest, screen: { w: size.width, h: size.height } };
+        } catch (error) {
+            return { crest: [], rectError: String(error) };
+        }
+    }
+
+    private sampleFounder(deltaSeconds: number): void {
+        if (!this.founderOwned || this.founderSamples >= FOUNDER_SAMPLE_MAX || !isDeviceDiagnosticsEnabled()) return;
+        this.founderSampleClock += deltaSeconds;
+        if (this.founderSampleClock < FOUNDER_SAMPLE_SECONDS) return;
+        this.founderSampleClock = 0;
+        this.founderSamples += 1;
+        const snapshot = this.snapshotValue;
+        this.emitFounder(snapshot?.visible ?? 0, snapshot?.pooled ?? 0, 'sample', true);
     }
 
     private ensureRobots(count: number): void {
