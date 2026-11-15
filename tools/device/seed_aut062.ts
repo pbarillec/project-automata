@@ -59,7 +59,7 @@ export function buildAut062SeededSave(variant: Aut062SeedVariant, nowMs: number)
 
 /** Only `mid_session` needs the DEBUG mock store (one scripted completed purchase); the other variants write no store script. */
 export function buildAut062PurchaseScriptFile(variant: Aut062SeedVariant): string | null {
-    return variant === 'mid_session' ? buildAut059PurchaseScriptFile({ outcomes: ['completed'] }) : null;
+    return variant === 'mid_session' ? buildAut059PurchaseScriptFile({ outcomes: ['completed'], duplicateCallback: true }) : null;
 }
 
 export async function seedAut062(

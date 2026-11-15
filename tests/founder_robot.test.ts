@@ -12,7 +12,9 @@ import {
     FOUNDER_MAX_PARTS,
     FOUNDER_MAX_ROBOTS,
     FOUNDER_PALETTE,
+    FOUNDER_POOL_FAR_MIN_VISIBLE,
     FOUNDER_POOL_MIN_VISIBLE,
+    FOUNDER_POOL_SLOT_SMALL,
     FOUNDER_POOL_SLOT,
     FOUNDER_UNIT_MARK,
     contrastRatio,
@@ -40,8 +42,8 @@ const NOW_MS = Date.parse('2026-11-15T12:00:00.000Z');
 test('AUT-062 palette is the approved graphite / gold set, opaque, with graphite-vs-gold contrast >= 3:1', () => {
     assert.deepEqual({ ...FOUNDER_PALETTE.GRAPHITE_SHELL }, { r: 38, g: 40, b: 46, a: 255 });
     assert.deepEqual({ ...FOUNDER_PALETTE.GRAPHITE_DARK }, { r: 22, g: 24, b: 28, a: 255 });
-    assert.deepEqual({ ...FOUNDER_PALETTE.GOLD_ACCENT }, { r: 232, g: 176, b: 48, a: 255 });
-    assert.deepEqual({ ...FOUNDER_PALETTE.GOLD_HILITE }, { r: 255, g: 214, b: 110, a: 255 });
+    assert.deepEqual({ ...FOUNDER_PALETTE.GOLD_ACCENT }, { r: 204, g: 146, b: 40, a: 255 });
+    assert.deepEqual({ ...FOUNDER_PALETTE.GOLD_HILITE }, { r: 240, g: 190, b: 92, a: 255 });
     for (const [key, color] of Object.entries(FOUNDER_PALETTE)) assert.equal(color.a, 255, `${key} is opaque (no alpha)`);
     for (const gold of [FOUNDER_PALETTE.GOLD_ACCENT, FOUNDER_PALETTE.GOLD_HILITE]) {
         for (const graphite of [FOUNDER_PALETTE.GRAPHITE_SHELL, FOUNDER_PALETTE.GRAPHITE_DARK]) {
@@ -58,6 +60,16 @@ test('AUT-062 accent parts: opaque palette colours only, UNIT 0001 plate with 4 
         assert.ok(part.size.x > 0 && part.size.y > 0 && part.size.z > 0, `${part.id} has a size`);
     }
     assert.ok(FOUNDER_ACCENT_PARTS.some((part) => part.group === 'crest' && part.color === 'GOLD_ACCENT'));
+    const cap = FOUNDER_ACCENT_PARTS.find((part) => part.id === 'crest_cap')!;
+    assert.ok(cap.size.x >= 0.22 && cap.size.z >= 0.22, 'wide head cap');
+    assert.ok(FOUNDER_ACCENT_PARTS.find((part) => part.id === 'crest_fin')!.size.x >= 0.10, 'fin widened');
+    // Slot spread: the loop phase of the pooled Founder is far from rank 0 (phase 0).
+    for (const slot of [FOUNDER_POOL_SLOT, FOUNDER_POOL_SLOT_SMALL]) {
+        const phase = ((slot + 1) * 0.6180339887498949) % 1;
+        assert.ok(Math.min(phase, 1 - phase) >= 0.3, `slot ${slot} phase ${phase.toFixed(2)} is far from rank 0`);
+    }
+    // Warm, not hazard yellow: green/red of the accent is below 0.75.
+    assert.ok(FOUNDER_PALETTE.GOLD_ACCENT.g / FOUNDER_PALETTE.GOLD_ACCENT.r < 0.75);
     assert.equal(FOUNDER_ACCENT_PARTS.filter((part) => part.group === 'band').length, 3, 'two shoulder bands and one chest band');
     assert.equal(FOUNDER_ACCENT_PARTS.filter((part) => part.group === 'pip' && part.id.includes('front')).length, 4);
     assert.equal(FOUNDER_UNIT_MARK.pips, 4);
@@ -92,7 +104,11 @@ test('AUT-062 resolveFounderRobotSlots: not owned -> none; owned -> rank 0 and a
         assert.deepEqual([...owned.poolSlots], []);
         assert.deepEqual([...founderRanks(owned)], [0]);
     }
-    for (const visible of [FOUNDER_POOL_MIN_VISIBLE, 5, 7, 14, 30]) {
+    const small = resolveFounderRobotSlots(true, FOUNDER_POOL_MIN_VISIBLE);
+    assert.deepEqual([...small.poolSlots], [FOUNDER_POOL_SLOT_SMALL], 'with 4 visible the farthest available slot is used');
+    assert.deepEqual([...founderRanks(small)], [0, 1]);
+    assert.ok(FOUNDER_POOL_SLOT_SMALL < FOUNDER_POOL_MIN_VISIBLE - 1);
+    for (const visible of [FOUNDER_POOL_FAR_MIN_VISIBLE, 6, 7, 14, 30]) {
         const owned = resolveFounderRobotSlots(true, visible);
         assert.equal(owned.workerBot, true);
         assert.deepEqual([...owned.poolSlots], [FOUNDER_POOL_SLOT]);

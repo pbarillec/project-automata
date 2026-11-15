@@ -16,8 +16,9 @@ export interface FounderRgba { readonly r: number; readonly g: number; readonly 
 export const FOUNDER_PALETTE = Object.freeze({
     GRAPHITE_SHELL: Object.freeze({ r: 38, g: 40, b: 46, a: 255 } as const),
     GRAPHITE_DARK: Object.freeze({ r: 22, g: 24, b: 28, a: 255 } as const),
-    GOLD_ACCENT: Object.freeze({ r: 232, g: 176, b: 48, a: 255 } as const),
-    GOLD_HILITE: Object.freeze({ r: 255, g: 214, b: 110, a: 255 } as const),
+    // Tuning round 1 (visual QA: hazard yellow): the briefed 232/176/48 and 255/214/110 were darkened ~12% and warmed toward amber. Unlit boxes use mainColor as-is (no linear conversion); the shell tint on the standard effect is linear-flagged, which only makes graphite read slightly darker.
+    GOLD_ACCENT: Object.freeze({ r: 204, g: 146, b: 40, a: 255 } as const),
+    GOLD_HILITE: Object.freeze({ r: 240, g: 190, b: 92, a: 255 } as const),
 });
 export type FounderColorKey = keyof typeof FOUNDER_PALETTE;
 
@@ -41,8 +42,15 @@ export function contrastRatio(a: { readonly r: number; readonly g: number; reado
 /** The ownership key is `FOUNDER_ROBOT_COSMETIC_ID` ('cosmetic.founder_robot'); the controllers read it through isFounderRobotCosmeticOwned. */
 
 export const FOUNDER_MAX_ROBOTS = 2;
-/** The pooled slot (rank 3) that carries the Founder variant when the population is big enough; stable across sessions. */
-export const FOUNDER_POOL_SLOT = 2;
+/**
+ * Pooled slot that carries the Founder variant, chosen for the largest loop-phase distance from rank 0 (phase 0): slot phases are (slot + 1) x 0.618 mod 1,
+ * so slot 3 (rank 4) sits at 0.47 (opposite, same Assembly <-> Storage loop) while the old slot 2 sat at 0.15 and overlapped rank 0. Stable across sessions.
+ */
+export const FOUNDER_POOL_SLOT = 3;
+/** With only 4 visible (3 pooled slots, 0..2) slot 3 does not exist: slot 0 (phase 0.62, 0.38 from rank 0) is the farthest available. */
+export const FOUNDER_POOL_SLOT_SMALL = 0;
+/** Visible robots (rank 0 + pool) from which slot 3 exists. */
+export const FOUNDER_POOL_FAR_MIN_VISIBLE = 5;
 /** Visible robots (rank 0 + pool) needed before a pooled robot is also a Founder (so Founder robots stay a minority). */
 export const FOUNDER_POOL_MIN_VISIBLE = 4;
 
@@ -57,7 +65,7 @@ export interface FounderRobotSlots {
 export function resolveFounderRobotSlots(owned: boolean, visibleCount: number): FounderRobotSlots {
     if (owned !== true) return Object.freeze({ workerBot: false, poolSlots: Object.freeze([]) as readonly number[] });
     const visible = Number.isFinite(visibleCount) ? Math.max(0, Math.floor(visibleCount)) : 0;
-    const poolSlots = visible >= FOUNDER_POOL_MIN_VISIBLE ? [FOUNDER_POOL_SLOT] : [];
+    const poolSlots = visible >= FOUNDER_POOL_FAR_MIN_VISIBLE ? [FOUNDER_POOL_SLOT] : visible >= FOUNDER_POOL_MIN_VISIBLE ? [FOUNDER_POOL_SLOT_SMALL] : [];
     return Object.freeze({ workerBot: true, poolSlots: Object.freeze(poolSlots) as readonly number[] });
 }
 
@@ -92,7 +100,7 @@ const HEAD_TOP = FOUNDER_BODY_HEIGHT;
 const FIN_SINK = 0.02;
 const FIN_HEIGHT = 0.16 * E;
 const FIN_TOP = HEAD_TOP - FIN_SINK + FIN_HEIGHT;
-const ANTENNA_HEIGHT = 0.20 * E;
+const ANTENNA_HEIGHT = 0.36;
 const ANTENNA_BASE = FIN_TOP - FIN_SINK;
 const ANTENNA_TOP = ANTENNA_BASE + ANTENNA_HEIGHT;
 const TIP = 0.05 * E;
@@ -118,7 +126,9 @@ export const FOUNDER_UNIT_MARK = Object.freeze({ kind: 'plate_with_pips' as cons
 /** Accent parts (the shell tint is a material instance, not a part). */
 export const FOUNDER_ACCENT_PARTS: readonly FounderPart[] = Object.freeze([
     // Crest: gold fin on the head top with a thin gold antenna stacked on it and a bright tip (added height >= 1/3 of the body).
-    { id: 'crest_fin', group: 'crest', color: 'GOLD_ACCENT', size: { x: 0.04 * E, y: FIN_HEIGHT, z: 0.10 * E }, center: { x: 0, y: HEAD_TOP - FIN_SINK + (FIN_HEIGHT / 2), z: 0 } },
+    // Tuning round 1: a wider gold head cap (0.22) so the crest is a robust blob from any yaw.
+    { id: 'crest_cap', group: 'crest', color: 'GOLD_ACCENT', size: { x: 0.22, y: 0.05, z: 0.22 }, center: { x: 0, y: HEAD_TOP + 0.015, z: 0 } },
+    { id: 'crest_fin', group: 'crest', color: 'GOLD_ACCENT', size: { x: 0.10, y: FIN_HEIGHT, z: 0.15 }, center: { x: 0, y: HEAD_TOP - FIN_SINK + (FIN_HEIGHT / 2), z: 0 } },
     { id: 'crest_antenna', group: 'crest', color: 'GOLD_ACCENT', size: { x: 0.015 * E, y: ANTENNA_HEIGHT, z: 0.015 * E }, center: { x: 0, y: ANTENNA_BASE + (ANTENNA_HEIGHT / 2), z: 0 } },
     { id: 'crest_tip', group: 'crest', color: 'GOLD_HILITE', size: { x: TIP, y: TIP, z: TIP }, center: { x: 0, y: ANTENNA_TOP, z: 0 } },
     // Two shoulder pads and one chest band (gold area that survives a distant, tilted camera).

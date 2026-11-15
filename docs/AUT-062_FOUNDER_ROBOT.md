@@ -5,9 +5,9 @@ Presentation only. No economy, monetization, design, runtime, save (version stay
 agent visual QA of the screenshots, then a human sign-off on the subjective premium feel of a monetized cosmetic.
 
 ## What was built
-- `FounderRobotVariant.ts` (pure, no `cc`): palette (GRAPHITE_SHELL 38/40/46, GRAPHITE_DARK 22/24/28, GOLD_ACCENT 232/176/48, GOLD_HILITE 255/214/110, alpha 255 only, no emissive),
+- `FounderRobotVariant.ts` (pure, no `cc`): palette (GRAPHITE_SHELL 38/40/46, GRAPHITE_DARK 22/24/28, GOLD_ACCENT 204/146/40, GOLD_HILITE 240/190/92 after the tuning round, alpha 255 only, no emissive),
   contrast helper, the part list (world units at the final robot scale) and the rule `resolveFounderRobotSlots(owned, visibleCount)`:
-  not owned -> none; owned -> rank 0 (the AUT-039 Worker Bot node, even before its first reveal) and, when 4+ robots are visible, exactly one pooled slot (slot 2 = rank 3);
+  not owned -> none; owned -> rank 0 (the AUT-039 Worker Bot node, even before its first reveal) and, when 4+ robots are visible, exactly one pooled slot (tuning round: slot 3 = rank 4 from 5 visible, slot 0 = rank 1 at exactly 4 visible);
   never all, at most 2, deterministic.
 - `FounderRobotVisual.ts` (`cc`, thin): `applyFounderRobotVariant(node, founder)`. First `true` on a node creates a `FounderVariant` child container (box primitives, `builtin-unlit`,
   `USE_COLOR`, `mainColor`, opaque) and tints the node's own cloned material instances (`getMaterialInstance`, never the shared glb material; Main/Grey -> GRAPHITE_SHELL, Black -> GRAPHITE_DARK).
@@ -25,17 +25,23 @@ The briefed starting crest (fin 0.04 x 0.16 x 0.10, antenna 0.015 x 0.20, tip 0.
 
 | Part | Size (x, y, z) | Colour |
 |---|---|---|
-| crest fin (head top) | 0.06 x 0.24 x 0.15 | GOLD_ACCENT |
-| antenna (stacked on the fin) | 0.0225 x 0.30 x 0.0225 | GOLD_ACCENT |
+| crest head cap (tuning round) | 0.22 x 0.05 x 0.22 at y head top + 0.015 | GOLD_ACCENT |
+| crest fin (head top) | 0.10 x 0.24 x 0.15 | GOLD_ACCENT |
+| antenna (stacked on the fin) | 0.0225 x 0.36 x 0.0225 | GOLD_ACCENT |
 | antenna tip | 0.075 cube | GOLD_HILITE |
 | two shoulder bands | 0.11 x 0.09 x 0.20 at x +-0.18, y 0.64 | GOLD_ACCENT |
 | chest band | 0.40 x 0.06 x 0.34 at y 0.46 | GOLD_ACCENT |
 | UNIT 0001 plate, front and back | 0.12 x 0.06 x 0.012 at y 0.56, z +-0.176 | GOLD_ACCENT |
 | 4 pips per plate | 0.016 x 0.026 x 0.006 | GRAPHITE_DARK |
 
-Crest + antenna + tip add 0.54 world (50% of the body; brief minimum 1/3). Estimated at about 85 px per world unit: about 46 px tall, but only about 5-9 px wide (the briefed ~22 px width is
+Crest + antenna + tip add 0.60 world (56% of the body; brief minimum 1/3). Estimated at about 85 px per world unit: about 46 px tall, but only about 5-9 px wide (the briefed ~22 px width is
 NOT met by a thin stacked crest) and about 500-600 px2 of gold including bands. These are estimates, not captures. If visual QA finds the crest unreadable the brief says: report, do NOT
 substitute another cosmetic (Art / Orchestrator decide; AUT-062 plan fallback is a more visible factory cosmetic only after approval).
+
+## Tuning round 1 (visual QA CHANGES_REQUESTED: group crest 13-15 px wide vs ~22, two Founders overlapped, gold read as hazard yellow)
+- Fin widened 0.06 -> 0.10, wider gold head cap 0.22 x 0.05 x 0.22 added (robust blob from any yaw), antenna 0.30 -> 0.36 (1/3-body rule still holds).
+- Pooled Founder moved away from rank 0 by loop phase (slot phase = (slot+1) x 0.618 mod 1; rank 0 is phase 0): old slot 2 = 0.15 (overlap), new slot 3 (rank 4) = 0.47, same Assembly <-> Storage loop, opposite side; at exactly 4 visible slot 3 does not exist so slot 0 (0.62) is used. The seeded 7-visible state now gives Founder ranks [0, 4]. No new state.
+- Gold warmed and darkened ~12%: GOLD_ACCENT 232/176/48 -> 204/146/40, GOLD_HILITE 255/214/110 -> 240/190/92 (contrast vs graphite still >= 3:1, tested). Unlit boxes take mainColor as-is; only the standard-effect shell tint is linear-flagged (graphite may read slightly darker). Not re-measured on device.
 
 ## UNIT 0001
 Shipped the fallback: an opaque gold plate with 4 graphite pips (front and back). Glyph text is anti-aliased / alpha-blended and cannot be guaranteed opaque on Android, so no
