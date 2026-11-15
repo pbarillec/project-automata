@@ -4,3 +4,4 @@ export * from './MockHapticsService';
 export * from './MockPlatformProviders';
 export * from './MockPlatformScript';
 export * from './MockPlatformServices';
+export * from './DebugAnalyticsService';

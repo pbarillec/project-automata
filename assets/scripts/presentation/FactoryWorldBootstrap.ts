@@ -68,7 +68,8 @@ import { ASSEMBLY_FOUNDATION_SLAB, assemblyLocal, FIRST_ROBOT_REVEAL_TARGET, ROB
 import { CocosFileSystemPort } from '../app/CocosFileSystemPort';
 import { DEBUG_COMMAND_FILE, parseDebugCommandFile } from './DebugCommandFile.ts';
 import { DEBUG_ADS_FILE, parseDebugAdsScriptFile, type DebugAdsScript } from './DebugAdsScriptFile.ts';
-import { createBuildAdsService, createBuildPurchaseService } from './BuildPlatformServices.ts';
+import { createBuildAdsService, createBuildAnalyticsTracker, createBuildPurchaseService } from './BuildPlatformServices.ts';
+import { AnalyticsObserver } from './AnalyticsObserver.ts';
 import { DEBUG_PURCHASE_FILE, parseDebugPurchaseScriptFile, type DebugPurchaseScript } from './DebugPurchaseScriptFile.ts';
 import { FounderShopController } from './FounderShopController';
 import { FounderShopFlow } from './FounderShopFlow.ts';
@@ -142,6 +143,8 @@ export class FactoryWorldBootstrap extends Component {
     private pendingBinding: { binding: FactoryWorldStateBinding; status: string; displayNames: DisplayNameSource } | null = null;
     /** AUT-055: the build-selected rewarded-ad provider (mock in DEBUG, no-op otherwise). */
     private offlineAds: AdsService | null = null;
+    /** AUT-063: non-authoritative analytics observer (domain events + flow outcomes); null until the session starts. */
+    private analytics: AnalyticsObserver | null = null;
     /** AUT-057: ONE overlay tracker shared by the ads provider and the lifecycle consumer (overlay hide != player absence). */
     private readonly platformOverlay = new PlatformOverlayTracker();
     /** AUT-059: the build-selected purchase provider (mock only in DEBUG with a debug_purchase.json script, otherwise the no-op: no Founder entry). */
@@ -274,6 +277,9 @@ export class FactoryWorldBootstrap extends Component {
             consumeDomainEvents: (snapshot, events) => presentation.consumeDomainEvents(snapshot, events),
         } : null;
         const cameraController = this.cameraController();
+        // AUT-063: analytics is observed at this boundary only (Debug provider in DEBUG builds, NoOp otherwise); it never blocks or feeds back into the session.
+        const analyticsTracker = createBuildAnalyticsTracker(DEBUG === true, (phase, payload) => emitDeviceEvent('analytics', { phase, ...payload }));
+        this.analytics = new AnalyticsObserver(analyticsTracker);
         // AUT-055: the rewarded-ad provider is chosen at build time: a mock only in DEBUG builds, otherwise the no-op (x2 hidden). The DEBUG script is read once.
         // AUT-057: release = the Android AdMob provider (NoOp when unconfigured / no native bridge); DEBUG = the mock unless the script asks for admob_test.
         this.offlineAds = createBuildAdsService(DEBUG === true, this.readDebugAdsScript(), {
@@ -320,6 +326,7 @@ export class FactoryWorldBootstrap extends Component {
                     for (const cue of mapEventsToCues(events)) this.audio.playSfx(cue);
                     if (isDeviceDiagnosticsEnabled()) this.emitAssemblyBatchEvents(events);
                     this.onTemporaryBoostEvents(events);
+                    this.analytics?.observeDomainEvents(events);
                 },
                 // AUT-051: a Reboot blocked by the pending offline report re-surfaces the card.
                 onRebootBlockedByPendingOffline: () => { this.rebootBlockedByPendingOffline = true; this.sessionWiring?.offlineReport.reportRebootBlocked(); this.showOfflineReport('reboot_blocked'); },
@@ -391,6 +398,7 @@ export class FactoryWorldBootstrap extends Component {
         // AUT-051: the Offline Factory Report card collects through the session (binding), never through a GameCommand.
         wiring.offlineReport.collectEmitter = () => binding.collectOfflineReport();
         wiring.offlineReport.setNameSource(displayNames);
+        wiring.offlineReport.onAnalytics = (signal) => this.analytics?.observeOfflineSignal(signal);
         // AUT-055: the rewarded x2 flow (ad result -> session proof -> atomic collect, all through the binding).
         const offlineAds = this.offlineAds;
         if (offlineAds) {
@@ -402,7 +410,7 @@ export class FactoryWorldBootstrap extends Component {
                 },
                 now: () => Date.now(),
                 onChange: () => wiring.offlineReport.onDoubleChanged(),
-                onDiagnostic: (phase, payload) => emitDeviceEvent('offline_double', { phase, ...payload }),
+                onDiagnostic: (phase, payload) => { emitDeviceEvent('offline_double', { phase, ...payload }); this.analytics?.observeRewardedPhase('offline_double', phase, payload); },
             });
         }
         // AUT-056: the rewarded Extended Overclock flow (ad result -> session proof -> atomic activation, all through the binding).
@@ -416,7 +424,7 @@ export class FactoryWorldBootstrap extends Component {
                 },
                 now: () => Date.now(),
                 onChange: () => chip.onFlowChanged(),
-                onDiagnostic: (phase, payload) => emitDeviceEvent('extended_overclock', { phase, ...payload }),
+                onDiagnostic: (phase, payload) => { emitDeviceEvent('extended_overclock', { phase, ...payload }); this.analytics?.observeRewardedPhase('extended_overclock', phase, payload); },
             });
             chip.requestRefresh();
         }
@@ -444,6 +452,7 @@ export class FactoryWorldBootstrap extends Component {
                 onChange: () => shop.onFlowChanged(),
                 onDiagnostic: (phase, payload) => {
                     emitDeviceEvent('founder_shop', { phase, ...payload });
+                    this.analytics?.observePurchasePhase(phase, payload);
                     if (phase === 'applied') this.emitFounderState(binding, 'applied');
                     // DEBUG duplicate callback: the store redelivers the same completed purchase right away; the flow must treat it as a no-op.
                     if (phase === 'purchase_result' && duplicateCallback && payload.status === 'completed' && payload.duplicate !== true) {
@@ -471,6 +480,8 @@ export class FactoryWorldBootstrap extends Component {
         if (wiring.presentation?.milestonePresentation) wiring.presentation.milestonePresentation.setNameSource(displayNames);
         // AUT-057: initialise the ads provider only now (session ready), never on the startup path; availability never blocks anything.
         if (offlineAds) this.startAdsProvider(offlineAds);
+        // AUT-063: the analytics provider initialises off the startup path too (fire-and-forget; a failure or timeout only disables analytics).
+        this.analytics?.start();
         if (!this.lifecycleHooksRegistered) {
             game.on(Game.EVENT_HIDE, this.onGameHide, this);
             game.on(Game.EVENT_SHOW, this.onGameShow, this);

@@ -1,6 +1,7 @@
 import { _decorator, Button, Color, Component, EventHandler, EventTouch, Graphics, Label, Layers, Node, UITransform, Vec3 } from 'cc';
 import type { LifecycleCollectResult } from '../lifecycle/LifecycleSessionCoordinator.ts';
 import type { OfflinePreviewResult } from '../offline/index.ts';
+import type { OfflineAnalyticsSignal } from '../services/AnalyticsEventMapper.ts';
 import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
 import {
     OFFLINE_REPORT_ACCENT_HEIGHT,
@@ -56,6 +57,8 @@ export class OfflineReportController extends Component {
     public onLayoutChanged: ((reason: string) => void) | null = null;
     /** AUT-055: the rewarded x2 flow (assigned by the bootstrap when the session is ready); null hides the x2 action. */
     public doubleFlow: OfflineDoubleFlow | null = null;
+    /** AUT-063: non-authoritative outcome sink (the bootstrap forwards it to the analytics observer); never read back, never blocks the card. */
+    public onAnalytics: ((signal: OfflineAnalyticsSignal) => void) | null = null;
 
     private nameSource: DisplayNameSource | null = null;
     private built = false;
@@ -135,6 +138,7 @@ export class OfflineReportController extends Component {
         this.render();
         this.node.setScale(1, 1, 1);
         this.emitReport(wasVisible ? 'refreshed' : 'shown', { reason, status: preview?.status ?? 'none' });
+        if (!wasVisible) this.signalAnalytics({ kind: 'shown', reason, rawSeconds: viewModel.rawSeconds, capApplied: viewModel.capApplied });
         this.onLayoutChanged?.(wasVisible ? 'offline_report_refreshed' : 'offline_report_shown');
         void this.refreshDouble();
     }
@@ -174,6 +178,7 @@ export class OfflineReportController extends Component {
             this.autoCollecting = false;
             const saveOk = result !== null && result.status !== 'no_pending_preview' && result.status !== 'collect_failed' ? result.save.ok : null;
             this.emitReport('auto_collected', { reason, status: result?.status ?? 'collect_error', rawSeconds: viewModel.rawSeconds, reward: viewModel.reward, saveOk });
+            if (resolveOfflineCollectOutcome(result) !== 'keep_retry') this.signalAnalytics({ kind: 'auto_collected', rawSeconds: viewModel.rawSeconds, saveOk });
             if (this.visible && resolveOfflineCollectOutcome(result) !== 'keep_retry') this.hide('auto_collected');
         };
         void emitter().then(finish, () => finish(null));
@@ -216,6 +221,7 @@ export class OfflineReportController extends Component {
         if (result === null) return;
         const outcome = resolveOfflineDoubleOutcome(result);
         this.emitReport('double_result', { result, outcome });
+        if (result === 'granted') this.signalAnalytics({ kind: 'collected', rawSeconds: this.viewModel.rawSeconds, capApplied: this.viewModel.capApplied, doubled: true, saveOk: null });
         if (outcome === 'close') { this.hide('double_granted'); return; }
         if (outcome === 'close_stale') { this.hide('close_stale'); return; }
         if (outcome === 'keep_not_granted') this.notGrantedShown = true;
@@ -231,6 +237,7 @@ export class OfflineReportController extends Component {
         const outcome = resolveOfflineCollectOutcome(result);
         const saveOk = result !== null && result.status !== 'no_pending_preview' && result.status !== 'collect_failed' ? result.save.ok : null;
         this.emitReport('collect_result', { status: result?.status ?? 'collect_error', outcome, saveOk });
+        if (outcome !== 'keep_retry') this.signalAnalytics({ kind: 'collected', rawSeconds: this.viewModel.rawSeconds, capApplied: this.viewModel.capApplied, doubled: false, saveOk });
         if (outcome === 'keep_retry') {
             this.retryShown = true;
             if (this.visible) this.render();
@@ -472,6 +479,15 @@ export class OfflineReportController extends Component {
         graphics.clear();
         graphics.fillColor = new Color(colors.backdrop.r, colors.backdrop.g, colors.backdrop.b, colors.backdrop.a);
         graphics.fillRect(-size.width / 2, -size.height / 2, size.width, size.height);
+    }
+
+    private signalAnalytics(signal: OfflineAnalyticsSignal): void {
+        try {
+            this.onAnalytics?.(signal);
+        }
+        catch {
+            // analytics never affects the report card
+        }
     }
 
     // ---- DEBUG diagnostics ----

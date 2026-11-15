@@ -5,6 +5,9 @@ import { EXTENDED_OVERCLOCK_CLAIM_KEY, OFFLINE_DOUBLE_CLAIM_KEY } from '../monet
 import { AndroidAdsService, type AndroidAdsDiagnostic, type AndroidAdsTransport } from '../platform/android/AndroidAdsService.ts';
 import { AndroidPurchaseService, type AndroidBillingDiagnostic, type AndroidBillingTransport } from '../platform/android/AndroidPurchaseService.ts';
 import { MockAdsService, MockPurchaseService } from '../platform/mock/MockPlatformProviders.ts';
+import { DebugAnalyticsService } from '../platform/mock/DebugAnalyticsService.ts';
+import { NoOpAnalyticsService } from '../platform/noop/NoOpAnalyticsService.ts';
+import { AnalyticsTracker } from '../services/AnalyticsTracker.ts';
 import { NoOpAdsService, NoOpPurchaseService } from '../platform/noop/NoOpPlatformProviders.ts';
 import type { PlatformOverlayTracker } from '../services/PlatformOverlay';
 import { DEBUG_ADS_PROVIDER_ADMOB_TEST, type DebugAdsScript } from './DebugAdsScriptFile.ts';
@@ -90,4 +93,21 @@ export function createBuildPurchaseService(debug: boolean, script?: DebugPurchas
     const steps = script.outcomes.map((outcome) => ({ outcome }));
     if (steps.length > 0) purchases.enqueueOutcomes(PRODUCTS.founderPack, ...steps);
     return { service: purchases, source: 'mock' };
+}
+
+/**
+ * AUT-063 build-time analytics selection (pure, engine-free). DEBUG: the Debug (logging) provider with STRICT catalogue validation, diagnostics forwarded to `onDiagnostic`.
+ * Release: the NoOp provider (no vendor SDK is bundled yet; the production provider is a release-stage decision) with validation off. Either way the tracker is non-authoritative.
+ */
+export function createBuildAnalyticsTracker(debug: boolean, onDiagnostic?: (phase: string, payload: Record<string, unknown>) => void): AnalyticsTracker {
+    const startTimer = (ms: number, onFire: () => void): (() => void) => { const handle = setTimeout(onFire, ms); return () => clearTimeout(handle); };
+    if (debug !== true) return new AnalyticsTracker(new NoOpAnalyticsService(), { validation: 'off', startTimer });
+    return new AnalyticsTracker(new DebugAnalyticsService(), {
+        validation: 'strict',
+        startTimer,
+        onDiagnostic: (diagnostic) => {
+            const { kind, ...rest } = diagnostic;
+            onDiagnostic?.(kind, rest);
+        },
+    });
 }
