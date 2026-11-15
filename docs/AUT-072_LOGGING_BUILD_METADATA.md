@@ -31,3 +31,7 @@ Release policy: `RELEASE` logs only `warn` and `error`; `DEBUG` logs everything.
 - No new player-visible UI in any build. `+` after the sha means the build was made from a dirty `assets/` tree.
 - A summary line `build: unknown (no build_info event)` means the APK predates AUT-072.
 - `build_info_present` is not wired as a generic objective check (it would require touching every pinned scenario expectation); it is summary/baseline only.
+
+## Device verification (2026-11-15)
+
+Gate APK `aut072-37f1854`; `npm run check` 1560 tests green; `git status` clean after `device:gate-build` (BuildInfoData restored). Captures PASS: aut049, aut052, aut059-available, aut066-factory. `summary.md` now begins `build: 37f1854e DEBUG (version 0.1.0-dev #189, save v3, content 0.1.0-aut-010, cocos-creator 3.8.8)`, matching `git rev-parse --short=8 HEAD`. Release-build log reduction is only unit-tested (no release build yet; see AUT-073).
