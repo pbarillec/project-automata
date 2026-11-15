@@ -203,6 +203,31 @@ test('flow: the ad availability is cached for 5 s and re-read after every attemp
     assert.equal(availabilityReads(), 4, 'after the attempt: the start() read plus the forced re-read');
 });
 
+test('AUT-065: invalidating the ad availability makes the next refresh re-read it inside the TTL (consent flip)', async () => {
+    const ctx = await start();
+    const ads = createBuildAdsService(true) as MockAdsService;
+    const { flow } = makeFlow(ctx, ads);
+    let available = false;
+    ads.getRewardedAvailability = (async () => ({ available, status: 'ready' })) as never;
+    const first = await flow.refreshOffer();
+    assert.equal(first.offer, false);
+    assert.equal(first.blockedBy, 'ad');
+    available = true;
+    assert.equal((await flow.refreshOffer()).offer, false, 'inside the TTL the cached read is kept');
+    flow.invalidateAdAvailability();
+    assert.equal((await flow.refreshOffer()).offer, true, 'after invalidation the new availability is read');
+});
+
+test('AUT-065: the consent subscription and the availability poll invalidate the Extended chip ad cache (source pin)', () => {
+    const bootstrap = fs.readFileSync(path.resolve('assets/scripts/presentation/FactoryWorldBootstrap.ts'), 'utf8');
+    const controller = fs.readFileSync(path.resolve('assets/scripts/presentation/ExtendedOverclockController.ts'), 'utf8');
+    assert.match(controller, /requestAdAvailabilityRefresh\(\): void \{\s*this\.flow\?\.invalidateAdAvailability\(\);\s*this\.requestRefresh\(\);/);
+    const consentBlock = bootstrap.slice(bootstrap.indexOf('consent.subscribe('), bootstrap.indexOf('void consent.start()'));
+    assert.match(consentBlock, /extendedOverclock\.requestAdAvailabilityRefresh\(\)/);
+    const pollBlock = bootstrap.slice(bootstrap.indexOf('private async pollAdsAvailability'), bootstrap.indexOf('private onGameHide'));
+    assert.match(pollBlock, /extendedOverclock\.requestAdAvailabilityRefresh\(\)/);
+});
+
 test('flow: the latest refresh wins (a slow stale refresh never overwrites a newer state)', async () => {
     const ctx = await start();
     const { flow } = makeFlow(ctx);

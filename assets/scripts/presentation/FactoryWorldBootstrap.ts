@@ -606,7 +606,7 @@ export class FactoryWorldBootstrap extends Component {
             if (state.canRequestAds && this.offlineAds) this.startAdsProvider(this.offlineAds);
             this.adsAvailabilitySignature = '';
             this.sessionWiring?.offlineReport.onAdsAvailabilityChanged();
-            this.sessionWiring?.extendedOverclock.requestRefresh();
+            this.sessionWiring?.extendedOverclock.requestAdAvailabilityRefresh();
         });
         void consent.start().then(() => { this.sessionWiring?.settings.refresh(); }).catch(() => undefined);
     }
@@ -644,7 +644,7 @@ export class FactoryWorldBootstrap extends Component {
         if (signature !== this.adsAvailabilitySignature) {
             this.adsAvailabilitySignature = signature;
             this.sessionWiring?.offlineReport.onAdsAvailabilityChanged();
-            this.sessionWiring?.extendedOverclock.requestRefresh();
+            this.sessionWiring?.extendedOverclock.requestAdAvailabilityRefresh();
         }
         return offlineDouble && extended;
     }

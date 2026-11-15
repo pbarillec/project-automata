@@ -79,6 +79,11 @@ export class ExtendedOverclockFlow {
         return this.inFlight === this.state.inFlight ? this.state : Object.freeze({ ...this.state, inFlight: this.inFlight });
     }
 
+    /** AUT-065: drops the cached ad availability so the next refresh re-reads it (consent changed / the ads provider reported a flip). */
+    public invalidateAdAvailability(): void {
+        this.adReadAtMs = null;
+    }
+
     /** Re-reads the session offer (and the ad availability when the cache is stale). The latest call wins. */
     public async refreshOffer(options: { readonly forceAdRead?: boolean } = {}): Promise<ExtendedOverclockFlowState> {
         const token = ++this.refreshToken;

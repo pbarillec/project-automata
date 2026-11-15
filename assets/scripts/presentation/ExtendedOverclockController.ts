@@ -85,6 +85,12 @@ export class ExtendedOverclockController extends Component {
         this.refreshRequested = true;
     }
 
+    /** AUT-065: the ad availability itself may have changed (consent, provider load): drop the flow's cached read, then re-read on the next frame. */
+    public requestAdAvailabilityRefresh(): void {
+        this.flow?.invalidateAdAvailability();
+        this.requestRefresh();
+    }
+
     /** The flow's state changed (offer refreshed, ad in flight, ad finished): redraw. */
     public onFlowChanged(): void {
         this.render();
