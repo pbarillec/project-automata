@@ -71,3 +71,11 @@ instances, never destroyed, scale-hidden, both controllers wired, no new event /
 ## Pending
 - Agent visual QA of the owned-many / owned-first / not-owned captures (crest + gold read at the normal camera distance), then human sign-off on the premium feel.
 - Real-device confirmation of the shell tint (or the fallback) and of the crest pixel size.
+
+## Device evidence and visual QA (2026-11-15)
+
+Gate APK `aut062b` (post tuning round, commit b711944); `npm run check` 1299 tests green. Captures PASS (0 errors): `aut062-not-owned`, `aut062-owned-first`, `aut062-owned-many`, `aut062-mid-session` (after scripting a duplicate callback in the seed), `aut062-reload`.
+- Round 1 visual QA: CHANGES_REQUESTED (crest 13-15 px wide at group distance, Founders overlapped, hazard-yellow gold) -> tuning round (wider fin + head cap, taller antenna, pooled Founder rank 4, gold warmed ~12%).
+- Round 2 visual QA (scene-presentation, stills): objective criteria **PASS**. Crest 27x49 (many/mid-session), 24x46 (reload), 40x75 (owned-first) vs target ~22x45; founderRanks [0,4] of 7, stable across relaunch; shell tinted (no fallback); warm ochre gold; no artifacts; not-owned shows none; perf p95 20.2 ms (budget 25).
+- Non-blocking POLISH: the two Founders can sit ~40 px apart while wandering; UNIT 0001 not legible (not a criterion); swap smoothness in motion unchecked.
+- **Pending human:** does the Founder robot feel premium/distinct enough to justify the pack at normal group distance on the phone (subjective, monetized cosmetic).
