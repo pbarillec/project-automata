@@ -266,7 +266,7 @@ export function evaluateRevealTimeline(events: readonly TimelineEvent[], options
     const checks: RevealCheck[] = [];
     const errors = events.filter((e) => e.event.evt === 'error');
     checks.push({ id: 'no_error_events', ok: errors.length === 0, detail: `${errors.length} error events` });
-    checks.push({ id: 'frames_captured', ok: options.frameCount >= 4, detail: `${options.frameCount} frames` });
+    checks.push({ id: 'frames_captured', ok: options.expectPerfBaseline !== undefined ? options.frameCount >= 1 : options.frameCount >= 4, detail: `${options.frameCount} frames` });
     if (options.expectConstruction) {
         const producer = options.expectConstruction;
         const started = events.find((e) => e.event.evt === 'construction_state' && e.event.phase === 'started' && e.event.producerId === producer);

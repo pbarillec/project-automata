@@ -65,9 +65,18 @@ Honest limits: this is a DEBUG build with diagnostics logging on, so absolute nu
 triangle counters depend on `director.root.device` exposing `numDrawCalls` / `numTris` (otherwise `unavailable`, renderer and node counts are reported instead).
 This tooling could not be executed here (no device run, no Cocos compile): the `cc` code in `RobotPopulationController` (counters / scene traversal) is unverified until the first device run.
 
-## Baseline results
-_Empty on purpose: filled by the orchestrator from the device run (device, build ids, frame time / fps / jank, gfxinfo, memory, CPU / GPU, draw calls or "unavailable",
-renderer counts, objective check list, evidence paths)._
+## Baseline results (2026-11-15, orchestrator device run)
+Device: OnePlus NE2215 (SM8450, Adreno 730), Android 15, 1080x2412 @ 60 Hz. DEBUG FactoryWorld APK (diagnostics logging on, so absolute numbers are a DEBUG baseline, not a release verdict), commit 9927728. State: Era III, 5 producers Lv100 automated, 14 visible robots, Free Overclock active, decals + AI Core present. Window 45 s after 6 s warm-up.
+
+| variant | fps avg | p50 ms | p95 ms | p99 ms | max ms | jank >33.3 ms | big jank >50 ms | draw calls | tris | PSS MB (before/after) | top CPU (1 core=100%) | GPU busy |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|
+| standard | 49.1 | 18.5 | 25.5 | 28.5 | 47.5 | 4 (0.2%) | 0 | 805 | 103,285 | 406 / 362 | 146% | 26.9% |
+| founder | 47.9 | 19.5 | 25.5 | 28.5 | 35.1 | 2 (0.1%) | 0 | 839 | 103,693 | 368 / 376 | 135% | 27.8% |
+
+Scene (standard, last sample): 2,333 nodes, 609 MeshRenderers, 50 SkinnedMeshRenderers, 0 particle systems, 1 light, 0 shadow casters, 38 UI renderers, 153 unique materials.
+Against the AUT-041 budget (information only): p95 25.5 ms vs <= 25 ms slightly OVER; avg fps 47.9-49.1 vs >= 50 slightly BELOW; no big jank; the device is at 60 Hz so most frames land at 16.7-20 ms.
+Observations for AUT-068: ~800+ draw calls from 609 mesh renderers with 153 unique materials is the dominant lever (material reuse / batching); no shadows or particles to optimise; Founder variant costs ~34 draw calls and ~1 fps. gfxinfo returned 0 frames (GL surface), so the in-app sampler is the frame-time source; GPU busy is low (27%), CPU process load ~135-146% of one core, so the CPU/draw-call side is the bottleneck.
+Evidence: temp/perf/2026-11-15T074903 (standard), temp/perf/2026-11-15T075102 (founder), temp/reveal/aut067-baseline-*.
 
 ## Measured-bottleneck candidates for AUT-068 (priority order from CODEX_PLAN, to be confirmed or dropped by the baseline)
 Fix only what the baseline supports; no speculative LOD / occlusion rewrite.
