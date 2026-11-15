@@ -64,3 +64,7 @@ Extension of the AUT-063 layer (nothing rebuilt):
 - `node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts reveal-capture --scenario aut059-purchase-success`
 
 (`npm run device:reveal-capture -- --scenario <id>` is the equivalent npm wrapper.) Each adds the `analytics_*` checks to the usual PASS / FAIL list.
+
+## Device evidence (2026-11-15)
+
+Gate APK `aut064`; `npm run check` 1342 tests green. Captures PASS with all new `analytics_*` checks: `aut055-success` (opportunity -> start -> complete -> bonus granted -> collected doubled), `aut056-success` (opportunity -> start -> complete -> activated with era/civ/next-goal), `aut059-purchase-success` (impression once, start, single complete despite duplicate callback). One opaque session id per run, no price text. Open items for the Technical Lead / Monetization: `price_tier` unavailable (no tier/currency from store metadata); `run_age_bucket`/`since_unlock_bucket` mostly `unknown` in-session (exact spans derivable from backend timestamps; persisting run-start/unlock timestamps would be a save-schema decision, not taken).
