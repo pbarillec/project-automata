@@ -23,3 +23,22 @@ export type {
 export type {
     RebootPreview,
 } from '../progression/index.ts';
+
+export {
+    DEBUG_LIMITS,
+    DEBUG_SOURCE,
+    DEBUG_STATE_PATCH_TYPES,
+    createDebugGate,
+    executeDebugStatePatch,
+    isDebugGateEnabled,
+    parseDebugStatePatch,
+} from './DebugStatePatch.ts';
+
+export type {
+    DebugGate,
+    DebugPatchRejection,
+    DebugPatchResult,
+    DebugPatchSuccess,
+    DebugStatePatch,
+    DebugStatePatchType,
+} from './DebugStatePatch.ts';

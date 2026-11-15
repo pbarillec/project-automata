@@ -30,8 +30,14 @@ import type {
     PersistenceSaveRequest,
     PersistenceSaveResult,
 } from '../persistence/index.ts';
+import { createSaveTimestampUtcIsoFromUnixMilliseconds } from '../persistence/index.ts';
 import {
+    DEBUG_LIMITS,
+    DEBUG_SOURCE,
     GameRuntime,
+    isDebugGateEnabled,
+    type DebugGate,
+    type DebugStatePatch,
     type ClockAdvanceActiveSessionResult,
     type CommandExecutionResult,
     type CommandRejectionResult,
@@ -283,6 +289,31 @@ export type LifecyclePermanentUpgradePurchaseResult =
     | LifecyclePermanentUpgradeRejectedResult
     | LifecyclePermanentUpgradeDurableResult
     | LifecyclePermanentUpgradeDurabilityFailureResult;
+
+/** AUT-069 (DEBUG only): the coordinator's debug entry results (always `source: 'debug'`). */
+export interface LifecycleDebugRejectedResult {
+    readonly status: 'debug_rejected';
+    readonly source: typeof DEBUG_SOURCE;
+    readonly reason: string;
+    readonly message: string;
+}
+
+export interface LifecycleDebugPatchAppliedResult {
+    readonly status: 'debug_applied_saved' | 'debug_applied_persistence_failed';
+    readonly source: typeof DEBUG_SOURCE;
+    readonly patch: DebugStatePatch;
+    readonly save: PersistenceSaveResult;
+}
+
+export interface LifecycleDebugPendingOfflineCreatedResult {
+    readonly status: 'debug_pending_offline_created' | 'debug_pending_offline_persistence_failed';
+    readonly source: typeof DEBUG_SOURCE;
+    readonly seconds: number;
+    readonly save: PersistenceSaveResult;
+}
+
+export type LifecycleDebugPatchResult = LifecycleDebugRejectedResult | LifecycleDebugPatchAppliedResult;
+export type LifecycleDebugPendingOfflineResult = LifecycleDebugRejectedResult | LifecycleDebugPendingOfflineCreatedResult;
 
 export class LifecycleSessionCoordinator {
     private readonly configRepository: GameConfigRepository;
@@ -723,6 +754,63 @@ export class LifecycleSessionCoordinator {
             owned: report.owned,
             source: report.source,
             reportedAtUtcMs: this.readNowUtcMs(),
+        });
+    }
+
+    /**
+     * AUT-069 DEBUG-only state patch (see `runtime/DebugStatePatch.ts`). Requires an enabled `DebugGate`; otherwise nothing changes and no save is
+     * requested. An applied patch commits in memory, then one critical save (reason `manual`), so a relaunch reproduces the patched state exactly.
+     * It is not a GameCommand and emits no domain event (no observer sees it); the result carries `source: 'debug'`.
+     */
+    async applyDebugStatePatch(patch: unknown, gate: DebugGate): Promise<LifecycleDebugPatchResult> {
+        const result = this.runtime.applyDebugStatePatch(patch, gate);
+        if (!result.ok) {
+            return Object.freeze({ status: 'debug_rejected' as const, source: DEBUG_SOURCE, reason: result.reason, message: result.message });
+        }
+
+        this.persistence.markDirty();
+        const save = await this.requestSave({ intent: 'critical', reason: 'manual' });
+        return Object.freeze({
+            status: save.ok ? 'debug_applied_saved' as const : 'debug_applied_persistence_failed' as const,
+            source: DEBUG_SOURCE,
+            patch: result.patch,
+            save,
+        });
+    }
+
+    /**
+     * AUT-069 DEBUG-only: simulates an absence of `seconds` by creating the pending offline preview as if the save had been written `seconds`
+     * ago, through the SAME mechanism as a real absence (the pending absence-start cursor that every non-collect save keeps as `savedAtUtc`, so
+     * a kill / relaunch still shows the same report). Requires an enabled `DebugGate`; rejected while a preview is already pending or when the
+     * state would produce no collectible preview (nothing automated / offline-eligible, or under the card minimum).
+     */
+    async createDebugPendingOffline(seconds: unknown, gate: DebugGate): Promise<LifecycleDebugPendingOfflineResult> {
+        const rejected = (reason: string, message: string) => Object.freeze({ status: 'debug_rejected' as const, source: DEBUG_SOURCE, reason, message });
+        if (!isDebugGateEnabled(gate)) return rejected('debug_disabled', 'Debug entries are only available in DEBUG builds with diagnostics enabled.');
+        if (typeof seconds !== 'number' || !Number.isInteger(seconds) || seconds < DEBUG_LIMITS.minOfflineSeconds || seconds > DEBUG_LIMITS.maxOfflineSeconds) {
+            return rejected('malformed_seconds', 'seconds must be an integer within the debug absence bounds.');
+        }
+        if (this.pendingOfflinePreview !== null) return rejected('pending_preview_exists', 'An offline report is already pending.');
+
+        const nowMs = this.readNowUtcMs();
+        if (!Number.isFinite(nowMs)) return rejected('time_unavailable', 'The clock is unavailable.');
+        const absenceStartUtcIso = createSaveTimestampUtcIsoFromUnixMilliseconds(Math.floor(nowMs / 1000) * 1000 - seconds * 1000);
+        const preview = toPendingOfflinePreview(createOfflineProgressPreviewFromUtc(this.configRepository, this.runtime.getStateSnapshot(), {
+            persistedAtUtcIso: absenceStartUtcIso,
+            currentUtcIso: this.timeService.nowUtcIso(),
+            config: this.offlineConfig,
+        }));
+        if (preview === null) return rejected('no_collectible_preview', 'The current state yields no collectible offline report for this absence.');
+
+        this.pendingOfflinePreview = preview;
+        this.pendingAbsenceStartUtcIso = absenceStartUtcIso;
+        this.persistence.markDirty();
+        const save = await this.requestSave({ intent: 'critical', reason: 'manual' });
+        return Object.freeze({
+            status: save.ok ? 'debug_pending_offline_created' as const : 'debug_pending_offline_persistence_failed' as const,
+            source: DEBUG_SOURCE,
+            seconds,
+            save,
         });
     }
 

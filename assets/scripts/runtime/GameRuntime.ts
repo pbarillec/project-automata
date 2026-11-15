@@ -1,6 +1,7 @@
 import type { BreakthroughEffect, GameConfigRepository } from '../config/ConfigLoader.ts';
 import type { DomainEvent, GameCommand } from '../domain/index.ts';
 import { applyFounderPackPurchase, applyFounderStoreReport } from '../monetization/FounderOffer.ts';
+import { executeDebugStatePatch, type DebugGate, type DebugPatchResult } from './DebugStatePatch.ts';
 import {
     EXTENDED_OVERCLOCK_CLAIM_KEY,
     evaluateExtendedOverclockEligibility,
@@ -191,6 +192,16 @@ export class GameRuntime {
 
     advanceAutomation(elapsedSeconds: number): CommandExecutionResult {
         return this.execute({ type: 'advanceAutomation', elapsedSeconds });
+    }
+
+    /**
+     * AUT-069 DEBUG-only state patch (grant IO / producer level / era / Robots Built / AI Cores). Not a GameCommand: it needs an enabled `DebugGate`
+     * (DEBUG build AND diagnostics), otherwise it is rejected with `debug_disabled` and nothing changes. Results carry `source: 'debug'`.
+     */
+    applyDebugStatePatch(patch: unknown, gate: DebugGate): DebugPatchResult {
+        const result = executeDebugStatePatch(this.repository, this.currentState, patch, gate);
+        if (result.ok) this.currentState = result.state;
+        return result;
     }
 
     execute(command: unknown): CommandExecutionResult {

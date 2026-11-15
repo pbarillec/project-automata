@@ -3,6 +3,8 @@ import type { GameCommand } from '../domain/Commands.ts';
 import type { DomainEvent } from '../domain/Events.ts';
 import type {
     LifecycleActiveClockAdvanceResult,
+    LifecycleDebugPatchResult,
+    LifecycleDebugPendingOfflineResult,
     LifecycleBonusCollectResult,
     LifecycleCollectResult,
     LifecycleCommandResult,
@@ -17,6 +19,7 @@ import type {
     OfflineDoubleAdProof,
     RewardedAdProof,
 } from '../lifecycle/LifecycleSessionCoordinator.ts';
+import type { DebugGate } from '../runtime/DebugStatePatch.ts';
 import { resolveFounderOfferStatus, type FounderEntitlementSource, type FounderOfferStatus } from '../monetization/FounderOffer.ts';
 import type { OfflinePreviewResult } from '../offline/index.ts';
 import type { GameState } from '../state/GameState.ts';
@@ -53,6 +56,15 @@ export interface FactoryWorldSessionPort {
     reconcileFounderEntitlement?(report: { readonly owned: boolean | null; readonly source: FounderEntitlementSource }): Promise<LifecycleFounderResult>;
     /** AUT-050: the permanent-upgrade purchase transaction (in-memory commit, then a critical save). Optional so minimal ports still work. */
     purchasePermanentUpgrade?(upgradeId: string): Promise<LifecyclePermanentUpgradePurchaseResult>;
+    /** AUT-069 (DEBUG only, gate-protected): the DEBUG state patch. Optional so minimal ports still work. */
+    applyDebugStatePatch?(patch: unknown, gate: DebugGate): Promise<LifecycleDebugPatchResult>;
+    /** AUT-069 (DEBUG only, gate-protected): the simulated absence (pending offline report). Optional so minimal ports still work. */
+    createDebugPendingOffline?(seconds: unknown, gate: DebugGate): Promise<LifecycleDebugPendingOfflineResult>;
+}
+
+/** AUT-069: marks work submitted by the DEBUG / QA toolkit; its events are fanned out to presentation but never reported to analytics. */
+export interface FactoryWorldDebugSourceOptions {
+    readonly source?: 'debug';
 }
 
 /** World automation presentation (structurally `PresentationController`). */
@@ -111,7 +123,7 @@ export interface FactoryWorldStateBindingOptions {
     /** AUT-RBT-001: optional Reboot chip / modal sink. */
     readonly reboot?: FactoryWorldRebootSink | null;
     /** AUT-GP-001: optional observer of the domain events fanned out (FactoryWorld passes a DEBUG diagnostic). */
-    readonly observeDomainEvents?: (events: readonly DomainEvent[]) => void;
+    readonly observeDomainEvents?: (events: readonly DomainEvent[], source?: 'debug') => void;
     /** Minimum active time between ordinary save requests from `tick` (the dirty policy still decides). */
     readonly saveRequestIntervalSeconds?: number;
     /** AUT-051: called when a Reboot was blocked by a pending offline report (FactoryWorld re-surfaces the card and emits a DEBUG event). */
@@ -154,7 +166,7 @@ export class FactoryWorldStateBinding {
     private readonly assemblyBatch: FactoryWorldAssemblyBatchSink | null;
     private readonly permanentUpgrades: FactoryWorldPermanentUpgradeSink | null;
     private readonly reboot: FactoryWorldRebootSink | null;
-    private readonly observeDomainEvents: ((events: readonly DomainEvent[]) => void) | null;
+    private readonly observeDomainEvents: ((events: readonly DomainEvent[], source?: 'debug') => void) | null;
     private readonly reportError: FactoryWorldErrorReporter;
     private readonly reportCommandResult: FactoryWorldCommandResultReporter | null;
     private readonly saveRequestIntervalSeconds: number;
@@ -221,15 +233,15 @@ export class FactoryWorldStateBinding {
         });
     }
 
-    async submit(command: GameCommand): Promise<LifecycleCommandResult | null> {
+    async submit(command: GameCommand, options: FactoryWorldDebugSourceOptions = {}): Promise<LifecycleCommandResult | null> {
         try {
             // AUT-049: a Reboot goes through the session's Reboot transaction, so `rebootCompleted` exists only after `reboot_saved`.
-            if (command.type === 'rebootCivilization' && typeof this.session.rebootCivilizationConfirmed === 'function') return await this.submitReboot(command);
+            if (command.type === 'rebootCivilization' && typeof this.session.rebootCivilizationConfirmed === 'function') return await this.submitReboot(command, options.source);
             // AUT-050: a permanent-upgrade purchase goes through the session's purchase transaction (critical save), not the ordinary-save path.
-            if (command.type === 'purchasePermanentUpgrade' && typeof this.session.purchasePermanentUpgrade === 'function') return await this.submitPermanentUpgrade(command);
+            if (command.type === 'purchasePermanentUpgrade' && typeof this.session.purchasePermanentUpgrade === 'function') return await this.submitPermanentUpgrade(command, options.source);
             const result = await this.session.execute(command, { requestOrdinarySave: true });
             if (result.execution.ok) {
-                this.fanOut(result.execution.events);
+                this.fanOut(result.execution.events, options.source);
             }
             const reportCommandResult = this.reportCommandResult;
             if (reportCommandResult) this.guard('command_result', () => reportCommandResult(command, result));
@@ -241,7 +253,7 @@ export class FactoryWorldStateBinding {
         }
     }
 
-    private async submitReboot(command: GameCommand): Promise<LifecycleCommandResult | null> {
+    private async submitReboot(command: GameCommand, source?: 'debug'): Promise<LifecycleCommandResult | null> {
         const reboot = await this.session.rebootCivilizationConfirmed!();
         // A pending offline report blocks the Reboot: nothing executed, nothing to fan out.
         if (reboot.status === 'pending_offline_preview') {
@@ -251,20 +263,50 @@ export class FactoryWorldStateBinding {
         }
         const result: LifecycleCommandResult = { execution: reboot.execution, save: reboot.save };
         // `reboot_saved` carries the durable `rebootCompleted` event; `reboot_persistence_failed` still fans out the state change but never that event.
-        if (result.execution.ok) this.fanOut(result.execution.events);
+        if (result.execution.ok) this.fanOut(result.execution.events, source);
         const reportCommandResult = this.reportCommandResult;
         if (reportCommandResult) this.guard('command_result', () => reportCommandResult(command, result));
         return result;
     }
 
-    private async submitPermanentUpgrade(command: GameCommand & { type: 'purchasePermanentUpgrade' }): Promise<LifecycleCommandResult> {
+    private async submitPermanentUpgrade(command: GameCommand & { type: 'purchasePermanentUpgrade' }, source?: 'debug'): Promise<LifecycleCommandResult> {
         const purchase = await this.session.purchasePermanentUpgrade!(command.upgradeId);
         const result: LifecycleCommandResult = { execution: purchase.execution, save: purchase.save };
         // `permanent_upgrade_persistence_failed` still fans out the in-memory change (the session does not roll back); a rejection changes nothing.
-        if (result.execution.ok) this.fanOut(result.execution.events);
+        if (result.execution.ok) this.fanOut(result.execution.events, source);
         const reportCommandResult = this.reportCommandResult;
         if (reportCommandResult) this.guard('command_result', () => reportCommandResult(command, result));
         return result;
+    }
+
+    /**
+     * AUT-069 (DEBUG only): the gate-protected DEBUG state patch through the session. An applied patch re-syncs the presentation exactly like the
+     * initial load (no events replayed: no toast / fanfare / era card), so the HUD, panels and the world follow the patched state. It emits no domain
+     * event, so analytics never sees it. Null when the port has no support or the call threw.
+     */
+    async applyDebugStatePatch(patch: unknown, gate: DebugGate): Promise<LifecycleDebugPatchResult | null> {
+        try {
+            if (typeof this.session.applyDebugStatePatch !== 'function') return null;
+            const result = await this.session.applyDebugStatePatch(patch, gate);
+            if (result.status !== 'debug_rejected') this.init();
+            return result;
+        }
+        catch (error) {
+            this.report('debug_state_patch', error);
+            return null;
+        }
+    }
+
+    /** AUT-069 (DEBUG only): the gate-protected simulated absence (pending offline report). The caller shows the report card. Null when unsupported or on error. */
+    async createDebugPendingOffline(seconds: unknown, gate: DebugGate): Promise<LifecycleDebugPendingOfflineResult | null> {
+        try {
+            if (typeof this.session.createDebugPendingOffline !== 'function') return null;
+            return await this.session.createDebugPendingOffline(seconds, gate);
+        }
+        catch (error) {
+            this.report('debug_pending_offline', error);
+            return null;
+        }
     }
 
     /** Per-frame: advance the active clock; request an ordinary save at most once per interval. */
@@ -412,22 +454,22 @@ export class FactoryWorldStateBinding {
      * AUT-059: applies a completed Founder purchase delivery through the session (exactly-once Surges + critical save). A change (durable or not)
      * fans out its events and reports the command result; an already-applied replay changes nothing. Null when the port has no support or threw.
      */
-    async applyFounderPackPurchase(request: { readonly requestId: string; readonly source: FounderEntitlementSource }): Promise<LifecycleFounderResult | null> {
-        return this.runFounder('apply_founder_pack', () => this.session.applyFounderPackPurchase?.(request) ?? null);
+    async applyFounderPackPurchase(request: { readonly requestId: string; readonly source: FounderEntitlementSource }, options: FactoryWorldDebugSourceOptions = {}): Promise<LifecycleFounderResult | null> {
+        return this.runFounder('apply_founder_pack', () => this.session.applyFounderPackPurchase?.(request) ?? null, options.source);
     }
 
     /** AUT-059: a store entitlement report (restore-style). Same fan-out / null contract as applyFounderPackPurchase. */
-    async reconcileFounderEntitlement(report: { readonly owned: boolean | null; readonly source: FounderEntitlementSource }): Promise<LifecycleFounderResult | null> {
-        return this.runFounder('reconcile_founder', () => this.session.reconcileFounderEntitlement?.(report) ?? null);
+    async reconcileFounderEntitlement(report: { readonly owned: boolean | null; readonly source: FounderEntitlementSource }, options: FactoryWorldDebugSourceOptions = {}): Promise<LifecycleFounderResult | null> {
+        return this.runFounder('reconcile_founder', () => this.session.reconcileFounderEntitlement?.(report) ?? null, options.source);
     }
 
-    private async runFounder(context: string, call: () => Promise<LifecycleFounderResult> | null): Promise<LifecycleFounderResult | null> {
+    private async runFounder(context: string, call: () => Promise<LifecycleFounderResult> | null, source?: 'debug'): Promise<LifecycleFounderResult | null> {
         try {
             const pending = call();
             if (pending === null) return null;
             const result = await pending;
             if (result.status === 'applied_saved' || result.status === 'applied_persistence_failed') {
-                this.fanOut(result.execution.events);
+                this.fanOut(result.execution.events, source);
                 const reportCommandResult = this.reportCommandResult;
                 if (reportCommandResult) this.guard('command_result', () => reportCommandResult(result.execution.command, { execution: result.execution, save: result.save }));
             }
@@ -439,7 +481,7 @@ export class FactoryWorldStateBinding {
         }
     }
 
-    private fanOut(events: readonly DomainEvent[]): void {
+    private fanOut(events: readonly DomainEvent[], source?: 'debug'): void {
         this.guard('fan_out', () => {
             const snapshot = this.session.getStateSnapshot();
             this.automation?.consumeDomainEvents(snapshot, events);
@@ -447,7 +489,7 @@ export class FactoryWorldStateBinding {
             this.camera?.syncPanBounds(snapshot);
         });
         const observeDomainEvents = this.observeDomainEvents;
-        if (observeDomainEvents) this.guard('observe_events', () => observeDomainEvents(events));
+        if (observeDomainEvents) this.guard('observe_events', () => observeDomainEvents(events, source));
     }
 
     private refreshViews(snapshot: GameState): void {

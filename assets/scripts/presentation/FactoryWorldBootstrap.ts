@@ -70,7 +70,8 @@ import { ROBOT_LINE_FOUNDATION_SLAB, ROBOT_LINE_LAMP_IDS, ROBOT_LINE_LAMPS, ROBO
 import { FirstRobotPresentationController, ROBOT_BAY_LAMP_OFF_NODE_NAME, ROBOT_BAY_LAMP_ON_NODE_NAME } from './FirstRobotPresentationController';
 import { ASSEMBLY_FOUNDATION_SLAB, assemblyLocal, FIRST_ROBOT_REVEAL_TARGET, ROBOT_BAY_LAMP } from './AssemblySliceLayout.ts';
 import { CocosFileSystemPort } from '../app/CocosFileSystemPort';
-import { DEBUG_COMMAND_FILE, parseDebugCommandFile } from './DebugCommandFile.ts';
+import { DEBUG_COMMAND_FILE, parseDebugCommandSequenceFile } from './DebugCommandFile.ts';
+import { createDebugGate, runDebugCommands, type DebugOutcome } from './DebugCommandExecutor.ts';
 import { DEBUG_ADS_FILE, parseDebugAdsScriptFile, type DebugAdsScript } from './DebugAdsScriptFile.ts';
 import { createBuildAdsService, createBuildAnalyticsTracker, createBuildConsentService, createBuildPurchaseService } from './BuildPlatformServices.ts';
 import { DEBUG_CONSENT_FILE, parseDebugConsentScriptFile, type DebugConsentScript } from './DebugConsentScriptFile.ts';
@@ -345,12 +346,13 @@ export class FactoryWorldBootstrap extends Component {
                 permanentUpgrades: this.sessionWiring?.permanentUpgrades ?? null,
                 // AUT-RBT-001: the Reboot chip / modal follows every fresh snapshot.
                 reboot: this.sessionWiring?.reboot ?? null,
-                observeDomainEvents: (events) => {
+                observeDomainEvents: (events, source) => {
                     // AUT-052: presentation observes the events and asks the (silent) audio service for cues; the runtime knows nothing about audio.
                     for (const cue of mapEventsToCues(events)) this.audio.playSfx(cue);
                     if (isDeviceDiagnosticsEnabled()) this.emitAssemblyBatchEvents(events);
                     this.onTemporaryBoostEvents(events);
-                    this.analytics?.observeDomainEvents(events);
+                    // AUT-069: debug-sourced work (the QA toolkit) is never reported to analytics.
+                    if (source !== 'debug') this.analytics?.observeDomainEvents(events);
                 },
                 // AUT-051: a Reboot blocked by the pending offline report re-surfaces the card.
                 onRebootBlockedByPendingOffline: () => { this.rebootBlockedByPendingOffline = true; this.sessionWiring?.offlineReport.reportRebootBlocked(); this.showOfflineReport('reboot_blocked'); },
@@ -556,9 +558,10 @@ export class FactoryWorldBootstrap extends Component {
     }
 
     /**
-     * DEBUG / capture-only (AUT-048 follow-up): reads `debug_command.json` ONCE after the session is ready, deletes it, and submits the
-     * allow-listed command through the same `binding.submit` path the HUD uses. Guarded by `DEBUG === true` AND enabled device
-     * diagnostics, so release builds never read it. No HUD / scene / gameplay path.
+     * DEBUG / capture-only (AUT-048 follow-up, extended by AUT-069 QA toolkit): reads `debug_command.json` ONCE after the session is ready, deletes it,
+     * and runs the allow-listed command(s) through the DEBUG executor: GameCommands go through the same `binding.submit` path the HUD uses (tagged
+     * `source: 'debug'`, not reported to analytics); the few state patches go through the gate-protected session entry. Guarded by `DEBUG === true`
+     * AND enabled device diagnostics, so release builds never read it. No HUD / scene / player-facing path.
      */
     private runDebugCommandFile(binding: FactoryWorldStateBinding): void {
         if (DEBUG !== true || !isDeviceDiagnosticsEnabled()) return;
@@ -567,13 +570,45 @@ export class FactoryWorldBootstrap extends Component {
             const text = port.readText(DEBUG_COMMAND_FILE);
             if (text === undefined) return;
             port.remove(DEBUG_COMMAND_FILE);
-            const request = parseDebugCommandFile(text);
-            if (!request) { emitDeviceEvent('debug_command', { phase: 'ignored' }); return; }
-            emitDeviceEvent('debug_command', { phase: 'scheduled', command: request.command, delayMs: request.delayMs });
-            this.scheduleOnce(() => {
-                emitDeviceEvent('debug_command', { phase: 'submitted', command: request.command });
-                void binding.submit(request.command);
-            }, request.delayMs / 1000);
+            const requests = parseDebugCommandSequenceFile(text);
+            if (!requests) { emitDeviceEvent('debug_command', { phase: 'ignored', source: 'debug' }); return; }
+            const gate = createDebugGate(DEBUG === true, isDeviceDiagnosticsEnabled());
+            const outcome = (ok: boolean, reason?: string): DebugOutcome => ({ ok, reason });
+            void runDebugCommands({
+                gate,
+                wait: (delayMs) => new Promise<void>((resolve) => { this.scheduleOnce(() => resolve(), delayMs / 1000); }),
+                submit: async (command) => {
+                    const result = await binding.submit(command, { source: 'debug' });
+                    return result === null ? outcome(false, 'blocked_or_failed') : outcome(result.execution.ok, result.execution.ok ? undefined : result.execution.reason);
+                },
+                applyStatePatch: async (patch) => {
+                    const result = await binding.applyDebugStatePatch(patch, gate);
+                    if (result === null) return outcome(false, 'unsupported');
+                    return result.status === 'debug_rejected' ? outcome(false, result.reason) : outcome(true, result.status === 'debug_applied_saved' ? undefined : 'persistence_failed');
+                },
+                createPendingOffline: async (seconds) => {
+                    const result = await binding.createDebugPendingOffline(seconds, gate);
+                    if (result === null) return outcome(false, 'unsupported');
+                    if (result.status === 'debug_rejected') return outcome(false, result.reason);
+                    this.showOfflineReport('resumed');
+                    return outcome(true, result.status === 'debug_pending_offline_created' ? undefined : 'persistence_failed');
+                },
+                previewReboot: async () => {
+                    const reboot = this.sessionWiring?.reboot;
+                    if (!reboot) return outcome(false, 'unsupported');
+                    reboot.onChipPressed();
+                    return reboot.isOpen() ? outcome(true) : outcome(false, 'not_eligible_or_suppressed');
+                },
+                setFounderOwned: async (owned) => {
+                    const result = owned
+                        ? await binding.applyFounderPackPurchase({ requestId: `debug_founder_${Date.now()}`, source: 'mock' }, { source: 'debug' })
+                        : await binding.reconcileFounderEntitlement({ owned: false, source: 'mock' }, { source: 'debug' });
+                    this.emitFounderState(binding, 'debug');
+                    this.sessionWiring?.founderShop.requestRefresh();
+                    return result === null || result.status === 'rejected' ? outcome(false, result === null ? 'unsupported' : 'rejected') : outcome(true, result.status);
+                },
+                emit: (phase, payload) => emitDeviceEvent('debug_command', { phase, ...payload }),
+            }, requests);
         } catch (error) {
             this.reportSessionError('debug_command', error);
         }

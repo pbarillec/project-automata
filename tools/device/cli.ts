@@ -50,6 +50,7 @@ import { seedAut052 } from './seed_aut052.ts';
 import { seedRbt001 } from './seed_rbt001.ts';
 import { seedUi003 } from './seed_ui003.ts';
 import { runAut041Benchmark } from './benchmark_aut041.ts';
+import { QaUsageError, applyQaPlan, parseQaInvocation, renderQaList } from './qa_toolkit.ts';
 import { REVEAL_SCENARIOS, resolveRevealScenario, runRevealCapture, type RevealTrigger } from './reveal_capture.ts';
 
 function parseArgs(argv: string[]): { command: string; flags: Record<string, string | boolean> } {
@@ -384,6 +385,30 @@ async function main(): Promise<number> {
         console.log(`seeded ${filesDir}save_main.json (free overclock ready) and launched`);
         return 0;
     }
+    if (command === 'qa') {
+        // AUT-069 QA toolkit (DEBUG APK only): `npm run device:qa -- list | <preset> | cmd <command> [args] | seq "<cmd>" ... | ads <placement> <outcome...>`.
+        const words: string[] = [];
+        let serial: string | undefined;
+        const argv = process.argv.slice(3);
+        for (let i = 0; i < argv.length; i += 1) {
+            if (argv[i] === '--serial') { serial = argv[i + 1]; i += 1; continue; }
+            words.push(argv[i]);
+        }
+        let invocation;
+        try { invocation = parseQaInvocation(words); } catch (error) {
+            if (error instanceof QaUsageError) { console.log(error.message); return 1; }
+            throw error;
+        }
+        if (invocation.kind === 'list') { console.log(renderQaList()); return 0; }
+        const driver = new AdbDeviceDriver();
+        const selection = selectDevice(await driver.devices(), serial);
+        if (!selection.ok) { console.log(JSON.stringify(selection, null, 2)); return 2; }
+        if (serial) driver.useSerial(serial);
+        const plan = invocation.plan(Date.now());
+        const filesDir = await applyQaPlan(driver, plan);
+        console.log(`qa ${invocation.description}: ${plan.save.kind === 'keep' ? 'kept the current save' : plan.save.kind === 'fresh' ? 'removed the saves (fresh game)' : 'wrote save_main.json'}${Object.keys(plan.files).length ? ` + ${Object.keys(plan.files).join(', ')}` : ''} in ${filesDir} and launched`);
+        return 0;
+    }
     if (command === 'bench-aut041') {
         // AUT-041 DEBUG-only robot population benchmark on the connected device (APK must already be installed).
         const driver = new AdbDeviceDriver();
@@ -429,6 +454,7 @@ async function main(): Promise<number> {
             expectPermanentUpgrades: scenario.expectPermanentUpgrades,
             expectSettings: scenario.expectSettings,
             expectRebootUi: scenario.expectRebootUi,
+            expectQaToolkit: scenario.expectQaToolkit,
         });
         const environmentBlocked = result.checks.some((check) => !check.ok && check.detail.startsWith('ENVIRONMENT_BLOCKED'));
         console.log(`reveal capture ${result.ok ? 'PASS' : environmentBlocked ? 'ENVIRONMENT_BLOCKED' : 'FAIL'}: ${result.outDir}`);
@@ -446,7 +472,7 @@ async function main(): Promise<number> {
         console.log(restored ? 'restored tracked build config from temp/device/gate backup' : 'no backup found');
         return restored ? 0 : 1;
     }
-    console.log('usage: node tools/device/cli.ts devices | c3|int001|r036|ui001|r031|gp001|aut039 --apk <path> [--serial <id>] [--run-id <id>] [--skip-install] | seed-aut040 [--serial <id>] | seed-aut042 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut043 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut044 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut045 [--variant workshop|era2|era3] [--serial <id>] | seed-aut046 [--variant breakthrough] [--serial <id>] | seed-aut047 [--variant active|ready] [--serial <id>] | seed-aut048 [--variant era2|era3] [--serial <id>] | seed-aut049 [--variant reboot|post] [--serial <id>] | seed-aut050 [--variant mixed|maxed] [--serial <id>] | seed-aut051 [--variant first|compact|cap|reload|short] [--serial <id>] | seed-aut052 [--serial <id>] | seed-aut055 [--variant ready|short_ineligible|quota] [--outcome rewarded|closed|failed] [--serial <id>] | seed-aut056 [--variant eligible|free_active|quota|interval|resume] [--outcome rewarded|closed|failed] [--serial <id>] | seed-aut057 [--variant offline_double|extended] [--serial <id>] | seed-aut060 [--variant available|owned] [--serial <id>] | seed-aut065 [--variant not_required|required_obtained|required_declined|error|timeout|privacy_row|no_privacy_row|ump_eea] [--serial <id>] | seed-aut061 [--variant reinstall|local_owned_store_error] [--serial <id>] | seed-aut062 [--variant not_owned|owned_before_first_robot|owned_many_robots|mid_session] [--serial <id>] | seed-aut067 [--variant standard|founder] [--serial <id>] | seed-aut059 [--variant available|owned|locked|no_store] [--outcome completed|pending|cancelled|failed] [--duplicate] [--missing-metadata] [--serial <id>] | seed-rbt001 [--serial <id>] | seed-ui003 [--serial <id>] | reveal-capture [--scenario aut043|aut044|aut046|aut047|ui003|aut048|aut048-era3|aut048-era3-live|aut049|aut049-post|aut050|aut051|aut051-reload|aut051-short|aut052|rbt001|aut055-success|aut055-closed|aut055-failed|aut055-ineligible|aut056-success|aut056-free-active|aut056-resume|aut056-closed|aut056-failed|aut056-quota|aut056-interval|aut057-offline-double|aut057-extended|aut057-no-fill] [AUT-061 scenarios (MOCK store restore): aut061-restore-reinstall|aut061-restore-store-error] [AUT-067 performance BASELINE (DEBUG APK; writes temp/perf/<ts>/baseline.json): aut067-baseline|aut067-baseline-founder] [AUT-065 scenarios (mock consent states; ump-eea = REAL UMP, ENVIRONMENT_BLOCKED without network / a UMP message): aut065-not-required|aut065-required-obtained|aut065-required-declined|aut065-error|aut065-timeout|aut065-privacy-row|aut065-no-privacy-row|aut065-ump-eea] [AUT-060 scenarios (REAL Play Billing, ENVIRONMENT_BLOCKED without a Play test account/product): aut060-license-tester-purchase|aut060-cancel|aut060-restore-owned] [AUT-059 scenarios: aut059-available|aut059-purchase-success|aut059-pending|aut059-cancel|aut059-fail|aut059-owned|aut059-hidden|aut059-locked] [--label <l>] [--trigger next-goal|overclock|robot-line-build|none] | gate-build [--label <l>] | restore-build-config');
+    console.log('usage: node tools/device/cli.ts devices | c3|int001|r036|ui001|r031|gp001|aut039 --apk <path> [--serial <id>] [--run-id <id>] [--skip-install] | seed-aut040 [--serial <id>] | seed-aut042 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut043 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut044 [--variant unbuilt|lv1|lv10] [--serial <id>] | seed-aut045 [--variant workshop|era2|era3] [--serial <id>] | seed-aut046 [--variant breakthrough] [--serial <id>] | seed-aut047 [--variant active|ready] [--serial <id>] | seed-aut048 [--variant era2|era3] [--serial <id>] | seed-aut049 [--variant reboot|post] [--serial <id>] | seed-aut050 [--variant mixed|maxed] [--serial <id>] | seed-aut051 [--variant first|compact|cap|reload|short] [--serial <id>] | seed-aut052 [--serial <id>] | seed-aut055 [--variant ready|short_ineligible|quota] [--outcome rewarded|closed|failed] [--serial <id>] | seed-aut056 [--variant eligible|free_active|quota|interval|resume] [--outcome rewarded|closed|failed] [--serial <id>] | seed-aut057 [--variant offline_double|extended] [--serial <id>] | seed-aut060 [--variant available|owned] [--serial <id>] | seed-aut065 [--variant not_required|required_obtained|required_declined|error|timeout|privacy_row|no_privacy_row|ump_eea] [--serial <id>] | seed-aut061 [--variant reinstall|local_owned_store_error] [--serial <id>] | seed-aut062 [--variant not_owned|owned_before_first_robot|owned_many_robots|mid_session] [--serial <id>] | seed-aut067 [--variant standard|founder] [--serial <id>] | seed-aut059 [--variant available|owned|locked|no_store] [--outcome completed|pending|cancelled|failed] [--duplicate] [--missing-metadata] [--serial <id>] | seed-rbt001 [--serial <id>] | seed-ui003 [--serial <id>] | reveal-capture [--scenario aut043|aut044|aut046|aut047|ui003|aut048|aut048-era3|aut048-era3-live|aut049|aut049-post|aut050|aut051|aut051-reload|aut051-short|aut052|rbt001|aut055-success|aut055-closed|aut055-failed|aut055-ineligible|aut056-success|aut056-free-active|aut056-resume|aut056-closed|aut056-failed|aut056-quota|aut056-interval|aut057-offline-double|aut057-extended|aut057-no-fill] [AUT-061 scenarios (MOCK store restore): aut061-restore-reinstall|aut061-restore-store-error] [AUT-067 performance BASELINE (DEBUG APK; writes temp/perf/<ts>/baseline.json): aut067-baseline|aut067-baseline-founder] [AUT-065 scenarios (mock consent states; ump-eea = REAL UMP, ENVIRONMENT_BLOCKED without network / a UMP message): aut065-not-required|aut065-required-obtained|aut065-required-declined|aut065-error|aut065-timeout|aut065-privacy-row|aut065-no-privacy-row|aut065-ump-eea] [AUT-060 scenarios (REAL Play Billing, ENVIRONMENT_BLOCKED without a Play test account/product): aut060-license-tester-purchase|aut060-cancel|aut060-restore-owned] [AUT-059 scenarios: aut059-available|aut059-purchase-success|aut059-pending|aut059-cancel|aut059-fail|aut059-owned|aut059-hidden|aut059-locked] [--label <l>] [--trigger next-goal|overclock|robot-line-build|none] | qa list|<preset>|cmd <command> [args]|seq "<cmd>" ...|ads <placement> <outcome...> [--serial <id>] | gate-build [--label <l>] | restore-build-config');
     return command === 'help' ? 0 : 1;
 }
 

@@ -496,7 +496,7 @@ test('AUT-049 DEBUG command file: rebootCivilization only with confirmed:true, a
     const body = bootstrap.slice(bootstrap.indexOf('private runDebugCommandFile('), bootstrap.indexOf('private onGameHide('));
     assert.match(body, /if \(DEBUG !== true \|\| !isDeviceDiagnosticsEnabled\(\)\) return;/, 'same DEBUG + diagnostics guard');
     assert.ok(body.indexOf('port.readText(DEBUG_COMMAND_FILE)') < body.indexOf('port.remove(DEBUG_COMMAND_FILE)'), 'read once, then deleted');
-    assert.match(body, /binding\.submit\(request\.command\)/, 'through the normal binding.submit');
+    assert.match(body, /binding\.submit\(command, \{ source: 'debug' \}\)/, 'through the normal binding.submit (AUT-069: tagged source debug)');
     assert.equal((bootstrap.match(/binding\.submit\(/g) ?? []).length, 6, 'one more submit site: the AUT-RBT-001 Reboot modal emitter (after the AUT-050 AI Upgrades emitter)');
     for (const file of ['UiLayout.ts', 'CoreHudController.ts', 'CoreLoopActions.ts', 'HudViewModel.ts', 'ProducerPanelController.ts', 'RebootPresentationController.ts', 'RebootPresentation.ts']) {
         assert.doesNotMatch(presentation(file), /debug_command|DebugCommand|DEBUG_COMMAND/, `${file}: no player-facing Reboot trigger`);

@@ -519,8 +519,8 @@ test('AUT-048 DEBUG command guard: read once after ready, only when DEBUG and di
     const body = bootstrap.slice(bootstrap.indexOf('private runDebugCommandFile('), bootstrap.indexOf('private onGameHide('));
     assert.match(body, /if \(DEBUG !== true \|\| !isDeviceDiagnosticsEnabled\(\)\) return;/, 'DEBUG guard first');
     assert.ok(body.indexOf('port.readText(DEBUG_COMMAND_FILE)') < body.indexOf('port.remove(DEBUG_COMMAND_FILE)'), 'read, then deleted: fires once');
-    assert.ok(body.indexOf('port.remove(DEBUG_COMMAND_FILE)') < body.indexOf('parseDebugCommandFile(text)'), 'deleted even when the content is rejected');
-    assert.match(body, /binding\.submit\(request\.command\)/, 'the normal command path');
+    assert.ok(body.indexOf('port.remove(DEBUG_COMMAND_FILE)') < body.indexOf('parseDebugCommandSequenceFile(text)'), 'deleted even when the content is rejected (AUT-069: the sequence parser also accepts the single form)');
+    assert.match(body, /binding\.submit\(command, \{ source: 'debug' \}\)/, 'the normal command path (AUT-069: tagged source debug)');
     assert.doesNotMatch(body, /state\.run|runtime|execute\(|\.save|writeText/, 'no state write, no direct runtime call, no save write');
     assert.match(bootstrap, /import \{ DEBUG \} from 'cc\/env';/);
     const activate = bootstrap.slice(bootstrap.indexOf('private activateSessionBinding('), bootstrap.indexOf('private runDebugCommandFile('));

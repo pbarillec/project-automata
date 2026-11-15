@@ -22,6 +22,8 @@ export type {
     LifecycleCollectNoPendingResult,
     LifecycleCollectResult,
     LifecycleCommandResult,
+    LifecycleDebugPatchResult,
+    LifecycleDebugPendingOfflineResult,
     LifecycleOfflineDoubleOffer,
     LifecyclePermanentUpgradeDurabilityFailureResult,
     LifecyclePermanentUpgradeDurableResult,

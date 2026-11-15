@@ -46,6 +46,8 @@ import { ADMOB_AVAILABILITY_WAIT_MS, ADMOB_RESULT_WAIT_AFTER_BACK_MS, ADMOB_RESU
 import { EXTENDED_OVERCLOCK_RELAUNCH_MARKER_EVT, evaluateExtendedOverclock, type ExtendedOverclockExpectation } from './extended_overclock_checks.ts';
 import { OFFLINE_DOUBLE_RELAUNCH_MARKER_EVT, evaluateOfflineDouble, type OfflineDoubleExpectation } from './offline_double_checks.ts';
 import { seedRbt001 } from './seed_rbt001.ts';
+import { evaluateQaToolkit, type QaToolkitExpectation } from './qa_toolkit_checks.ts';
+import { applyQaPlan, buildQaScenarioPlan } from './qa_toolkit.ts';
 import { REBOOT_UI_RELAUNCH_MARKER_EVT, evaluateRebootUi, type RebootUiExpectation } from './reboot_ui_checks.ts';
 import { SETTINGS_RELAUNCH_MARKER_EVT, evaluateSettings, type SettingsExpectation } from './settings_checks.ts';
 import { OFFLINE_RELAUNCH_MARKER_EVT, evaluateOfflineReport, type OfflineReportExpectation } from './offline_report_checks.ts';
@@ -103,6 +105,8 @@ export interface RevealCaptureOptions {
     readonly expectSettings?: SettingsExpectation;
     /** AUT-RBT-001: 'confirm_flow' = REAL tap on the Reboot chip, screenshot the modal, REAL tap CANCEL, tap the chip again, REAL tap REBOOT, frames through the AUT-049 sequence, force-stop + relaunch WITHOUT reseeding. */
     readonly expectRebootUi?: RebootUiExpectation;
+    /** AUT-069 (QA toolkit): 'patches' = the DEBUG command sequence (grant IO / producer level / Robots Built / AI Cores / Founder owned / Reboot preview) applied exactly once each with source debug; 'offline' = the simulated absence shows the report card. Objective checks only (qa_toolkit_checks.ts). */
+    readonly expectQaToolkit?: QaToolkitExpectation;
     /** AUT-UI-003: command types whose accepted `command_result` (ok) must be observed. */
     readonly expectCommands?: readonly string[];
     readonly preMs?: number;
@@ -130,7 +134,7 @@ export interface RevealCaptureResult {
 
 export const DEFAULT_REVEAL_EVENT_TYPES: readonly string[] = Object.freeze([
     'scene_ready', 'session_state', 'ui_layout', 'command_result', 'construction_state', 'camera_focus', 'reveal_state',
-    'milestone_presentation', 'era_transition', 'reboot_presentation', 'offline_report', 'offline_double', 'extended_overclock', 'founder_shop', 'analytics', 'ads_state', 'consent_state', 'permanent_upgrades', 'reboot_ui', 'settings', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'robot_founder', 'identity', 'robot_perf', 'robot_benchmark', 'perf_second', 'perf_scene', 'error',
+    'milestone_presentation', 'era_transition', 'debug_command', 'reboot_presentation', 'offline_report', 'offline_double', 'extended_overclock', 'founder_shop', 'analytics', 'ads_state', 'consent_state', 'permanent_upgrades', 'reboot_ui', 'settings', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'robot_founder', 'identity', 'robot_perf', 'robot_benchmark', 'perf_second', 'perf_scene', 'error',
 ]);
 
 /** A named live-reveal scenario: the seed (unbuilt variant), the producer whose construction must be observed and whether a camera focus is expected. */
@@ -156,6 +160,7 @@ export interface RevealScenario {
     readonly expectPermanentUpgrades?: PermanentUpgradeExpectation;
     readonly expectSettings?: SettingsExpectation;
     readonly expectRebootUi?: RebootUiExpectation;
+    readonly expectQaToolkit?: QaToolkitExpectation;
     readonly expectRestore?: RestoreExpectation;
     readonly expectFounderRobot?: FounderRobotExpectation;
     readonly expectAnalytics?: AnalyticsExpectation;
@@ -253,6 +258,9 @@ export const REVEAL_SCENARIOS: Readonly<Record<string, RevealScenario>> = Object
     'aut065-privacy-row': { id: 'aut065-privacy-row', label: 'aut065-consent-privacy-row', seed: (d, pkg, act) => seedAut065(d, pkg, act, 'privacy_row'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectConsent: 'privacy_row' },
     'aut065-no-privacy-row': { id: 'aut065-no-privacy-row', label: 'aut065-consent-no-privacy-row', seed: (d, pkg, act) => seedAut065(d, pkg, act, 'no_privacy_row'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectConsent: 'no_privacy_row' },
     'aut065-ump-eea': { id: 'aut065-ump-eea', label: 'aut065-consent-ump-eea', seed: (d, pkg, act) => seedAut065(d, pkg, act, 'ump_eea'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectConsent: 'ump_eea' },
+    // AUT-069: QA toolkit. The DEBUG command sequence runs once after the session is ready; the checks prove each command applied exactly once with source debug.
+    'aut069-qa-patches': { id: 'aut069-qa-patches', label: 'aut069-qa-patches', seed: (d, pkg, act) => applyQaPlan(d, buildQaScenarioPlan('patches', Date.now()), pkg, act), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 14_000, intervalMs: 700, expectQaToolkit: 'patches' },
+    'aut069-qa-offline': { id: 'aut069-qa-offline', label: 'aut069-qa-offline', seed: (d, pkg, act) => applyQaPlan(d, buildQaScenarioPlan('offline', Date.now()), pkg, act), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 9_000, intervalMs: 600, expectQaToolkit: 'offline' },
     'aut048-era3': { id: 'aut048-era3', label: 'aut048-era3-silent-load', seed: (d, pkg, act) => seedAut048(d, pkg, act, 'era3'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 400, expectEraTitle: 'none' },
 });
 
@@ -262,7 +270,7 @@ export function resolveRevealScenario(id: unknown): RevealScenario | null {
 }
 
 /** Objective checks over a timeline (pure, unit-tested). `tMs` is relative to the trigger (negative = before). */
-export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectOfflineDouble?: OfflineDoubleExpectation; expectExtendedOverclock?: ExtendedOverclockExpectation; expectAdmob?: AdmobExpectation; expectFounderShop?: FounderShopExpectation; expectConsent?: ConsentExpectation; expectBilling?: BillingExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation; expectSettings?: SettingsExpectation; expectRebootUi?: RebootUiExpectation; expectRestore?: RestoreExpectation; expectFounderRobot?: FounderRobotExpectation; expectAnalytics?: AnalyticsExpectation; expectIdentity?: IdentityExpectation; expectPerfBaseline?: PerfBaselineOptions; perfCapture?: PerfCapture | null }): RevealCheck[] {
+export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectOfflineDouble?: OfflineDoubleExpectation; expectExtendedOverclock?: ExtendedOverclockExpectation; expectAdmob?: AdmobExpectation; expectFounderShop?: FounderShopExpectation; expectConsent?: ConsentExpectation; expectBilling?: BillingExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation; expectSettings?: SettingsExpectation; expectRebootUi?: RebootUiExpectation; expectQaToolkit?: QaToolkitExpectation; expectRestore?: RestoreExpectation; expectFounderRobot?: FounderRobotExpectation; expectAnalytics?: AnalyticsExpectation; expectIdentity?: IdentityExpectation; expectPerfBaseline?: PerfBaselineOptions; perfCapture?: PerfCapture | null }): RevealCheck[] {
     const checks: RevealCheck[] = [];
     const errors = events.filter((e) => e.event.evt === 'error');
     checks.push({ id: 'no_error_events', ok: errors.length === 0, detail: `${errors.length} error events` });
@@ -308,6 +316,7 @@ export function evaluateRevealTimeline(events: readonly TimelineEvent[], options
     if (options.expectPermanentUpgrades !== undefined) checks.push(...evaluatePermanentUpgrades(events, options.expectPermanentUpgrades));
     if (options.expectSettings !== undefined) checks.push(...evaluateSettings(events, options.expectSettings));
     if (options.expectRebootUi !== undefined) checks.push(...evaluateRebootUi(events, options.expectRebootUi));
+    if (options.expectQaToolkit !== undefined) checks.push(...evaluateQaToolkit(events, options.expectQaToolkit));
     return checks;
 }
 
@@ -1156,7 +1165,7 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
         try { await clearAut067BenchmarkOverride(driver, packageName); } catch { /* best effort */ }
     }
 
-    const checks = evaluateRevealTimeline(events, { expectPerfBaseline: options.expectPerfBaseline, perfCapture, expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectRestore: options.expectRestore, expectFounderRobot: options.expectFounderRobot, expectAnalytics: options.expectAnalytics, expectIdentity: options.expectIdentity, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport, expectOfflineDouble: options.expectOfflineDouble, expectExtendedOverclock: options.expectExtendedOverclock, expectAdmob: options.expectAdmob, expectFounderShop: options.expectFounderShop, expectConsent: options.expectConsent, expectBilling: options.expectBilling, expectPermanentUpgrades: options.expectPermanentUpgrades, expectSettings: options.expectSettings, expectRebootUi: options.expectRebootUi });
+    const checks = evaluateRevealTimeline(events, { expectPerfBaseline: options.expectPerfBaseline, perfCapture, expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectRestore: options.expectRestore, expectFounderRobot: options.expectFounderRobot, expectAnalytics: options.expectAnalytics, expectIdentity: options.expectIdentity, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport, expectOfflineDouble: options.expectOfflineDouble, expectExtendedOverclock: options.expectExtendedOverclock, expectAdmob: options.expectAdmob, expectFounderShop: options.expectFounderShop, expectConsent: options.expectConsent, expectBilling: options.expectBilling, expectPermanentUpgrades: options.expectPermanentUpgrades, expectQaToolkit: options.expectQaToolkit, expectSettings: options.expectSettings, expectRebootUi: options.expectRebootUi });
     checks.unshift({ id: 'ui_layout_ready', ok: layout !== null, detail: layout ? 'ui_layout received' : 'no ui_layout (app did not reach the HUD)' });
     if (options.expectPermanentUpgrades || options.expectSettings || options.expectRebootUi || options.expectOfflineDouble || options.expectExtendedOverclock || options.expectAdmob || options.expectFounderShop || options.expectBilling || options.expectConsent) checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
     if (trigger !== 'none') checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });

@@ -13,6 +13,7 @@
     "device:c3": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts c3",
     "device:gp001": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts gp001",
     "device:aut039": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts aut039",
+    "device:qa": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts qa",
     "device:seed-aut040": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-aut040",
     "device:seed-aut042": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-aut042",
     "device:seed-aut043": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/device/cli.ts seed-aut043",
