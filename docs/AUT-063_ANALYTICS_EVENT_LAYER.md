@@ -20,3 +20,7 @@ Status: implemented (automated checks only; no device run).
 
 ## Tests
 `tests/analytics_event_layer.test.ts`: catalogue, validation, mapping per domain event, rewarded / purchase / offline mapping and de-duplication, provider failure and init timeout non-authoritative, source scan (no provider / vendor SDK reference outside the allow-list; domain, runtime, economy, lifecycle and monetization never mention analytics).
+
+## Device smoke (2026-11-15)
+
+Gate APK `aut063`; `npm run check` 1320 tests green. `aut059-purchase-success` capture PASS (0 errors). The DEBUG `analytics` events appear in logcat/timeline (e.g. `rewarded_opportunity`, `purchase_offer_shown`, `offline_auto_collected`, `purchase_start`, one `purchase_complete` despite the scripted duplicate callback). No dedicated objective check/scenario yet (AUT-064 may add one).
