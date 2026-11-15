@@ -99,3 +99,8 @@ The proposed `aut071-corrupt-main` reveal scenario was NOT built. It needs a new
 - A Founder purchase reported `pending` keeps the BUY disabled until ownership is observed or the app restarts (no timeout on the pending flag); nothing is granted and the modal can always be closed.
 - A prefab that is present but corrupt could still throw inside `instantiate`; that is a Cocos-layer failure not unit-testable here.
 - The native Android layer (`AutomataPlatformBridge.java` and the Billing / AdMob / UMP controllers) was not changed or re-tested here.
+
+## Device evidence (2026-11-15)
+
+Gate APK `aut071`; `npm run check` 1549 tests green. Manual corrupt-main procedure executed on the device (serial 1100a155): after seeding a valid save, copying it to `save_backup.json` and truncating `save_main.json` to `{`, relaunch logged `[AUT-071] Save recovery: recovered_backup (unreadable copy preserved: preserved)`, `save_corrupt.json` held `{`, and `save_main.json` was restored with valid JSON. Regression captures PASS: aut051, aut049, aut052, aut059-available, aut055-success. The future-version device procedure and an `aut071-corrupt-main` scenario were not run/built (covered by unit tests).
+Open product item (not decided): a save from a newer build leaves the session inert with no player-facing "update required" message.
