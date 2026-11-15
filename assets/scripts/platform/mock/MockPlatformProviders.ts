@@ -221,9 +221,16 @@ export interface MockPurchaseServiceOptions {
     purchaseResults?: Record<string, PurchaseResultStatus>;
     /** When provided, begin/end('purchase_flow') is reported around every real purchase. */
     overlay?: PlatformOverlayTracker;
+    /** AUT-061: what the store query reports (see `onPurchaseDelivery`). */
+    restore?: 'owned' | 'not_owned' | 'error';
+    /** AUT-061: the product a `restore: 'owned'` query reports (default: the first configured product). */
+    restoreProductId?: ProductId;
 }
 
 export class MockPurchaseService implements PurchaseService {
+    private readonly deliveryHandlers = new Set<(result: PurchaseResult) => void>();
+    private restoreMode: 'owned' | 'not_owned' | 'error' | undefined;
+    private readonly restoreProductId: ProductId;
     private serviceState: PlatformServiceState;
     private readonly products = new Map<ProductId, ProductDetails>();
     private readonly purchaseResults: Record<string, PurchaseResultStatus>;
@@ -242,10 +249,12 @@ export class MockPurchaseService implements PurchaseService {
         this.serviceState = state('purchase', options.initialStatus ?? 'uninitialized');
         this.purchaseResults = { ...(options.purchaseResults ?? {}) };
         this.overlay = options.overlay;
+        this.restoreMode = options.restore;
 
         for (const product of options.products ?? []) {
             this.products.set(product.productId, { ...product });
         }
+        this.restoreProductId = options.restoreProductId ?? options.products?.[0]?.productId ?? 'founder_pack';
     }
 
     public async initialize(): Promise<PlatformServiceState> {
@@ -381,11 +390,49 @@ export class MockPurchaseService implements PurchaseService {
         return result;
     }
 
+    /**
+     * AUT-061: a restore-capable mock store. `restore: 'owned'` makes every store query deliver the Founder pack as an already acknowledged owned
+     * purchase (`already_owned`, restore semantics) through the delivery handlers; `'not_owned'` delivers nothing; `'error'` fails the query.
+     * Without the option the query only answers ok (the AUT-059 behaviour).
+     */
+    public onPurchaseDelivery(handler: (result: PurchaseResult) => void): () => void {
+        this.deliveryHandlers.add(handler);
+        return () => {
+            this.deliveryHandlers.delete(handler);
+        };
+    }
+
+    /** AUT-061: changes what the next store queries report (e.g. a purchase completed outside the app). */
+    public setRestoreMode(mode: 'owned' | 'not_owned' | 'error' | undefined): void {
+        this.restoreMode = mode;
+    }
+
     public async restorePurchases(): Promise<PlatformOperationResult> {
         this.calls.push({ service: 'purchases', method: 'restorePurchases' });
 
         if (this.serviceState.status !== 'ready') {
             return blockedResult(this.serviceState);
+        }
+
+        if (this.restoreMode === 'error') {
+            return { ok: false, status: 'failed', reason: 'mock_restore_error' };
+        }
+
+        if (this.restoreMode === 'owned') {
+            const result: PurchaseResult = {
+                status: 'already_owned',
+                productId: this.restoreProductId,
+                requestId: `mock-restore:${this.restoreProductId}`,
+                transactionId: `mock-restore-order-${this.restoreProductId}`,
+            };
+            this.deliveries.push(result);
+            for (const handler of [...this.deliveryHandlers]) {
+                try {
+                    handler({ ...result });
+                } catch {
+                    // a consumer error never breaks the provider
+                }
+            }
         }
 
         return { ok: true, status: 'ready' };

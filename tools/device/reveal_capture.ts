@@ -30,6 +30,8 @@ import { seedAut056 } from './seed_aut056.ts';
 import { seedAut057 } from './seed_aut057.ts';
 import { seedAut059 } from './seed_aut059.ts';
 import { seedAut060 } from './seed_aut060.ts';
+import { seedAut061 } from './seed_aut061.ts';
+import { evaluateRestore, type RestoreExpectation } from './restore_checks.ts';
 import { BILLING_CHIP_WAIT_MS, BILLING_RESULT_WAIT_MS, BILLING_SHEET_SETTLE_MS, evaluateBilling, type BillingExpectation } from './billing_checks.ts';
 import { FOUNDER_SHOP_RELAUNCH_MARKER_EVT, evaluateFounderShop, type FounderShopExpectation } from './founder_shop_checks.ts';
 import { ADMOB_AVAILABILITY_WAIT_MS, ADMOB_RESULT_WAIT_AFTER_BACK_MS, ADMOB_RESULT_WAIT_BEFORE_BACK_MS, evaluateAdmob, type AdmobExpectation } from './admob_checks.ts';
@@ -74,6 +76,8 @@ export interface RevealCaptureOptions {
     readonly expectFounderShop?: FounderShopExpectation;
     /** AUT-060 (REAL Google Play Billing, license tester, best-effort outcome; ENVIRONMENT_BLOCKED when no Play store / product): 'license_tester_purchase' = REAL taps chip -> BUY then wait for the (manually completed) Play sheet; 'cancel' = BACK on the sheet; 'restore_owned' = reinstall-like save restored by the store query without a Surge grant. */
     readonly expectBilling?: BillingExpectation;
+    /** AUT-061 (MOCK store with a scripted `restore` mode, no taps): 'reinstall' = fresh save + store owned -> entitlement / cosmetic restored, 0 Surges, chip Owned; 'local_owned_store_error' = owned locally + failed store query -> still Owned (never revoked). */
+    readonly expectRestore?: RestoreExpectation;
     /** AUT-050: 'purchase' = tap the AI chip, open the panel, buy an affordable row with a real tap, switch tab, force-stop + relaunch WITHOUT reseeding (balance / rank persisted). */
     readonly expectPermanentUpgrades?: PermanentUpgradeExpectation;
     /** AUT-052: 'toggle_persist' = tap the Settings chip, open the panel, toggle Music OFF with a real tap, close, force-stop + relaunch WITHOUT reseeding (the file survives), toggle it back ON, close. */
@@ -196,6 +200,9 @@ export const REVEAL_SCENARIOS: Readonly<Record<string, RevealScenario>> = Object
     'aut060-license-tester-purchase': { id: 'aut060-license-tester-purchase', label: 'aut060-billing-license-tester-purchase', seed: (d, pkg, act) => seedAut060(d, pkg, act, 'available'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectBilling: 'license_tester_purchase' },
     'aut060-cancel': { id: 'aut060-cancel', label: 'aut060-billing-cancel', seed: (d, pkg, act) => seedAut060(d, pkg, act, 'available'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectBilling: 'cancel' },
     'aut060-restore-owned': { id: 'aut060-restore-owned', label: 'aut060-billing-restore-owned', seed: (d, pkg, act) => seedAut060(d, pkg, act, 'owned'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectBilling: 'restore_owned' },
+    // AUT-061: purchase restore / reconciliation with the MOCK store (debug_purchase.json `restore` mode); no taps, objective checks only (restore_checks.ts).
+    'aut061-restore-reinstall': { id: 'aut061-restore-reinstall', label: 'aut061-restore-reinstall', seed: (d, pkg, act) => seedAut061(d, pkg, act, 'reinstall'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 500, expectRestore: 'reinstall' },
+    'aut061-restore-store-error': { id: 'aut061-restore-store-error', label: 'aut061-restore-store-error', seed: (d, pkg, act) => seedAut061(d, pkg, act, 'local_owned_store_error'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 500, expectRestore: 'local_owned_store_error' },
     'aut057-no-fill': { id: 'aut057-no-fill', label: 'aut057-admob-no-fill', seed: (d, pkg, act) => seedAut057(d, pkg, act, 'offline_double', { networkOff: true }), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectAdmob: 'no_fill' },
     'aut048-era3': { id: 'aut048-era3', label: 'aut048-era3-silent-load', seed: (d, pkg, act) => seedAut048(d, pkg, act, 'era3'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 400, expectEraTitle: 'none' },
 });
@@ -206,7 +213,7 @@ export function resolveRevealScenario(id: unknown): RevealScenario | null {
 }
 
 /** Objective checks over a timeline (pure, unit-tested). `tMs` is relative to the trigger (negative = before). */
-export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectOfflineDouble?: OfflineDoubleExpectation; expectExtendedOverclock?: ExtendedOverclockExpectation; expectAdmob?: AdmobExpectation; expectFounderShop?: FounderShopExpectation; expectBilling?: BillingExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation; expectSettings?: SettingsExpectation; expectRebootUi?: RebootUiExpectation }): RevealCheck[] {
+export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectOfflineDouble?: OfflineDoubleExpectation; expectExtendedOverclock?: ExtendedOverclockExpectation; expectAdmob?: AdmobExpectation; expectFounderShop?: FounderShopExpectation; expectBilling?: BillingExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation; expectSettings?: SettingsExpectation; expectRebootUi?: RebootUiExpectation; expectRestore?: RestoreExpectation }): RevealCheck[] {
     const checks: RevealCheck[] = [];
     const errors = events.filter((e) => e.event.evt === 'error');
     checks.push({ id: 'no_error_events', ok: errors.length === 0, detail: `${errors.length} error events` });
@@ -243,6 +250,7 @@ export function evaluateRevealTimeline(events: readonly TimelineEvent[], options
     if (options.expectAdmob !== undefined) checks.push(...evaluateAdmob(events, options.expectAdmob));
     if (options.expectFounderShop !== undefined) checks.push(...evaluateFounderShop(events, options.expectFounderShop));
     if (options.expectBilling !== undefined) checks.push(...evaluateBilling(events, options.expectBilling));
+    if (options.expectRestore !== undefined) checks.push(...evaluateRestore(events, options.expectRestore));
     if (options.expectPermanentUpgrades !== undefined) checks.push(...evaluatePermanentUpgrades(events, options.expectPermanentUpgrades));
     if (options.expectSettings !== undefined) checks.push(...evaluateSettings(events, options.expectSettings));
     if (options.expectRebootUi !== undefined) checks.push(...evaluateRebootUi(events, options.expectRebootUi));
@@ -988,7 +996,7 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
     collect(Date.now());
     await driver.stopLogcat();
 
-    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport, expectOfflineDouble: options.expectOfflineDouble, expectExtendedOverclock: options.expectExtendedOverclock, expectAdmob: options.expectAdmob, expectFounderShop: options.expectFounderShop, expectBilling: options.expectBilling, expectPermanentUpgrades: options.expectPermanentUpgrades, expectSettings: options.expectSettings, expectRebootUi: options.expectRebootUi });
+    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectRestore: options.expectRestore, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport, expectOfflineDouble: options.expectOfflineDouble, expectExtendedOverclock: options.expectExtendedOverclock, expectAdmob: options.expectAdmob, expectFounderShop: options.expectFounderShop, expectBilling: options.expectBilling, expectPermanentUpgrades: options.expectPermanentUpgrades, expectSettings: options.expectSettings, expectRebootUi: options.expectRebootUi });
     checks.unshift({ id: 'ui_layout_ready', ok: layout !== null, detail: layout ? 'ui_layout received' : 'no ui_layout (app did not reach the HUD)' });
     if (options.expectPermanentUpgrades || options.expectSettings || options.expectRebootUi || options.expectOfflineDouble || options.expectExtendedOverclock || options.expectAdmob || options.expectFounderShop || options.expectBilling) checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
     if (trigger !== 'none') checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });

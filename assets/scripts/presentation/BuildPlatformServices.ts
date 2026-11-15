@@ -70,7 +70,7 @@ export interface BuildPurchaseDeps {
 
 /** True when the DEBUG script carries any mock field (the mock then takes precedence over the real provider). */
 function scriptHasMockFields(script: DebugPurchaseScript): boolean {
-    return script.price !== null || script.metadataMissing || script.outcomes.length > 0 || script.duplicateCallback;
+    return script.price !== null || script.metadataMissing || script.outcomes.length > 0 || script.duplicateCallback || script.restore !== undefined;
 }
 
 export function createBuildPurchaseService(debug: boolean, script?: DebugPurchaseScript, deps?: BuildPurchaseDeps): BuildPurchaseSelection {
@@ -86,7 +86,7 @@ export function createBuildPurchaseService(debug: boolean, script?: DebugPurchas
     const products = script.metadataMissing
         ? []
         : [{ productId: PRODUCTS.founderPack, type: 'durable' as const, available: true, ...(script.price !== null ? { localizedPrice: script.price } : {}) }];
-    const purchases = new MockPurchaseService({ initialStatus: 'uninitialized', products });
+    const purchases = new MockPurchaseService({ initialStatus: 'uninitialized', products, ...(script.restore !== undefined ? { restore: script.restore, restoreProductId: PRODUCTS.founderPack } : {}) });
     const steps = script.outcomes.map((outcome) => ({ outcome }));
     if (steps.length > 0) purchases.enqueueOutcomes(PRODUCTS.founderPack, ...steps);
     return { service: purchases, source: 'mock' };

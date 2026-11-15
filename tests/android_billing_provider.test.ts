@@ -500,7 +500,9 @@ test('bootstrap wiring: real transport, shared overlay tracker, acknowledge hook
     assert.match(bootstrap, /createBuildPurchaseService\(DEBUG === true, this\.debugPurchaseScript, \{\s*androidTransport: createAndroidBillingTransport\(\),\s*overlay: this\.platformOverlay,/);
     assert.match(bootstrap, /acknowledge: typeof purchases\.acknowledgePurchase === 'function'/);
     assert.match(bootstrap, /purchases\.onPurchaseDelivery\?\.\(\(result\) => \{ void flow\.deliver\(result\); \}\);/);
-    assert.match(bootstrap, /purchases\.restorePurchases\(\)/);
+    // AUT-061: the store query runs through FounderStoreQuery, which is the only caller of purchases.restorePurchases().
+    assert.match(bootstrap, /founderStoreQuery\?\.run\('startup'\)/);
+    assert.match(read('assets/scripts/presentation/FounderStoreQuery.ts'), /this\.purchases\.restorePurchases\(\)/);
     // the overlay gate already keys on the shared tracker, whatever the overlay kind
     assert.match(bootstrap, /this\.overlayGate\.onHide\(this\.platformOverlay\.classifyBackground\(\) === 'overlay'\)/);
 });

@@ -72,6 +72,7 @@ import { createBuildAdsService, createBuildPurchaseService } from './BuildPlatfo
 import { DEBUG_PURCHASE_FILE, parseDebugPurchaseScriptFile, type DebugPurchaseScript } from './DebugPurchaseScriptFile.ts';
 import { FounderShopController } from './FounderShopController';
 import { FounderShopFlow } from './FounderShopFlow.ts';
+import { FounderStoreQuery } from './FounderStoreQuery.ts';
 import { PRODUCTS } from '../services/PlatformServiceTypes.ts';
 import type { PurchaseService } from '../services/PurchaseService';
 import { getFounderSurgeChargesRemaining, hasFounderSurgeGrantBeenRecorded, isFounderPackOwned, isFounderRobotCosmeticOwned } from '../monetization/FounderOffer.ts';
@@ -146,6 +147,8 @@ export class FactoryWorldBootstrap extends Component {
     /** AUT-059: the build-selected purchase provider (mock only in DEBUG with a debug_purchase.json script, otherwise the no-op: no Founder entry). */
     private purchases: PurchaseService | null = null;
     private purchaseSource: 'store' | 'mock' = 'store';
+    /** AUT-061: the throttled store ownership query (startup + foreground). */
+    private founderStoreQuery: FounderStoreQuery | null = null;
     private debugPurchaseScript: DebugPurchaseScript | undefined;
     private readonly overlayGate = new OverlayBackgroundGate();
     private adsAvailabilitySignature = '';
@@ -453,6 +456,15 @@ export class FactoryWorldBootstrap extends Component {
             shop.flow = flow;
             // AUT-060: purchases arriving outside a purchase() call (pending that completes, late result, store redelivery) take the same grant-then-acknowledge path.
             purchases.onPurchaseDelivery?.((result) => { void flow.deliver(result); });
+            // AUT-061: the store ownership query at start and on every foreground (throttled; never during a purchase flow, a platform overlay or the open shop modal).
+            // Deliveries (owned / unacknowledged purchases) reach the flow above and go through the reconciliation policy; a failed query only keeps the local state.
+            this.founderStoreQuery = new FounderStoreQuery({
+                purchases,
+                now: () => Date.now(),
+                isBlocked: () => this.platformOverlay.isOverlayActive() || flow.isPurchaseActive() || shop.isOpen(),
+                onResult: (_trigger, result) => { flow.reportStoreQuery(result); },
+                onDiagnostic: (phase, payload) => emitDeviceEvent('founder_shop', { phase, ...payload }),
+            });
             shop.requestRefresh();
             this.startPurchaseProvider(purchases);
         }
@@ -514,10 +526,9 @@ export class FactoryWorldBootstrap extends Component {
         void purchases.initialize().then((state) => {
             emitDeviceEvent('founder_shop', { phase: 'store_initialized', status: state.status, reason: state.reason ?? null });
             this.sessionWiring?.founderShop.requestRefresh();
-            // AUT-060: a real store provider redelivers unacknowledged / pending purchases once per start (crash between payment and grant). AUT-061 owns the restore flow proper.
-            if (state.status === 'ready' && typeof purchases.onPurchaseDelivery === 'function') {
-                void purchases.restorePurchases().then((query) => emitDeviceEvent('founder_shop', { phase: 'store_query', ok: query.ok, status: query.status, reason: query.reason ?? null })).catch(() => undefined);
-            }
+            // AUT-060 / AUT-061: the store query redelivers unacknowledged / pending purchases and owned purchases (restore) at every start; `FounderStoreQuery`
+            // calls `purchases.restorePurchases()` and the foreground re-query in `onGameShow` shares its throttle.
+            if (state.status === 'ready') void this.founderStoreQuery?.run('startup');
         }).catch(() => undefined);
     }
 
@@ -591,6 +602,9 @@ export class FactoryWorldBootstrap extends Component {
         // AUT-056: the offer is re-read after a resume (a preview may now be pending, claims may have aged out).
         this.sessionWiring?.extendedOverclock.requestRefresh();
         this.sessionWiring?.founderShop.requestRefresh();
+        // AUT-061: a purchase completed outside the app (or a pending one that resolved) is picked up on foreground. The overlay-induced show returned above, so this
+        // never runs while the Play sheet / an ad is closing; the query itself is throttled and suppressed during a purchase flow.
+        void this.founderStoreQuery?.run('foreground');
     }
 
     /** AUT-051: shows / refreshes the Offline Factory Report card from the session's pending preview (a non-collectible preview shows nothing). */

@@ -1,5 +1,6 @@
 import type { LifecycleFounderResult } from '../lifecycle/LifecycleSessionCoordinator.ts';
 import type { FounderEntitlementSource, FounderOfferStatus } from '../monetization/FounderOffer.ts';
+import { classifyFounderStoreQuery, decideFounderReconciliation, type FounderReconciliationPlan } from '../monetization/FounderReconciliation.ts';
 import { PRODUCTS } from '../services/PlatformServiceTypes.ts';
 import type { ProductDetails, PurchaseResult, PurchaseService } from '../services/PurchaseService';
 
@@ -221,9 +222,25 @@ export class FounderShopFlow {
         }
         switch (result.status) {
             case 'completed':
-                return this.apply(result, key, false);
-            case 'already_owned':
-                return this.apply(result, key, true);
+            case 'already_owned': {
+                // AUT-061: one reconciliation policy decides (grant path, restore, keep local, duplicate); the flow only executes the plan.
+                const restoreOnly = result.status === 'already_owned';
+                const plan = decideFounderReconciliation({
+                    localOwned: this.isLocallyOwned(),
+                    store: 'owned',
+                    delivery: restoreOnly ? 'owned_report' : 'purchase',
+                    transactionId: key,
+                    seenTransactionIds: this.delivered,
+                });
+                this.emit('reconciliation', { reason: plan.reason, actions: [...plan.actions], surgeGrant: plan.surgeGrant, restoreOnly });
+                if (plan.actions.length === 0) {
+                    // Store owned and already owned locally (or a seen transaction): nothing to apply, no save, no acknowledge.
+                    this.delivered.add(key);
+                    this.pending = false;
+                    return plan.reason === 'duplicate_transaction' ? 'duplicate' : 'already_owned';
+                }
+                return this.apply(result, key, restoreOnly);
+            }
             case 'pending':
                 this.pending = true;
                 this.note = null;
@@ -276,6 +293,9 @@ export class FounderShopFlow {
                     this.emit('acknowledged', { requestId: result.requestId });
                 }
                 catch {
+                    // AUT-061: the grant is durable but the store still holds an unacknowledged purchase: forget the key so the next redelivery (the foreground
+                    // store query) retries the acknowledge. The grant replay is idempotent (AUT-058 flags), so nothing is granted twice.
+                    this.delivered.delete(key);
                     this.emit('acknowledge_failed', { requestId: result.requestId });
                 }
             }
@@ -284,6 +304,30 @@ export class FounderShopFlow {
         finally {
             this.inProgress.delete(key);
         }
+    }
+
+    /**
+     * AUT-061: the outcome of a store query that delivered nothing (the deliveries themselves go through `deliver`). A failed / unavailable query is a
+     * "no answer": the policy keeps the local entitlement and nothing is sent to the session (never a revoke, never `owned: false`).
+     */
+    public reportStoreQuery(result: { readonly ok: boolean; readonly status?: string }): FounderReconciliationPlan {
+        const plan = decideFounderReconciliation({ localOwned: this.isLocallyOwned(), store: classifyFounderStoreQuery(result) });
+        this.emit('store_query_policy', { ok: result.ok, reason: plan.reason, actions: [...plan.actions], revokes: plan.revokes, localOwned: this.isLocallyOwned() });
+        return plan;
+    }
+
+    private isLocallyOwned(): boolean {
+        try {
+            return this.session.getFounderOfferStatus() === 'owned';
+        }
+        catch {
+            return false;
+        }
+    }
+
+    /** True while a purchase is being started / delivered (the foreground store query must not run then). */
+    public isPurchaseActive(): boolean {
+        return this.inFlight || this.inProgress.size > 0;
     }
 
     private safeServiceStatus(): string {
