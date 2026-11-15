@@ -38,3 +38,11 @@ Third line under the HUD band, RIGHT-aligned (280 x 64, under the Reboot chip). 
 - `applied_persistence_failed` leaves the pack owned in memory; a later replay returns `already_applied` without a save (AUT-058 behaviour, flagged for AUT-060 acknowledge semantics).
 - Analytics purchase events not wired. Founder Robot visuals / Surge activation (AUT-062) will read the same state.
 - Visual QA (chip/modal readability, no red, placement feel) and real-device behaviour are not validated here.
+
+## Device evidence and visual QA (2026-11-15)
+
+- Gate APK `temp/gate/ProjectAutomata-aut059-e4608e1-factoryworld.apk`; `npm run check` 1222 tests green.
+- Device captures (serial 1100a155), all objective checks PASS, 0 error events: `aut059-available`, `aut059-purchase-success` (completed + duplicate callback), `aut059-pending`, `aut059-cancel`, `aut059-fail`, `aut059-owned`, `aut059-hidden` (no store / NoOp), `aut059-locked`. Regression `aut056-success` PASS.
+- Visual QA (scene-presentation, stills): **PASS**. No BLOCKER/IMPORTANT. Chip line 3 right-aligned, no overlap; modal contents only Founder Robot + 2 Surges; price verbatim from mock store metadata; buttons 96 px; no red; states distinguishable; hidden states show no chip.
+- Non-blocking POLISH: dimmed disabled BUY label contrast; ~120 px gap in short/owned card; chip tag ~18 px from border; no frame shows Founder chip beside a visible Reboot chip (layout-test only; add a Reboot-visible capture later).
+- Pending human: motion/tap feel, real store price (AUT-060).
