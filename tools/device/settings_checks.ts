@@ -53,7 +53,7 @@ export function evaluateSettings(events: readonly SettingsTimelineEvent[], expec
 
     const opened = phaseOf(before, 'opened')[0];
     const rowRects = Array.isArray(opened?.event.rowRects) ? (opened?.event.rowRects as unknown[]) : [];
-    checks.push({ id: 'settings_panel_opened', ok: opened !== undefined && toRect(opened.event.panelRect) !== null && rowRects.length === 4 && rowRects.every((r) => toRect(r) !== null) && toRect(opened.event.closeRect) !== null, detail: opened ? `panelRect=${JSON.stringify(opened.event.panelRect)} rows=${rowRects.length}` : 'no opened' });
+    checks.push({ id: 'settings_panel_opened', ok: opened !== undefined && toRect(opened.event.panelRect) !== null && (rowRects.length === 4 || rowRects.length === 5) && /* AUT-065 adds an optional Privacy options row */ rowRects.slice(0, 4).every((r) => toRect(r) !== null) && toRect(opened.event.closeRect) !== null, detail: opened ? `panelRect=${JSON.stringify(opened.event.panelRect)} rows=${rowRects.length}` : 'no opened' });
 
     const toggledOff = phaseOf(before, 'toggled').find((e) => e.event.setting === 'musicEnabled' && e.event.value === false);
     checks.push({ id: 'settings_music_toggled_off', ok: toggledOff !== undefined && toggledOff.event.saved === true, detail: toggledOff ? `saved=${String(toggledOff.event.saved)}` : 'no musicEnabled=false toggle' });
