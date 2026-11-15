@@ -65,7 +65,7 @@ test('SettingsController only observes the store and submits no GameCommand', ()
     const source = stripComments(read(CONTROLLER));
     assert.doesNotMatch(source, /GameCommand|commandEmitter|binding|\.submit\(|LifecycleSession|GameState|AudioService|HapticsService/);
     assert.match(source, /store\.update\(row\.patch\)/);
-    assert.match(source, /createSettingsViewModel\(store\.get\(\), getTextCatalogue\(store\.get\(\)\.language\)\)/);
+    assert.match(source, /createSettingsViewModel\(store\.get\(\), getTextCatalogue\(store\.get\(\)\.language\), \{ privacyOptionsRequired: this\.privacyOptionsRequired\?\.\(\) === true \}\)/);
 });
 
 test('SettingsController source pins: Graphics fills, scale-based visibility, per-row Buttons with hit rect = drawn rect, backdrop swallow, inert language row', () => {

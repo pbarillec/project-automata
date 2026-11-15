@@ -12,6 +12,7 @@ import {
     SETTINGS_HEADER_FONT_SIZE,
     SETTINGS_PILL_FONT_SIZE,
     SETTINGS_ROW_COUNT,
+    SETTINGS_ROW_COUNT_WITH_PRIVACY,
     SETTINGS_ROW_FONT_SIZE,
     gearPoints,
     resolveSettingsPanelLayout,
@@ -52,9 +53,15 @@ export class SettingsController extends Component {
     public onLayoutChanged: ((reason: string) => void) | null = null;
     /** DEBUG only: how many missing-text reports the catalogue sink has counted (supplied by the bootstrap). */
     public missingTextCount: (() => number) | null = null;
+    /** AUT-065: whether the consent provider requires the "Privacy options" row (read on every refresh; supplied by the bootstrap). */
+    public privacyOptionsRequired: (() => boolean) | null = null;
+    /** AUT-065: the Privacy options row was tapped (the bootstrap asks the consent service to reopen the platform form). */
+    public onPrivacyOptionsRequested: (() => void) | null = null;
 
     private viewModel: SettingsViewModel | null = null;
     private layout: SettingsPanelLayout = resolveSettingsPanelLayout();
+    /** AUT-065: rows currently laid out (4, or 5 with the Privacy options row). */
+    private layoutRows = SETTINGS_ROW_COUNT;
     private chipBuilt = false;
     private panelBuilt = false;
     private open = false;
@@ -104,7 +111,7 @@ export class SettingsController extends Component {
             chip: chipShown ? this.chipNode : null,
             panel: this.open ? this.cardNode : null,
             close: this.open ? this.closeNode : null,
-            rows: this.rowViews.map((row) => (this.open ? row.node : null)),
+            rows: this.rowViews.map((row, index) => (this.open && index < this.layoutRows ? row.node : null)),
         };
     }
 
@@ -112,7 +119,7 @@ export class SettingsController extends Component {
     public refresh(): void {
         const store = this.settingsStore;
         if (!store) return;
-        this.viewModel = createSettingsViewModel(store.get(), getTextCatalogue(store.get().language));
+        this.viewModel = createSettingsViewModel(store.get(), getTextCatalogue(store.get().language), { privacyOptionsRequired: this.privacyOptionsRequired?.() === true });
         this.ensureChip();
         this.renderChip();
         if (this.open) this.renderPanel();
@@ -139,6 +146,11 @@ export class SettingsController extends Component {
         const store = this.settingsStore;
         if (!this.open || !viewModel || !store) return;
         const row = viewModel.rows[Number(customEventData)];
+        if (row && row.tappable && row.action === 'privacy_options') {
+            this.emitReport('privacy_options_tapped', {});
+            this.onPrivacyOptionsRequested?.();
+            return;
+        }
         if (!row || !row.tappable || row.patch === null) return;
         const saved = store.update(row.patch);
         this.refresh();
@@ -150,6 +162,7 @@ export class SettingsController extends Component {
     }
 
     private valueOf(settings: UserSettings, row: SettingsRowViewModel): boolean | string {
+        if (row.setting === 'privacy') return 'privacy_options';
         return row.setting === 'language' ? settings.language : settings[row.setting];
     }
 
@@ -262,7 +275,8 @@ export class SettingsController extends Component {
     private ensurePanel(): void {
         if (this.panelBuilt) return;
         this.panelBuilt = true;
-        const layout = this.layout;
+        // AUT-065: nodes are built for the largest layout (with the Privacy options row); renderPanel() lays out the rows actually shown.
+        const layout = resolveSettingsPanelLayout(SETTINGS_ROW_COUNT_WITH_PRIVACY);
         this.node.layer = Layers.Enum.UI_2D;
         const backdrop = this.backdropNode;
         if (backdrop) {
@@ -283,7 +297,7 @@ export class SettingsController extends Component {
         card.on(Node.EventType.TOUCH_CANCEL, this.swallowTouch, this);
         this.cardNode = card;
         this.titleLabel = this.newLabel(card, 'SettingsTitle', Label.HorizontalAlign.LEFT);
-        for (let i = 0; i < SETTINGS_ROW_COUNT; i += 1) {
+        for (let i = 0; i < SETTINGS_ROW_COUNT_WITH_PRIVACY; i += 1) {
             const rowLayout = layout.rows[i];
             // The whole row is the Button node (hit rect = drawn rect); fill, label and pill are its children.
             const node = this.newNode(`SettingsRow${i}`, card, rowLayout.slot.w, rowLayout.slot.h);
@@ -364,6 +378,7 @@ export class SettingsController extends Component {
         const key = viewModel.rows.map((row) => `${row.id}:${row.valueText}`).join(',');
         if (key === this.panelKey) return;
         this.panelKey = key;
+        this.applyRowCount(viewModel.rows.length);
         const colors = SETTINGS_COLORS;
         const layout = this.layout;
         const card = this.cardGraphics!;
@@ -386,6 +401,10 @@ export class SettingsController extends Component {
             } else if (row.on === false) {
                 this.fillRect(view.pill, pillRect.w, pillRect.h, colors.graphite, colors.cyan);
                 this.placeLabel(view.pillLabel, pillRect, SETTINGS_PILL_FONT_SIZE, colors.secondary, row.valueText);
+            } else if (row.action !== null) {
+                // AUT-065: a tappable action pill (Privacy options): graphite + cyan outline like OFF, but with the primary text colour.
+                this.fillRect(view.pill, pillRect.w, pillRect.h, colors.graphite, colors.cyan);
+                this.placeLabel(view.pillLabel, pillRect, SETTINGS_PILL_FONT_SIZE, colors.text, row.valueText);
             } else {
                 this.fillRect(view.pill, pillRect.w, pillRect.h, colors.dimFill);
                 this.placeLabel(view.pillLabel, pillRect, SETTINGS_PILL_FONT_SIZE, colors.dimText, row.valueText);
@@ -393,6 +412,26 @@ export class SettingsController extends Component {
         });
         this.fillRect(this.closeGraphics!, layout.close.w, layout.close.h, colors.graphite, colors.cyan);
         this.placeLabel(this.closeLabel!, { x: 0, y: 0, w: layout.close.w, h: layout.close.h }, SETTINGS_CLOSE_FONT_SIZE, colors.text, viewModel.texts.close);
+    }
+
+    /** AUT-065: resizes the card and repositions the title / rows / CLOSE for the number of rows shown (the extra row is hidden by scale). */
+    private applyRowCount(rowCount: number): void {
+        const count = Math.max(SETTINGS_ROW_COUNT, Math.min(SETTINGS_ROW_COUNT_WITH_PRIVACY, rowCount));
+        this.layoutRows = count;
+        const layout = resolveSettingsPanelLayout(count);
+        this.layout = layout;
+        const card = this.cardNode;
+        if (card) card.getComponent(UITransform)!.setContentSize(layout.width, layout.height);
+        this.rowViews.forEach((view, index) => {
+            const rowLayout = layout.rows[index];
+            if (rowLayout) {
+                view.node.setPosition(new Vec3(rowLayout.slot.x, rowLayout.slot.y, 0));
+                view.node.setScale(1, 1, 1);
+            } else {
+                view.node.setScale(0, 0, 0);
+            }
+        });
+        if (this.closeNode) this.closeNode.setPosition(new Vec3(layout.close.x, layout.close.y, 0));
     }
 
     /** Redraws the full-screen dim backdrop whenever its (Widget-driven) size changes. */

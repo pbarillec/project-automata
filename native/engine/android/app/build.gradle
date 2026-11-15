@@ -134,6 +134,8 @@ dependencies {
     implementation project(':libcocos')
     implementation 'com.google.android.gms:play-services-ads:25.4.0'
     implementation 'com.android.billingclient:billing:9.1.0'
+    // AUT-065: Google User Messaging Platform, pinned to the version play-services-ads:25.4.0 already resolves (4.0.0, verified in the Gradle cache) so no second UMP version is pulled in.
+    implementation 'com.google.android.ump:user-messaging-platform:4.0.0'
     if (Boolean.parseBoolean(PROP_ENABLE_INPUTSDK)) {
         implementation 'com.google.android.libraries.play.games:inputmapping:1.1.0-beta'
         implementation "org.jetbrains.kotlin:kotlin-stdlib:1.4.10"

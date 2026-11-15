@@ -33,6 +33,8 @@ import { seedAut060 } from './seed_aut060.ts';
 import { seedAut061 } from './seed_aut061.ts';
 import { evaluateRestore, type RestoreExpectation } from './restore_checks.ts';
 import { seedAut062 } from './seed_aut062.ts';
+import { seedAut065 } from './seed_aut065.ts';
+import { CONSENT_SETTLE_WAIT_MS, CONSENT_UMP_WAIT_MS, evaluateConsent, type ConsentExpectation } from './consent_checks.ts';
 import { evaluateFounderRobot, type FounderRobotExpectation } from './founder_robot_checks.ts';
 import { evaluateAnalytics, type AnalyticsExpectation } from './analytics_checks.ts';
 import { BILLING_CHIP_WAIT_MS, BILLING_RESULT_WAIT_MS, BILLING_SHEET_SETTLE_MS, evaluateBilling, type BillingExpectation } from './billing_checks.ts';
@@ -79,6 +81,8 @@ export interface RevealCaptureOptions {
     readonly expectFounderShop?: FounderShopExpectation;
     /** AUT-060 (REAL Google Play Billing, license tester, best-effort outcome; ENVIRONMENT_BLOCKED when no Play store / product): 'license_tester_purchase' = REAL taps chip -> BUY then wait for the (manually completed) Play sheet; 'cancel' = BACK on the sheet; 'restore_owned' = reinstall-like save restored by the store query without a Surge grant. */
     readonly expectBilling?: BillingExpectation;
+    /** AUT-065 (consent bootstrap): mock states 'not_required' | 'required_obtained' | 'required_declined' | 'error' | 'timeout' are observed (no taps; ads fail-closed unless allowed, x2 offered only when allowed); 'privacy_row' / 'no_privacy_row' open Settings with REAL taps (row visibility; the row reopens the form); 'ump_eea' = the REAL Google UMP with debug geography EEA (ENVIRONMENT_BLOCKED without network / a UMP message). */
+    readonly expectConsent?: ConsentExpectation;
     /** AUT-061 (MOCK store with a scripted `restore` mode, no taps): 'reinstall' = fresh save + store owned -> entitlement / cosmetic restored, 0 Surges, chip Owned; 'local_owned_store_error' = owned locally + failed store query -> still Owned (never revoked). */
     readonly expectRestore?: RestoreExpectation;
     /** AUT-062 (Founder Robot variant, MOCK store only for mid_session): 'not_owned' = no Founder robot; 'owned_first' = tap Next Goal, the first Worker Bot reveal is the Founder robot; 'owned_many' = rank 0 + one pooled robot among 7; 'mid_session' = REAL taps chip -> BUY, the variant swaps in place; 'reload' = force-stop + relaunch WITHOUT reseeding, same Founder ranks. Objective wiring checks only (founder_robot_checks.ts); readability stays with visual QA. */
@@ -118,7 +122,7 @@ export interface RevealCaptureResult {
 
 export const DEFAULT_REVEAL_EVENT_TYPES: readonly string[] = Object.freeze([
     'scene_ready', 'session_state', 'ui_layout', 'command_result', 'construction_state', 'camera_focus', 'reveal_state',
-    'milestone_presentation', 'era_transition', 'reboot_presentation', 'offline_report', 'offline_double', 'extended_overclock', 'founder_shop', 'analytics', 'ads_state', 'permanent_upgrades', 'reboot_ui', 'settings', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'robot_founder', 'robot_perf', 'error',
+    'milestone_presentation', 'era_transition', 'reboot_presentation', 'offline_report', 'offline_double', 'extended_overclock', 'founder_shop', 'analytics', 'ads_state', 'consent_state', 'permanent_upgrades', 'reboot_ui', 'settings', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'robot_founder', 'robot_perf', 'error',
 ]);
 
 /** A named live-reveal scenario: the seed (unbuilt variant), the producer whose construction must be observed and whether a camera focus is expected. */
@@ -140,6 +144,7 @@ export interface RevealScenario {
     readonly expectOfflineDouble?: OfflineDoubleExpectation;
     readonly expectExtendedOverclock?: ExtendedOverclockExpectation;
     readonly expectAdmob?: AdmobExpectation;
+    readonly expectConsent?: ConsentExpectation;
     readonly expectPermanentUpgrades?: PermanentUpgradeExpectation;
     readonly expectSettings?: SettingsExpectation;
     readonly expectRebootUi?: RebootUiExpectation;
@@ -220,6 +225,15 @@ export const REVEAL_SCENARIOS: Readonly<Record<string, RevealScenario>> = Object
     'aut062-mid-session': { id: 'aut062-mid-session', label: 'aut062-founder-robot-mid-session', seed: (d, pkg, act) => seedAut062(d, pkg, act, 'mid_session'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 4_000, intervalMs: 500, expectFounderShop: 'purchase_success', expectFounderRobot: 'mid_session' },
     'aut062-reload': { id: 'aut062-reload', label: 'aut062-founder-robot-reload', seed: (d, pkg, act) => seedAut062(d, pkg, act, 'owned_many_robots'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 4_000, intervalMs: 500, expectFounderRobot: 'reload' },
     'aut057-no-fill': { id: 'aut057-no-fill', label: 'aut057-admob-no-fill', seed: (d, pkg, act) => seedAut057(d, pkg, act, 'offline_double', { networkOff: true }), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectAdmob: 'no_fill' },
+    // AUT-065: consent bootstrap. The five mock states + the two Settings variants run the scripted MOCK transport under the real ConsentCoordinator; 'aut065-ump-eea' runs the REAL Google UMP (ENVIRONMENT_BLOCKED without network / a UMP message).
+    'aut065-not-required': { id: 'aut065-not-required', label: 'aut065-consent-not-required', seed: (d, pkg, act) => seedAut065(d, pkg, act, 'not_required'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectConsent: 'not_required' },
+    'aut065-required-obtained': { id: 'aut065-required-obtained', label: 'aut065-consent-required-obtained', seed: (d, pkg, act) => seedAut065(d, pkg, act, 'required_obtained'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectConsent: 'required_obtained' },
+    'aut065-required-declined': { id: 'aut065-required-declined', label: 'aut065-consent-required-declined', seed: (d, pkg, act) => seedAut065(d, pkg, act, 'required_declined'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectConsent: 'required_declined' },
+    'aut065-error': { id: 'aut065-error', label: 'aut065-consent-error', seed: (d, pkg, act) => seedAut065(d, pkg, act, 'error'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectConsent: 'error' },
+    'aut065-timeout': { id: 'aut065-timeout', label: 'aut065-consent-timeout', seed: (d, pkg, act) => seedAut065(d, pkg, act, 'timeout'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectConsent: 'timeout' },
+    'aut065-privacy-row': { id: 'aut065-privacy-row', label: 'aut065-consent-privacy-row', seed: (d, pkg, act) => seedAut065(d, pkg, act, 'privacy_row'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectConsent: 'privacy_row' },
+    'aut065-no-privacy-row': { id: 'aut065-no-privacy-row', label: 'aut065-consent-no-privacy-row', seed: (d, pkg, act) => seedAut065(d, pkg, act, 'no_privacy_row'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectConsent: 'no_privacy_row' },
+    'aut065-ump-eea': { id: 'aut065-ump-eea', label: 'aut065-consent-ump-eea', seed: (d, pkg, act) => seedAut065(d, pkg, act, 'ump_eea'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectConsent: 'ump_eea' },
     'aut048-era3': { id: 'aut048-era3', label: 'aut048-era3-silent-load', seed: (d, pkg, act) => seedAut048(d, pkg, act, 'era3'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 400, expectEraTitle: 'none' },
 });
 
@@ -229,7 +243,7 @@ export function resolveRevealScenario(id: unknown): RevealScenario | null {
 }
 
 /** Objective checks over a timeline (pure, unit-tested). `tMs` is relative to the trigger (negative = before). */
-export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectOfflineDouble?: OfflineDoubleExpectation; expectExtendedOverclock?: ExtendedOverclockExpectation; expectAdmob?: AdmobExpectation; expectFounderShop?: FounderShopExpectation; expectBilling?: BillingExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation; expectSettings?: SettingsExpectation; expectRebootUi?: RebootUiExpectation; expectRestore?: RestoreExpectation; expectFounderRobot?: FounderRobotExpectation; expectAnalytics?: AnalyticsExpectation }): RevealCheck[] {
+export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectOfflineDouble?: OfflineDoubleExpectation; expectExtendedOverclock?: ExtendedOverclockExpectation; expectAdmob?: AdmobExpectation; expectFounderShop?: FounderShopExpectation; expectConsent?: ConsentExpectation; expectBilling?: BillingExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation; expectSettings?: SettingsExpectation; expectRebootUi?: RebootUiExpectation; expectRestore?: RestoreExpectation; expectFounderRobot?: FounderRobotExpectation; expectAnalytics?: AnalyticsExpectation }): RevealCheck[] {
     const checks: RevealCheck[] = [];
     const errors = events.filter((e) => e.event.evt === 'error');
     checks.push({ id: 'no_error_events', ok: errors.length === 0, detail: `${errors.length} error events` });
@@ -266,6 +280,7 @@ export function evaluateRevealTimeline(events: readonly TimelineEvent[], options
     if (options.expectAdmob !== undefined) checks.push(...evaluateAdmob(events, options.expectAdmob));
     if (options.expectFounderShop !== undefined) checks.push(...evaluateFounderShop(events, options.expectFounderShop));
     if (options.expectBilling !== undefined) checks.push(...evaluateBilling(events, options.expectBilling));
+    if (options.expectConsent !== undefined) checks.push(...evaluateConsent(events, options.expectConsent));
     if (options.expectRestore !== undefined) checks.push(...evaluateRestore(events, options.expectRestore));
     if (options.expectFounderRobot !== undefined) checks.push(...evaluateFounderRobot(events, options.expectFounderRobot));
     if (options.expectAnalytics !== undefined) checks.push(...evaluateAnalytics(events, options.expectAnalytics));
@@ -721,6 +736,63 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
         }
         tapDetail = details.join('; ');
     }
+    // AUT-065: the consent drive. The scripted mock states are OBSERVED (no taps): the flow settles after the session is ready and the checks read the diagnostics.
+    // 'privacy_row' / 'no_privacy_row' open Settings with REAL taps at the reported rects (row visibility; the Privacy options row reopens the form). 'ump_eea' is observed only (the
+    // real UMP form cannot be driven reliably through ADB); without network / a UMP message the checks report ENVIRONMENT_BLOCKED.
+    if (layout && options.expectConsent) {
+        const expectation = options.expectConsent;
+        const display = pngSize(await driver.screencap());
+        const screenSize = { w: layout.screen.w, h: layout.screen.h };
+        const rectNow = async (name: string, waitMs = 5_000): Promise<{ x: number; y: number; w: number; h: number } | null> => {
+            const pick = () => toRect((stream.allEvents().filter((e) => e.evt === 'ui_layout' && toRect((e.rects as Record<string, unknown> | undefined)?.[name]) !== null).pop()?.rects as Record<string, unknown> | undefined)?.[name]);
+            const until = Date.now() + waitMs;
+            while (pick() === null && Date.now() < until) await sleep(200);
+            return pick();
+        };
+        const tapRect = async (name: string): Promise<string | null> => {
+            const rect = await rectNow(name);
+            if (!display || !rect) return null;
+            const point = cocosToAdb(rectCentre(rect), screenSize, display);
+            await driver.tap(Math.round(point.x), Math.round(point.y));
+            return `${name} at ${Math.round(point.x)},${Math.round(point.y)}`;
+        };
+        const details: string[] = [];
+        t0 = Date.now();
+        triggered = true;
+        const settleMs = expectation === 'ump_eea' ? CONSENT_UMP_WAIT_MS : CONSENT_SETTLE_WAIT_MS;
+        const settled = await stream.waitFor((e) => e.evt === 'consent_state' && ((e.phase === 'state' && e.status !== 'unknown' && e.formVisible !== true) || e.phase === 'timeout'), 0, settleMs);
+        details.push(settled ? `consent settled (status=${String(settled.event.status ?? 'timeout')})` : 'consent never settled within the wait window');
+        await sleep(1_500);
+        await frame('post');
+        if (expectation === 'privacy_row' || expectation === 'no_privacy_row') {
+            const openCursor = stream.cursor;
+            const chipTap = await tapRect('SettingsChip');
+            if (!chipTap) {
+                details.push('SettingsChip rect or display size missing');
+            } else {
+                details.push(`tapped ${chipTap}`);
+                await stream.waitFor((e) => e.evt === 'settings' && e.phase === 'opened', openCursor, 8_000);
+                await rectNow('SettingsRow3');
+                await sleep(700);
+                await frame('post');
+                if (expectation === 'privacy_row') {
+                    const rowCursor = stream.cursor;
+                    const rowTap = await tapRect('SettingsRow4');
+                    details.push(rowTap ? `tapped ${rowTap}` : 'SettingsRow4 (Privacy options) rect missing');
+                    if (rowTap) {
+                        await stream.waitFor((e) => e.evt === 'consent_state' && e.phase === 'privacy_options_result', rowCursor, 10_000);
+                        await sleep(800);
+                        await frame('post');
+                    }
+                }
+                const closeCursor = stream.cursor;
+                const closeTap = await tapRect('SettingsClose');
+                if (closeTap) await stream.waitFor((e) => e.evt === 'settings' && e.phase === 'closed', closeCursor, 8_000);
+                details.push(closeTap ? `closed via ${closeTap}` : 'SettingsClose rect missing');
+            }
+        }
+        tapDetail = details.join('; ');
+    }
     // AUT-052: the Settings drive: real taps at the rects `ui_layout` reports (gear chip, Music row, CLOSE), force-stop + relaunch without reseeding, toggle back.
     if (layout && options.expectSettings) {
         const display = pngSize(await driver.screencap());
@@ -1028,9 +1100,9 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
     collect(Date.now());
     await driver.stopLogcat();
 
-    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectRestore: options.expectRestore, expectFounderRobot: options.expectFounderRobot, expectAnalytics: options.expectAnalytics, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport, expectOfflineDouble: options.expectOfflineDouble, expectExtendedOverclock: options.expectExtendedOverclock, expectAdmob: options.expectAdmob, expectFounderShop: options.expectFounderShop, expectBilling: options.expectBilling, expectPermanentUpgrades: options.expectPermanentUpgrades, expectSettings: options.expectSettings, expectRebootUi: options.expectRebootUi });
+    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectRestore: options.expectRestore, expectFounderRobot: options.expectFounderRobot, expectAnalytics: options.expectAnalytics, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport, expectOfflineDouble: options.expectOfflineDouble, expectExtendedOverclock: options.expectExtendedOverclock, expectAdmob: options.expectAdmob, expectFounderShop: options.expectFounderShop, expectConsent: options.expectConsent, expectBilling: options.expectBilling, expectPermanentUpgrades: options.expectPermanentUpgrades, expectSettings: options.expectSettings, expectRebootUi: options.expectRebootUi });
     checks.unshift({ id: 'ui_layout_ready', ok: layout !== null, detail: layout ? 'ui_layout received' : 'no ui_layout (app did not reach the HUD)' });
-    if (options.expectPermanentUpgrades || options.expectSettings || options.expectRebootUi || options.expectOfflineDouble || options.expectExtendedOverclock || options.expectAdmob || options.expectFounderShop || options.expectBilling) checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
+    if (options.expectPermanentUpgrades || options.expectSettings || options.expectRebootUi || options.expectOfflineDouble || options.expectExtendedOverclock || options.expectAdmob || options.expectFounderShop || options.expectBilling || options.expectConsent) checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
     if (trigger !== 'none') checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
     writeFileSync(path.join(outDir, 'timeline.json'), `${JSON.stringify({ label: options.label, frames, events, checks }, null, 2)}\n`);
     writeFileSync(path.join(outDir, 'summary.md'), renderRevealSummary(options.label, frames, events, checks));

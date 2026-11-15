@@ -312,7 +312,8 @@ test('source scan: MockAdsService is referenced in presentation / app only by Bu
         }
     }
     const bootstrap = read('assets/scripts/presentation/FactoryWorldBootstrap.ts');
-    assert.match(bootstrap, /createBuildAdsService\(DEBUG === true, this\.readDebugAdsScript\(\), \{/);
+    assert.match(bootstrap, /const debugAdsScript = this\.readDebugAdsScript\(\);/);
+    assert.match(bootstrap, /createBuildAdsService\(DEBUG === true, debugAdsScript, \{/);
     assert.doesNotMatch(bootstrap, /NoOpAdsService|AndroidAdsService/);
     // The ads script file is read only under DEBUG and enabled diagnostics, and deleted after reading.
     const reader = bootstrap.slice(bootstrap.indexOf('private readDebugAdsScript'), bootstrap.indexOf('private activateSessionBinding'));

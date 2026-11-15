@@ -7,11 +7,17 @@ import { AndroidPurchaseService, type AndroidBillingDiagnostic, type AndroidBill
 import { MockAdsService, MockPurchaseService } from '../platform/mock/MockPlatformProviders.ts';
 import { DebugAnalyticsService } from '../platform/mock/DebugAnalyticsService.ts';
 import { NoOpAnalyticsService } from '../platform/noop/NoOpAnalyticsService.ts';
+import { MockConsentTransport } from '../platform/mock/MockConsentTransport.ts';
+import { NoOpConsentService } from '../platform/noop/NoOpConsentService.ts';
+import { ConsentCoordinator, type ConsentDiagnostic, type ConsentTransport } from '../services/ConsentCoordinator.ts';
+import { ConsentGatedAdsService } from '../services/ConsentGatedAdsService.ts';
+import type { ConsentGate, ConsentService } from '../services/ConsentService.ts';
 import { AnalyticsTracker } from '../services/AnalyticsTracker.ts';
 import { NoOpAdsService, NoOpPurchaseService } from '../platform/noop/NoOpPlatformProviders.ts';
 import type { PlatformOverlayTracker } from '../services/PlatformOverlay';
 import { DEBUG_ADS_PROVIDER_ADMOB_TEST, type DebugAdsScript } from './DebugAdsScriptFile.ts';
 import { DEBUG_PURCHASE_PROVIDER_PLAY_BILLING, type DebugPurchaseScript } from './DebugPurchaseScriptFile.ts';
+import { DEBUG_CONSENT_PROVIDER_UMP_TEST, type DebugConsentScript } from './DebugConsentScriptFile.ts';
 
 /**
  * AUT-055 build-time ads provider selection (pure, engine-free). The ONLY presentation file that references MockAdsService.
@@ -30,9 +36,16 @@ export interface BuildAdsDeps {
     /** ONE tracker shared with the lifecycle consumer (overlay-vs-absence). */
     readonly overlay?: PlatformOverlayTracker;
     readonly onDiagnostic?: AndroidAdsDiagnostic;
+    /** AUT-065: when given, EVERY provider (real, mock, no-op) is wrapped so nothing reaches it until `canRequestAds()` (fail-closed for ads). */
+    readonly consent?: ConsentGate;
 }
 
 export function createBuildAdsService(debug: boolean, script?: DebugAdsScript, deps?: BuildAdsDeps): AdsService {
+    const inner = createUngatedBuildAdsService(debug, script, deps);
+    return deps?.consent ? new ConsentGatedAdsService(inner, deps.consent) : inner;
+}
+
+function createUngatedBuildAdsService(debug: boolean, script?: DebugAdsScript, deps?: BuildAdsDeps): AdsService {
     const transport = deps?.androidTransport ?? null;
     const android = (): AdsService | null => transport === null ? null : new AndroidAdsService({ transport, overlay: deps?.overlay, onDiagnostic: deps?.onDiagnostic });
     if (debug !== true) return android() ?? new NoOpAdsService();
@@ -110,4 +123,51 @@ export function createBuildAnalyticsTracker(debug: boolean, onDiagnostic?: (phas
             onDiagnostic?.(kind, rest);
         },
     });
+}
+
+/**
+ * AUT-065 build-time consent selection (pure, engine-free). The consent provider decides whether ads may be requested; it never gates gameplay.
+ *
+ * - Release: the Google UMP provider (ConsentCoordinator over the native transport) when the Android bridge exists, otherwise NoOpConsentService
+ *   (`unavailable`, ads fail-closed, no privacy options entry). The DEBUG script is never read in release.
+ * - DEBUG, no script: a mock `not_required` (every other capture unaffected) UNLESS the ads script selects the real provider (`admob_test`), which needs a
+ *   real consent state: then the real UMP runs with the device's own geography.
+ * - DEBUG script mock fields (`state` / `privacyOptions`): the scripted mock transport under the real coordinator (takes precedence).
+ * - DEBUG script `provider: "ump_test"`: the real UMP with the scripted debug geography (the native side ignores it unless the app is debuggable).
+ */
+export interface BuildConsentDeps {
+    /** The native transport (null / undefined outside an Android native build). */
+    readonly androidTransport?: ConsentTransport | null;
+    /** ONE tracker shared with the lifecycle consumer (overlay-vs-absence). */
+    readonly overlay?: PlatformOverlayTracker;
+    readonly onDiagnostic?: ConsentDiagnostic;
+}
+
+/** Mock transports answer in microtasks; a scripted `timeout` must not make a capture wait the production 20 s. */
+export const MOCK_CONSENT_START_TIMEOUT_MS = 4_000;
+
+export function createBuildConsentService(debug: boolean, script?: DebugConsentScript, deps?: BuildConsentDeps, adsScript?: DebugAdsScript): ConsentService {
+    const transport = deps?.androidTransport ?? null;
+    const schedule = (callback: () => void, ms: number): (() => void) => { const handle = setTimeout(callback, ms); return () => clearTimeout(handle); };
+    const real = (nativeOptions?: Record<string, string | boolean>): ConsentService | null => transport === null
+        ? null
+        : new ConsentCoordinator({ transport, overlay: deps?.overlay, schedule, onDiagnostic: deps?.onDiagnostic, nativeOptions });
+    if (debug !== true) return real() ?? new NoOpConsentService();
+    const mock = (state: NonNullable<DebugConsentScript['state']>, privacyOptions?: boolean): ConsentService => new ConsentCoordinator({
+        transport: new MockConsentTransport({ state, ...(privacyOptions !== undefined ? { privacyOptions } : {}) }),
+        overlay: deps?.overlay,
+        schedule,
+        onDiagnostic: deps?.onDiagnostic,
+        startTimeoutMs: MOCK_CONSENT_START_TIMEOUT_MS,
+    });
+    if (script !== undefined && (script.state !== undefined || script.privacyOptions !== undefined)) return mock(script.state ?? 'not_required', script.privacyOptions);
+    if (script?.provider === DEBUG_CONSENT_PROVIDER_UMP_TEST) {
+        const provider = real({ debugGeography: script.geography ?? 'eea' });
+        if (provider !== null) return provider;
+    }
+    if (adsScript?.provider === DEBUG_ADS_PROVIDER_ADMOB_TEST) {
+        const provider = real();
+        if (provider !== null) return provider;
+    }
+    return mock('not_required');
 }

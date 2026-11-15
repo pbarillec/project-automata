@@ -9,6 +9,7 @@ import { offlineReportCardCenterOffsetY } from './OfflineReportLayout.ts';
  * (right-aligned) and the milestone toast band (centred, 440 wide for a Minor toast). The chip is narrow enough to stay clear of the
  * Minor toast; a wider Major / era / Reboot card passes over it for a moment (the chip is placed behind the toast band).
  * Panel: a centred 640-wide card (header, Music / SFX / Vibration toggle rows, an informational Language row, CLOSE).
+ * AUT-065: when the consent provider requires it (UMP privacy options), a fifth "Privacy options" row sits under Language and the card grows by one row.
  */
 
 export const SETTINGS_CHIP_WIDTH = 112;
@@ -24,6 +25,8 @@ export const SETTINGS_HEADER_HEIGHT = 44;
 export const SETTINGS_HEADER_FONT_SIZE = 30;
 export const SETTINGS_SECTION_GAP = 12;
 export const SETTINGS_ROW_COUNT = 4;
+/** AUT-065: the row count when the "Privacy options" row is shown (the card grows by exactly one row + gap). */
+export const SETTINGS_ROW_COUNT_WITH_PRIVACY = 5;
 export const SETTINGS_ROW_HEIGHT = 72;
 export const SETTINGS_ROW_GAP = 8;
 /** Row label font (>= the 20-unit body minimum, with margin). */
@@ -83,20 +86,20 @@ export function settingsContentWidth(): number {
     return SETTINGS_PANEL_WIDTH - SETTINGS_PADDING_X * 2;
 }
 
-export function settingsPanelHeight(): number {
-    const rowsHeight = SETTINGS_ROW_COUNT * SETTINGS_ROW_HEIGHT + (SETTINGS_ROW_COUNT - 1) * SETTINGS_ROW_GAP;
+export function settingsPanelHeight(rowCount: number = SETTINGS_ROW_COUNT): number {
+    const rowsHeight = rowCount * SETTINGS_ROW_HEIGHT + (rowCount - 1) * SETTINGS_ROW_GAP;
     return SETTINGS_PADDING_Y * 2 + SETTINGS_HEADER_HEIGHT + SETTINGS_SECTION_GAP + rowsHeight + SETTINGS_SECTION_GAP + SETTINGS_CLOSE_HEIGHT;
 }
 
-export function resolveSettingsPanelLayout(): SettingsPanelLayout {
-    const height = settingsPanelHeight();
+export function resolveSettingsPanelLayout(rowCount: number = SETTINGS_ROW_COUNT): SettingsPanelLayout {
+    const height = settingsPanelHeight(rowCount);
     const content = settingsContentWidth();
     const left = -content / 2;
     let top = height / 2 - SETTINGS_PADDING_Y;
     const title = rect(0, top - SETTINGS_HEADER_HEIGHT / 2, content, SETTINGS_HEADER_HEIGHT);
     top -= SETTINGS_HEADER_HEIGHT + SETTINGS_SECTION_GAP;
     const rows: SettingsRowLayout[] = [];
-    for (let i = 0; i < SETTINGS_ROW_COUNT; i += 1) {
+    for (let i = 0; i < rowCount; i += 1) {
         const centreY = top - i * (SETTINGS_ROW_HEIGHT + SETTINGS_ROW_GAP) - SETTINGS_ROW_HEIGHT / 2;
         const pillX = content / 2 - 14 - SETTINGS_PILL_WIDTH / 2;
         const labelWidth = content - 14 - 14 - SETTINGS_PILL_WIDTH - 10;
@@ -106,7 +109,7 @@ export function resolveSettingsPanelLayout(): SettingsPanelLayout {
             pill: rect(pillX, centreY, SETTINGS_PILL_WIDTH, SETTINGS_PILL_HEIGHT),
         }));
     }
-    top -= SETTINGS_ROW_COUNT * SETTINGS_ROW_HEIGHT + (SETTINGS_ROW_COUNT - 1) * SETTINGS_ROW_GAP + SETTINGS_SECTION_GAP;
+    top -= rowCount * SETTINGS_ROW_HEIGHT + (rowCount - 1) * SETTINGS_ROW_GAP + SETTINGS_SECTION_GAP;
     const close = rect(0, top - SETTINGS_CLOSE_HEIGHT / 2, content, SETTINGS_CLOSE_HEIGHT);
     return Object.freeze({ width: SETTINGS_PANEL_WIDTH, height, title, rows: Object.freeze(rows), close });
 }
@@ -135,11 +138,12 @@ export interface SettingsScreenRects {
 export function computeSettingsRects(
     screenPx: { w: number; h: number },
     safeAreaPx: UiRect = { x: 0, y: 0, w: screenPx.w, h: screenPx.h },
+    rowCount: number = SETTINGS_ROW_COUNT,
 ): SettingsScreenRects {
     if (!(screenPx.w > 0 && screenPx.h > 0)) throw new RangeError('screen size must be positive');
     const ui = computeUiLayout(screenPx, safeAreaPx);
     const scale = screenPx.w / UI_DESIGN_RESOLUTION.width;
-    const layout = resolveSettingsPanelLayout();
+    const layout = resolveSettingsPanelLayout(rowCount);
     const centreX = safeAreaPx.x + safeAreaPx.w / 2;
     const centreY = safeAreaPx.y + safeAreaPx.h / 2 + settingsPanelCenterOffsetY() * scale;
     const toScreen = (local: SettingsLocalRect): UiRect => ({

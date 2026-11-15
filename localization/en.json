@@ -129,6 +129,8 @@
     "settings.off": "OFF",
     "settings.language.en": "English",
     "settings.close": "CLOSE",
+    "settings.privacy": "Privacy options",
+    "settings.privacy.open": "OPEN",
     "reboot.chip": "REBOOT +{count}",
     "reboot.title": "REBOOT CIVILIZATION",
     "reboot.reward": "+{count} AI CORES",

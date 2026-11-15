@@ -1,6 +1,7 @@
 import { native, sys } from 'cc';
 import type { AndroidAdsTransport } from './AndroidAdsService';
 import type { AndroidBillingTransport } from './AndroidPurchaseService';
+import type { ConsentTransport } from '../../services/ConsentCoordinator';
 
 const AUTOMATA_PLATFORM_BRIDGE_CLASS = 'com/cocos/game/AutomataPlatformBridge';
 
@@ -77,5 +78,13 @@ export function createAndroidAdsTransport(): AndroidAdsTransport | null {
  * transport; null outside an Android native build, so the caller falls back to the no-op purchase service (the Founder entry stays hidden).
  */
 export function createAndroidBillingTransport(): AndroidBillingTransport | null {
+    return createAndroidAdsTransport();
+}
+
+/**
+ * AUT-065: the real transport for the pure ConsentCoordinator (Google UMP). Same native bridge and event wrapper as the ads transport; null outside an
+ * Android native build, so the caller falls back to the no-op consent service (consent `unavailable`, ads fail-closed, gameplay untouched).
+ */
+export function createAndroidConsentTransport(): ConsentTransport | null {
     return createAndroidAdsTransport();
 }

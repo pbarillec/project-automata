@@ -68,7 +68,9 @@ import { ASSEMBLY_FOUNDATION_SLAB, assemblyLocal, FIRST_ROBOT_REVEAL_TARGET, ROB
 import { CocosFileSystemPort } from '../app/CocosFileSystemPort';
 import { DEBUG_COMMAND_FILE, parseDebugCommandFile } from './DebugCommandFile.ts';
 import { DEBUG_ADS_FILE, parseDebugAdsScriptFile, type DebugAdsScript } from './DebugAdsScriptFile.ts';
-import { createBuildAdsService, createBuildAnalyticsTracker, createBuildPurchaseService } from './BuildPlatformServices.ts';
+import { createBuildAdsService, createBuildAnalyticsTracker, createBuildConsentService, createBuildPurchaseService } from './BuildPlatformServices.ts';
+import { DEBUG_CONSENT_FILE, parseDebugConsentScriptFile, type DebugConsentScript } from './DebugConsentScriptFile.ts';
+import type { ConsentService } from '../services/ConsentService.ts';
 import { AnalyticsObserver } from './AnalyticsObserver.ts';
 import { createAnalyticsStateContext } from './AnalyticsStateContext.ts';
 import { DEBUG_PURCHASE_FILE, parseDebugPurchaseScriptFile, type DebugPurchaseScript } from './DebugPurchaseScriptFile.ts';
@@ -79,7 +81,7 @@ import { PRODUCTS } from '../services/PlatformServiceTypes.ts';
 import type { PurchaseService } from '../services/PurchaseService';
 import { getFounderSurgeChargesRemaining, hasFounderSurgeGrantBeenRecorded, isFounderPackOwned, isFounderRobotCosmeticOwned } from '../monetization/FounderOffer.ts';
 import { OverlayBackgroundGate } from './OverlayBackgroundGate.ts';
-import { createAndroidAdsTransport, createAndroidBillingTransport } from '../platform/android/AndroidNativeBridge';
+import { createAndroidAdsTransport, createAndroidBillingTransport, createAndroidConsentTransport } from '../platform/android/AndroidNativeBridge';
 import { PlatformOverlayTracker } from '../services/PlatformOverlay';
 import { OfflineDoubleFlow } from './OfflineDoubleFlow.ts';
 import { ExtendedOverclockController } from './ExtendedOverclockController';
@@ -157,6 +159,9 @@ export class FactoryWorldBootstrap extends Component {
     private readonly overlayGate = new OverlayBackgroundGate();
     private adsAvailabilitySignature = '';
     private adsProviderStarted = false;
+    /** AUT-065: the build-selected consent provider (Google UMP on Android, mock / no-op otherwise). Decides ONLY whether ads may be requested; never gates gameplay. */
+    private consent: ConsentService | null = null;
+    private consentStarted = false;
     private extendedHudSeconds = 0;
     private sessionWiring: { hud: CoreHudController; panel: ProducerPanelController; batch: AssemblyBatchActionController; selection: ProducerSelectionController; presentation: PresentationController | null; offlineReport: OfflineReportController; permanentUpgrades: PermanentUpgradeController; settings: SettingsController; reboot: RebootController; extendedOverclock: ExtendedOverclockController; founderShop: FounderShopController } | null = null;
     /** AUT-RBT-001: set by the binding's pending-offline callback and consumed by the Reboot modal to tell "blocked" from "exception" (both return null). */
@@ -283,10 +288,18 @@ export class FactoryWorldBootstrap extends Component {
         this.analytics = new AnalyticsObserver(analyticsTracker);
         // AUT-055: the rewarded-ad provider is chosen at build time: a mock only in DEBUG builds, otherwise the no-op (x2 hidden). The DEBUG script is read once.
         // AUT-057: release = the Android AdMob provider (NoOp when unconfigured / no native bridge); DEBUG = the mock unless the script asks for admob_test.
-        this.offlineAds = createBuildAdsService(DEBUG === true, this.readDebugAdsScript(), {
+        // AUT-065: the consent provider is chosen first; the ads provider is wrapped so nothing reaches it until canRequestAds() (fail-closed for ads, fail-open for gameplay).
+        const debugAdsScript = this.readDebugAdsScript();
+        this.consent = createBuildConsentService(DEBUG === true, this.readDebugConsentScript(), {
+            androidTransport: createAndroidConsentTransport(),
+            overlay: this.platformOverlay,
+            onDiagnostic: (phase, payload) => emitDeviceEvent('consent_state', { phase, ...payload }),
+        }, debugAdsScript);
+        this.offlineAds = createBuildAdsService(DEBUG === true, debugAdsScript, {
             androidTransport: createAndroidAdsTransport(),
             overlay: this.platformOverlay,
             onDiagnostic: (phase, payload) => emitDeviceEvent('ads_state', { phase, ...payload }),
+            consent: this.consent,
         });
         this.platformOverlay.subscribe((event) => emitDeviceEvent('ads_state', { phase: 'overlay', state: event.phase, kind: event.kind, requestId: event.requestId }));
         // AUT-059: the purchase provider is chosen at build time: release / no script = the no-op (no Founder entry); DEBUG + debug_purchase.json = the scriptable mock.
@@ -381,6 +394,26 @@ export class FactoryWorldBootstrap extends Component {
             return script ?? undefined;
         } catch (error) {
             this.reportSessionError('debug_purchase', error);
+            return undefined;
+        }
+    }
+
+    /**
+     * DEBUG / capture-only (AUT-065): reads debug_consent.json ONCE, deletes it and returns the allow-listed consent script (mock state or the real UMP with
+     * debug geography). Guarded by DEBUG === true AND enabled device diagnostics, so release builds never read it.
+     */
+    private readDebugConsentScript(): DebugConsentScript | undefined {
+        if (DEBUG !== true || !isDeviceDiagnosticsEnabled()) return undefined;
+        try {
+            const port = new CocosFileSystemPort();
+            const text = port.readText(DEBUG_CONSENT_FILE);
+            if (text === undefined) return undefined;
+            port.remove(DEBUG_CONSENT_FILE);
+            const script = parseDebugConsentScriptFile(text);
+            emitDeviceEvent('consent_state', { phase: 'script', accepted: script !== null, state: script?.state ?? null, privacyOptions: script?.privacyOptions ?? null, provider: script?.provider ?? null, geography: script?.geography ?? null });
+            return script ?? undefined;
+        } catch (error) {
+            this.reportSessionError('debug_consent', error);
             return undefined;
         }
     }
@@ -494,6 +527,8 @@ export class FactoryWorldBootstrap extends Component {
             this.lifecycleHooksRegistered = true;
         }
         this.emitSessionState('ready', status, null, binding.describe().autoFeederOwned);
+        // AUT-065: the consent flow starts only after the session is ready (lifecycle hooks registered): never on the startup path, never blocking; a form shows over the game only when required.
+        this.startConsentProvider();
         // AUT-055 DEBUG: the persisted Offline Double claim history at session ready (proves a granted claim survived a relaunch).
         if (isDeviceDiagnosticsEnabled()) {
             const claim = binding.getStateSnapshot()?.monetization.rewardedClaims[OFFLINE_DOUBLE_CLAIM_KEY];
@@ -557,8 +592,34 @@ export class FactoryWorldBootstrap extends Component {
         emitDeviceEvent('founder_shop', { phase: 'state', reason, owned: isFounderPackOwned(state), cosmetic: isFounderRobotCosmeticOwned(state), grantRecorded: hasFounderSurgeGrantBeenRecorded(state), surgeCharges: getFounderSurgeChargesRemaining(state) });
     }
 
+    /**
+     * AUT-065: starts the consent flow (fire and forget; never rejects) and follows its state: the Settings "Privacy options" row appears / disappears with
+     * privacyOptionsRequired, the ads provider is initialised the first time canRequestAds is true, and the x2 / Extended actions re-evaluate their
+     * availability on every change (they stay hidden while consent is pending / declined / failed).
+     */
+    private startConsentProvider(): void {
+        const consent = this.consent;
+        if (!consent || this.consentStarted) return;
+        this.consentStarted = true;
+        consent.subscribe((state) => {
+            this.sessionWiring?.settings.refresh();
+            if (state.canRequestAds && this.offlineAds) this.startAdsProvider(this.offlineAds);
+            this.adsAvailabilitySignature = '';
+            this.sessionWiring?.offlineReport.onAdsAvailabilityChanged();
+            this.sessionWiring?.extendedOverclock.requestRefresh();
+        });
+        void consent.start().then(() => { this.sessionWiring?.settings.refresh(); }).catch(() => undefined);
+    }
+
+    /** AUT-065: the Settings "Privacy options" row asks the platform to reopen the consent / privacy options form (a platform overlay, never an absence). */
+    private requestPrivacyOptions(): void {
+        void this.consent?.showPrivacyOptions().catch(() => undefined);
+    }
+
     private startAdsProvider(ads: AdsService): void {
         if (this.adsProviderStarted) return;
+        // AUT-065: fail-closed for ads. Until the consent provider allows ad requests nothing initialises the ads provider; the consent subscription calls this again.
+        if (this.consent && !this.consent.canRequestAds()) return;
         this.adsProviderStarted = true;
         void ads.initialize().then((state) => {
             emitDeviceEvent('ads_state', { phase: 'initialized', status: state.status, reason: state.reason ?? null });
@@ -1406,6 +1467,9 @@ export class FactoryWorldBootstrap extends Component {
         controller.screenRectOf = (node) => this.uiScreenRect(node);
         controller.onLayoutChanged = (reason) => this.scheduleUiLayoutDiagnostics(reason);
         controller.missingTextCount = () => this.missingTextReports;
+        // AUT-065: the Privacy options row is shown only while the consent provider requires it; a tap reopens the platform form.
+        controller.privacyOptionsRequired = () => this.consent?.isPrivacyOptionsRequired() === true;
+        controller.onPrivacyOptionsRequested = () => this.requestPrivacyOptions();
         controller.refresh();
         return controller;
     }

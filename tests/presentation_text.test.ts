@@ -352,6 +352,8 @@ test('every catalogue entry is reachable from the composition paths (no dead key
     const settingsVm = await imp('assets/scripts/presentation/SettingsViewModel.ts');
     const userSettings = await imp('assets/scripts/settings/UserSettings.ts');
     for (const on of [true, false]) settingsVm.createSettingsViewModel({ ...userSettings.DEFAULT_USER_SETTINGS, musicEnabled: on, sfxEnabled: on, vibrationEnabled: on }, catalogue);
+    // AUT-065: the Privacy options row (settings.privacy*), shown only when the consent provider requires it.
+    settingsVm.createSettingsViewModel(userSettings.DEFAULT_USER_SETTINGS, catalogue, { privacyOptionsRequired: true });
     // AUT-RBT-001 Reboot chip / modal: the plural and the singular reward, the progress and every list line.
     const rebootVm = await imp('assets/scripts/presentation/RebootPanelViewModel.ts');
     for (const reward of [1, 5]) {

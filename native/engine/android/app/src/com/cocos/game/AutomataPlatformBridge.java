@@ -41,6 +41,20 @@ public final class AutomataPlatformBridge {
         return AutomataAdsController.show(requestJson);
     }
 
+    // AUT-065: Google UMP consent is served by AutomataConsentController. Every method returns immediately; the slow results (consent state, privacy options
+    // result) arrive as "automata.consent.*" script events. canRequestAds() gates the ads provider natively.
+    public static String initializeConsent(String optionsJson) {
+        return AutomataConsentController.initialize(optionsJson);
+    }
+
+    public static String getConsentState() {
+        return AutomataConsentController.status();
+    }
+
+    public static String showPrivacyOptions() {
+        return AutomataConsentController.showPrivacyOptions();
+    }
+
     // AUT-060: Google Play Billing is served by AutomataBillingController. Every method returns immediately; the slow results
     // (connection state, product metadata, purchase result, acknowledge, store query) arrive as "automata.billing.*" script events.
     public static String initializePurchases() {

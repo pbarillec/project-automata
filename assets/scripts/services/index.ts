@@ -14,3 +14,6 @@ export * from './RewardClaimLedger';
 
 export * from './AudioService';
 export * from './HapticsService';
+export * from './ConsentCoordinator';
+export * from './ConsentGatedAdsService';
+export * from './ConsentService';

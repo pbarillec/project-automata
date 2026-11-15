@@ -39,6 +39,7 @@ import java.util.regex.Pattern;
  *   result JSON is dispatched later as the script event "automata.ads.rewarded_result" (emitted at dismissal, never at the reward moment);
  * - debuggable builds ALWAYS use Google's public sample IDs; non-debuggable builds read injected manifest meta-data and an
  *   empty / malformed / sample value means "not configured" (no SDK init, no crash). No production ID is ever committed.
+ * - AUT-065: nothing is initialised or loaded until AutomataConsentController.canRequestAds() is true (fail-closed); ads stay non-personalized (npa=1).
  */
 final class AutomataAdsController {
     static final String EVENT_REWARDED_RESULT = "automata.ads.rewarded_result";
@@ -149,6 +150,10 @@ final class AutomataAdsController {
             }
             if ("initializing".equals(sdkStatus) || "ready".equals(sdkStatus)) {
                 return statusJson();
+            }
+            if (!canRequestAds()) {
+                // AUT-065: fail-closed. The SDK is not even initialised until UMP says ads may be requested (the script calls initialize again once it does).
+                return statusJson("uninitialized", "consent_pending");
             }
             sdkStatus = "initializing";
             sdkReason = "";
@@ -311,9 +316,31 @@ final class AutomataAdsController {
         return value instanceof String ? ((String) value).trim() : "";
     }
 
-    /** Single consent hook; AUT-065 wires the UMP flow here. Until then ads may be requested (non-personalized only). */
+    /** AUT-065: the single consent hook, wired to the UMP controller. False until UMP (or the previous session's stored consent) allows ad requests. Ads stay non-personalized (npa=1). */
     private static boolean canRequestAds() {
-        return true;
+        return AutomataConsentController.canRequestAds();
+    }
+
+    /** AUT-065: true when ads are configured for this build (sample IDs when debuggable, injected IDs otherwise); the consent flow is only started then. */
+    static boolean isConfigured() {
+        synchronized (LOCK) {
+            resolveConfigLocked();
+            return configured;
+        }
+    }
+
+    /** AUT-065: the consent state changed; when the SDK is ready and ads are now allowed, load the placements that were waiting for consent. */
+    static void onConsentChanged() {
+        runOnUi(new Runnable() {
+            @Override
+            public void run() {
+                if (!"ready".equals(sdkStatus) || !canRequestAds()) {
+                    return;
+                }
+                loadPlacement(OFFLINE_DOUBLE);
+                loadPlacement(EXTENDED_OVERCLOCK);
+            }
+        });
     }
 
     // ---------------------------------------------------------------- SDK init / load (UI thread)
@@ -584,6 +611,9 @@ final class AutomataAdsController {
         }
         if (!configured) {
             return configReason;
+        }
+        if (!canRequestAds()) {
+            return "consent_pending"; // AUT-065: consent withdrawn or not yet given: an already loaded ad is not offered either
         }
         if (!"ready".equals(sdkStatus)) {
             return "not_initialized";

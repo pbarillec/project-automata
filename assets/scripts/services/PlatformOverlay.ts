@@ -1,4 +1,4 @@
-export type PlatformOverlayKind = 'rewarded_ad' | 'purchase_flow';
+export type PlatformOverlayKind = 'rewarded_ad' | 'purchase_flow' | 'consent_form';
 
 export interface PlatformOverlayEvent {
     phase: 'begin' | 'end';

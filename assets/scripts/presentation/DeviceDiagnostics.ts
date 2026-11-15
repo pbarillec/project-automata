@@ -69,6 +69,8 @@ export const DEVICE_EVENT_TYPES = [
     'extended_overclock',
     // AUT-057 (DEBUG only): rewarded-ad provider: { phase: 'init' | 'initialized' | 'availability' | 'native_started' | 'overlay' | 'ad_result' | 'overlay_hide_skipped' | 'overlay_show_skipped', status, reason, placementId, available, requestId, state (overlay: begin | end), rewardVerified }.
     'ads_state',
+    // AUT-065 (DEBUG only): consent provider (Google UMP / mock): { phase: 'script' | 'init' | 'state' | 'timeout' | 'form_backstop' | 'privacy_options_started' | 'privacy_options_result', status, canRequestAds, privacyOptionsRequired, formVisible, reason; script: accepted, state, privacyOptions, provider, geography }. The consent form overlay itself is an ads_state overlay begin / end with kind consent_form.
+    'consent_state',
     // AUT-050: AI Upgrades chip / panel: { phase: 'chip_shown' | 'chip_hidden' | 'opened' | 'tab' | 'row_tapped' | 'purchase_result' | 'closed', tab, upgradeId, rowState, aiCores, ranks, rank, cost, status, reason, saveOk, rows, texts, chipRect, panelRect, rowRects, buyRects, scale }.
     'permanent_upgrades',
     // AUT-RBT-001: Reboot entry chip / confirmation modal: { phase: 'chip_shown' | 'chip_hidden' | 'opened' | 'cancel_tapped' | 'closed' | 'confirm_tapped' | 'result', reason (closed: cancel | backdrop | confirmed | no_longer_eligible | blocked_pending_offline | suppressed), status, saveOk, eventTypes, aiCoresToGain, currentAiCores, resultingAiCores, currentCivilization, resultingCivilization, progressPercent, texts, resetsCount, keepsCount, chipRect, panelRect, confirmRect, cancelRect, scale }.
