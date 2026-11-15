@@ -4,6 +4,7 @@ import type { GameState } from '../state/GameState.ts';
 import type { MobileCameraController } from '../camera/MobileCameraController';
 import type { ConstructionPresentationController } from './ConstructionPresentationController';
 import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
+import { fitLabel } from './LabelFit.ts';
 import { eraTransitionSpec, resolveEraFocus } from './EraTransition.ts';
 import { MILESTONE_ACCENT_RGB, MILESTONE_RING_HEIGHT, MILESTONE_RING_VISIBLE_ABOVE, MILESTONE_SPARK_COUNT, milestoneRingBars, producerFootprint, resolveMilestoneFocus, sampleMilestoneEffect } from './MilestoneFeedback.ts';
 import { MilestonePresentationViewModel, type MilestoneUpdate } from './MilestonePresentationViewModel.ts';
@@ -346,7 +347,7 @@ export class MilestonePresentationController extends Component {
         label.node.setPosition(new Vec3(0, centerY, 0));
         label.fontSize = fontSize;
         label.lineHeight = lineHeight;
-        label.string = text;
+        label.string = fitLabel(label, text);
     }
 
     // ---- pulse / sparks ----

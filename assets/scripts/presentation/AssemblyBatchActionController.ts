@@ -2,6 +2,7 @@ import { _decorator, Button, Color, Component, EventHandler, Label, Layers, Node
 import type { GameCommand } from '../domain/Commands.ts';
 import type { AssemblyBatchViewModel } from './AssemblyBatchViewModel.ts';
 import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
+import { fitLabel } from './LabelFit.ts';
 import { formatAssemblyBatchText } from './PresentationText.ts';
 import { PRODUCER_PANEL_LAYOUT, cardActionRect, cardPrimaryActionSplitRects } from './UiLayout.ts';
 
@@ -30,6 +31,7 @@ export class AssemblyBatchActionController extends Component {
         this.ensureLayout();
         this.latest = viewModel;
         this.label!.string = formatAssemblyBatchText(viewModel);
+        this.label!.string = fitLabel(this.label!, this.label!.string);
         this.button!.interactable = viewModel.enabled;
         this.node.active = viewModel.visible;
         this.applyPrimaryRowSplit(viewModel.visible);

@@ -12,6 +12,17 @@ const LOCALE_FILE_PATTERN = /^localization\/([a-z]{2,3}(?:-[A-Za-z0-9]+)?)\.json
 
 const catalogues = new Map<string, TextCatalogue>();
 
+/**
+ * AUT-070 release path: the shared catalogues never render a raw dotted key (a key missing everywhere is blank, a key missing from a
+ * translation shows the English text). DEBUG builds opt in to seeing the key via `setShowMissingKeys(true)` (FactoryWorldBootstrap passes DEBUG).
+ */
+let showMissingKeys = false;
+
+export function setShowMissingKeys(show: boolean): void {
+    showMissingKeys = show;
+    for (const catalogue of catalogues.values()) catalogue.setMissingKeyDisplay(show ? 'key' : 'blank');
+}
+
 function sourceFor(language: string) {
     return getEmbeddedTextCatalogueSources().find((entry) => entry.filePath === `localization/${language}.json`);
 }
@@ -44,6 +55,8 @@ export function getTextCatalogue(language: string = DEFAULT_LANGUAGE, sink: Miss
     let catalogue = catalogues.get(resolved);
     if (!catalogue) {
         catalogue = createTextCatalogue(source.text);
+        catalogue.setMissingKeyDisplay(showMissingKeys ? 'key' : 'blank');
+        if (resolved !== DEFAULT_LANGUAGE) catalogue.setFallback(getTextCatalogue(DEFAULT_LANGUAGE));
         catalogues.set(resolved, catalogue);
     }
     return catalogue;

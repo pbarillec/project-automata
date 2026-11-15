@@ -3,6 +3,7 @@ import type { GameCommand } from '../domain/Commands.ts';
 import { resolveManualProduceAction, resolveNextGoalAction, resolveOverclockAction } from './CoreLoopActions.ts';
 import { resolveOverclockDisplayState, type HudViewModel } from './HudViewModel.ts';
 import { defaultHudTexts, formatHudTexts, type DisplayNameSource } from './PresentationText.ts';
+import { fitLabel } from './LabelFit.ts';
 import { BOOST_HUD_OUTLINE_THICKNESS, resolveBoostHudPill, resolveOverclockRowText } from './BoostHudPill.ts';
 import { IDENTITY_PALETTE, hudIndustrialIconSlot, hudOverclockIconSlot } from './AutomataIdentity.ts';
 import { drawIcon, recordIcon } from './IdentityGraphics';
@@ -292,5 +293,8 @@ export class CoreHudController extends Component {
         for (const [key, button] of this.buttons) button.interactable = states[key].visible && states[key].enabled;
     }
 
-    private setText(key: string, value: string): void { this.labels.get(key)!.string = value; }
+    private setText(key: string, value: string): void {
+        const label = this.labels.get(key)!;
+        label.string = fitLabel(label, value);
+    }
 }

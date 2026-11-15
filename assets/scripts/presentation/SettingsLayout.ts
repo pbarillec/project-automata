@@ -6,7 +6,7 @@ import { offlineReportCardCenterOffsetY } from './OfflineReportLayout.ts';
  * Same language as the AUT-050 AI Upgrades panel: graphite pill, off-white text, cyan accent, never red.
  *
  * Chip: one small gear + "SET" button in the band directly under the HUD at the LEFT edge, on the same top line as the AUT-050 AI chip
- * (right-aligned) and the milestone toast band (centred, 440 wide for a Minor toast). The chip is narrow enough to stay clear of the
+ * (right-aligned) and the milestone toast band (centred, 384 wide for a Minor toast since AUT-070). The chip is narrow enough to stay clear of the
  * Minor toast; a wider Major / era / Reboot card passes over it for a moment (the chip is placed behind the toast band).
  * Panel: a centred 640-wide card (header, Music / SFX / Vibration toggle rows, an informational Language row, CLOSE).
  * AUT-065: when the consent provider requires it (UMP privacy options), a fifth "Privacy options" row sits under Language and the card grows by one row.

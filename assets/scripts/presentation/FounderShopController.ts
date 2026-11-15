@@ -1,5 +1,6 @@
 import { _decorator, Button, Color, Component, EventHandler, EventTouch, Graphics, Label, Layers, Node, UITransform, Vec3, view, Widget } from 'cc';
 import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
+import { fitLabel } from './LabelFit.ts';
 import type { FounderShopFlow } from './FounderShopFlow.ts';
 import { IDENTITY_PALETTE, founderChipIconSlot } from './AutomataIdentity.ts';
 import { drawIcon, recordIcon } from './IdentityGraphics';
@@ -250,7 +251,7 @@ export class FounderShopController extends Component {
         label.node.getComponent(UITransform)!.setContentSize(rect.w, rect.h);
         label.fontSize = fontSize;
         label.lineHeight = rect.h;
-        label.string = text;
+        label.string = fitLabel(label, text);
         label.color = colorOf(color, alpha);
     }
 

@@ -3,6 +3,8 @@ import type { LifecycleCollectResult } from '../lifecycle/LifecycleSessionCoordi
 import type { OfflinePreviewResult } from '../offline/index.ts';
 import type { OfflineAnalyticsSignal } from '../services/AnalyticsEventMapper.ts';
 import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
+import { fitLabel } from './LabelFit.ts';
+import { TEXT_MIN_BUTTON_FONT_SIZE } from './TextFit.ts';
 import {
     OFFLINE_REPORT_ACCENT_HEIGHT,
     OFFLINE_REPORT_COLORS,
@@ -399,7 +401,7 @@ export class OfflineReportController extends Component {
             label.node.getComponent(UITransform)!.setContentSize(row.w, row.h);
             label.fontSize = row.fontSize;
             label.lineHeight = row.lineHeight;
-            label.string = value.text;
+            label.string = fitLabel(label, value.text);
             label.color = new Color(value.color.r, value.color.g, value.color.b, value.color.a);
         }
         this.renderCollect(layout, texts.collect);
@@ -435,14 +437,14 @@ export class OfflineReportController extends Component {
         main.node.getComponent(UITransform)!.setContentSize(rect.w - 24, mainHeight);
         main.fontSize = rect.fontSize;
         main.lineHeight = mainHeight;
-        main.string = texts.button;
+        main.string = fitLabel(main, texts.button, TEXT_MIN_BUTTON_FONT_SIZE);
         main.color = new Color(colors.cyan.r, colors.cyan.g, colors.cyan.b, alpha);
         const tag = this.doubleTagLabel!;
         tag.node.setPosition(new Vec3(0, -rect.h / 2 + inset + 2 + tagHeight / 2, 0));
         tag.node.getComponent(UITransform)!.setContentSize(rect.w - 24, tagHeight);
         tag.fontSize = rect.tagFontSize;
         tag.lineHeight = tagHeight;
-        tag.string = texts.tag;
+        tag.string = fitLabel(tag, texts.tag);
         tag.color = new Color(colors.secondary.r, colors.secondary.g, colors.secondary.b, alpha);
     }
 
@@ -462,7 +464,7 @@ export class OfflineReportController extends Component {
         const label = this.collectLabel!;
         label.fontSize = rect.fontSize;
         label.lineHeight = rect.h;
-        label.string = caption;
+        label.string = fitLabel(label, caption, TEXT_MIN_BUTTON_FONT_SIZE);
         label.color = new Color(colors.collectText.r, colors.collectText.g, colors.collectText.b, alpha);
     }
 

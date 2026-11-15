@@ -2,6 +2,7 @@ import { _decorator, Button, Color, Component, EventHandler, EventTouch, Graphic
 import type { GameCommand } from '../domain/Commands.ts';
 import type { ProducerPanelActionId, ProducerPanelViewModel } from './ProducerPanelViewModel.ts';
 import { defaultPanelTexts, formatPanelTexts, pendingSelectionPanelTexts, type DisplayNameSource, type PanelTexts } from './PresentationText.ts';
+import { fitLabel } from './LabelFit.ts';
 import { producerHeaderIconSlot, producerIconFor, type IconName } from './AutomataIdentity.ts';
 import { clearIconRecord, drawIcon, recordIcon } from './IdentityGraphics';
 import { PANEL_ACTION_KEYS, PRODUCER_PANEL_LAYOUT, cardActionRect, cardHeight, cardRowCenterY, cardRowWidth, type PanelActionKey } from './UiLayout.ts';
@@ -112,5 +113,8 @@ export class ProducerPanelController extends Component {
     /** The panel claims touches on its own card area (UiLayout; after child Buttons) so camera and selection never receive them. */
     private swallowTouch(event: EventTouch): void { event.propagationStopped = true; }
 
-    private setText(key: string, value: string): void { this.labels.get(key)!.string = value; }
+    private setText(key: string, value: string): void {
+        const label = this.labels.get(key)!;
+        label.string = fitLabel(label, value);
+    }
 }

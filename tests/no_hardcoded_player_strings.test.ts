@@ -90,3 +90,76 @@ test('controllers and the bootstrap render strings only from view models / the c
     }
     assert.deepEqual(offenders, []);
 });
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// AUT-070: wider audit (presentation, app, platform/**, services/**, every depth) for literals that reach the player through a text-like
+// property or a Label-like sink, with an explicit, justified exception list.
+// ---------------------------------------------------------------------------------------------------------------------------------
+const listTsDeep = (dirRel) => fs.readdirSync(path.join(repoRoot, dirRel), { withFileTypes: true }).flatMap((entry) => {
+    const rel = `${dirRel}/${entry.name}`;
+    if (entry.isDirectory()) return listTsDeep(rel);
+    return entry.name.endsWith('.ts') ? [rel] : [];
+}).sort();
+
+const WIDE_SOURCES = ['presentation', 'app', 'platform', 'services'].flatMap((dir) => listTsDeep(`assets/scripts/${dir}`));
+
+/**
+ * Documented exceptions of the AUT-070 audit. None of these is product UI copy:
+ *  - in-world brand marks painted on 3D surfaces (decals / plates), not translatable UI;
+ *  - engineering scenes that never ship in the player flow;
+ *  - DEBUG-only command records.
+ */
+const WIDE_EXCEPTIONS = Object.freeze({
+    'assets/scripts/presentation/AutomataIdentity.ts': 'AUTOMATA wordmark text of the brand identity decal (in-world mark, ART_DIRECTION identity; not UI copy)',
+    'assets/scripts/presentation/FounderRobotVariant.ts': 'UNIT 0001 serial plate text on the Founder Robot (in-world decal, ART_DIRECTION 16; not UI copy)',
+    'assets/scripts/presentation/AssetRobotSpike.ts': 'AUT-032 engineering spike scene',
+    'assets/scripts/presentation/CameraSpikeBootstrap.ts': 'AUT-001 camera spike engineering scene (labels are passed as arguments)',
+    'assets/scripts/app/AppStartup.ts': 'AUT-004 runtime smoke label on the baseline scene',
+    'assets/scripts/presentation/DebugCommandExecutor.ts': 'DEBUG-only command record reasons (never rendered by a Label)',
+});
+
+const TEXT_PROPERTY = /\b(?:label|text|title|caption|tag|subtitle|message|hint|description|displayName|note|tooltip|buttonText|toastText)\s*:\s*(?:'([^'\n]*)'|"([^"\n]*)"|`([^`\n]*)`)/g;
+
+test('AUT-070: no text-like property (label/text/title/caption/tag/message/...) holds an English literal in presentation, app, platform or services', () => {
+    const offenders = [];
+    for (const rel of WIDE_SOURCES) {
+        if (WIDE_EXCEPTIONS[rel]) continue;
+        const source = strip(read(rel));
+        for (const match of source.matchAll(TEXT_PROPERTY)) {
+            const literal = match[1] ?? match[2] ?? match[3] ?? '';
+            const visible = literal.replace(/\$\{[^}]*\}/g, '');
+            if (!HAS_LETTERS.test(visible) || KEY_LIKE.test(literal)) continue;
+            offenders.push(`${rel}: ${match[0]}`);
+        }
+    }
+    assert.deepEqual(offenders, []);
+});
+
+test('AUT-070: no `.string = <English literal>` / Label helper call with an English literal anywhere under platform/ and services/ either', () => {
+    const offenders = [];
+    for (const rel of WIDE_SOURCES.filter((name) => /\/(platform|services)\//.test(name))) {
+        const source = strip(read(rel));
+        for (const match of source.matchAll(LITERAL_ASSIGNMENT)) offenders.push(`${rel}: ${match[0]}`);
+        for (const match of source.matchAll(/(?:placeLabel|layoutLabel|setText|createLabel)\([^)\n]*'([^'\n]*[A-Za-z]{3,}[^'\n]*)'\s*\)/g)) offenders.push(`${rel}: ${match[0]}`);
+    }
+    assert.deepEqual(offenders, []);
+});
+
+test('AUT-070: only the documented non-UI marks keep an English literal; every exception file exists and still needs its entry', () => {
+    for (const [rel, reason] of Object.entries(WIDE_EXCEPTIONS)) {
+        assert.ok(fs.existsSync(path.join(repoRoot, rel)), rel);
+        assert.ok(reason.length > 20, `${rel}: reason`);
+    }
+    for (const rel of ['assets/scripts/presentation/AutomataIdentity.ts', 'assets/scripts/presentation/FounderRobotVariant.ts']) {
+        const source = strip(read(rel));
+        assert.ok([...source.matchAll(TEXT_PROPERTY)].some((match) => HAS_LETTERS.test(match[1] ?? match[2] ?? match[3] ?? '')), `${rel}: no longer needs the exception`);
+    }
+});
+
+test('AUT-070: offline service reasons stay out of player text (presentation never renders OfflineService reasons)', () => {
+    const offenders = [];
+    for (const rel of listTs('assets/scripts/presentation')) {
+        if (/\.reason\b/.test(strip(read(rel))) && /\.string\s*=\s*[^;]*\.reason\b/.test(strip(read(rel)))) offenders.push(rel);
+    }
+    assert.deepEqual(offenders, []);
+});

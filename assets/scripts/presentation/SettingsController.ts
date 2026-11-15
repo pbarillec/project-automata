@@ -3,6 +3,8 @@ import { getTextCatalogue } from '../localization/index.ts';
 import type { SettingsStore } from '../settings/SettingsStore.ts';
 import type { UserSettings } from '../settings/UserSettings.ts';
 import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
+import { fitLabel } from './LabelFit.ts';
+import { TEXT_MIN_BODY_FONT_SIZE, TEXT_MIN_BUTTON_FONT_SIZE } from './TextFit.ts';
 import {
     SETTINGS_CHIP_FONT_SIZE,
     SETTINGS_CHIP_HEIGHT,
@@ -237,12 +239,12 @@ export class SettingsController extends Component {
         return button;
     }
 
-    private placeLabel(label: Label, rect: SettingsLocalRect, fontSize: number, color: Rgba, text: string): void {
+    private placeLabel(label: Label, rect: SettingsLocalRect, fontSize: number, color: Rgba, text: string, minFontSize: number = TEXT_MIN_BODY_FONT_SIZE): void {
         label.node.setPosition(new Vec3(rect.x, rect.y, 0));
         label.node.getComponent(UITransform)!.setContentSize(rect.w, rect.h);
         label.fontSize = fontSize;
         label.lineHeight = rect.h;
-        label.string = text;
+        label.string = fitLabel(label, text, minFontSize);
         label.color = colorOf(color);
     }
 
@@ -411,7 +413,7 @@ export class SettingsController extends Component {
             }
         });
         this.fillRect(this.closeGraphics!, layout.close.w, layout.close.h, colors.graphite, colors.cyan);
-        this.placeLabel(this.closeLabel!, { x: 0, y: 0, w: layout.close.w, h: layout.close.h }, SETTINGS_CLOSE_FONT_SIZE, colors.text, viewModel.texts.close);
+        this.placeLabel(this.closeLabel!, { x: 0, y: 0, w: layout.close.w, h: layout.close.h }, SETTINGS_CLOSE_FONT_SIZE, colors.text, viewModel.texts.close, TEXT_MIN_BUTTON_FONT_SIZE);
     }
 
     /** AUT-065: resizes the card and repositions the title / rows / CLOSE for the number of rows shown (the extra row is hidden by scale). */

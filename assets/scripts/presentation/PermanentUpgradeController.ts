@@ -3,6 +3,8 @@ import type { GameCommand } from '../domain/Commands.ts';
 import type { DomainEvent } from '../domain/Events.ts';
 import type { LifecycleCommandResult } from '../lifecycle/LifecycleSessionCoordinator.ts';
 import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
+import { fitLabel } from './LabelFit.ts';
+import { TEXT_MIN_BODY_FONT_SIZE, TEXT_MIN_BUTTON_FONT_SIZE } from './TextFit.ts';
 import { drawAiMark } from './IdentityGraphics';
 import {
     PERMANENT_UPGRADE_BALANCE_FONT_SIZE,
@@ -277,12 +279,12 @@ export class PermanentUpgradeController extends Component {
         return button;
     }
 
-    private placeLabel(label: Label, rect: PermanentUpgradeLocalRect, fontSize: number, lineHeight: number, color: Rgba, text: string): void {
+    private placeLabel(label: Label, rect: PermanentUpgradeLocalRect, fontSize: number, lineHeight: number, color: Rgba, text: string, minFontSize: number = TEXT_MIN_BODY_FONT_SIZE): void {
         label.node.setPosition(new Vec3(rect.x, rect.y, 0));
         label.node.getComponent(UITransform)!.setContentSize(rect.w, rect.h);
         label.fontSize = fontSize;
         label.lineHeight = lineHeight;
-        label.string = text;
+        label.string = fitLabel(label, text, minFontSize);
         label.color = colorOf(color);
     }
 
@@ -482,7 +484,7 @@ export class PermanentUpgradeController extends Component {
 
         // CLOSE.
         this.fillRect(this.closeGraphics!, layout.close.w, layout.close.h, colors.graphite, colors.cyan);
-        this.placeLabel(this.closeLabel!, { x: 0, y: 0, w: layout.close.w, h: layout.close.h }, PERMANENT_UPGRADE_CLOSE_FONT_SIZE, layout.close.h, colors.text, viewModel.texts.close);
+        this.placeLabel(this.closeLabel!, { x: 0, y: 0, w: layout.close.w, h: layout.close.h }, PERMANENT_UPGRADE_CLOSE_FONT_SIZE, layout.close.h, colors.text, viewModel.texts.close, TEXT_MIN_BUTTON_FONT_SIZE);
     }
 
     private renderBuy(view: { buyGraphics: Graphics; buyLabel: Label; button: Button }, row: PermanentUpgradeRowViewModel, rect: PermanentUpgradeLocalRect): void {

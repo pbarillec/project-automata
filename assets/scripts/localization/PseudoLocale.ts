@@ -32,3 +32,21 @@ export function makePseudoLocaleCatalogue(source: TextCatalogue, expansion: numb
     for (const key of source.keys()) entries[key] = pseudoLocalizeTemplate(source.template(key) ?? key, expansion);
     return createTextCatalogue(JSON.stringify({ kind: 'localization', schemaVersion: 1, locale: 'pseudo', entries }));
 }
+
+/**
+ * AUT-070 wide-glyph variant (a stand-in for CJK / full-width scripts, which are short but one em wide per glyph): every Latin letter becomes
+ * its full-width form (U+FF21.. / U+FF41..), placeholders and digits stay verbatim, no expansion. Together with the +40% / +100% expansion
+ * variants it stresses the text-fit rules from both directions (many narrow glyphs vs few wide ones). Test / DEBUG aid only, never shipped.
+ */
+export function wideGlyphLocalizeTemplate(template: string): string {
+    return template.split(PLACEHOLDER_SPLIT).map((part) => {
+        if (PLACEHOLDER_SPLIT.test(part)) return part;
+        return part.replace(/[A-Za-z]/g, (letter) => String.fromCodePoint(letter.codePointAt(0)! + 0xfee0));
+    }).join('');
+}
+
+export function makeWideGlyphPseudoLocaleCatalogue(source: TextCatalogue): TextCatalogue {
+    const entries: Record<string, string> = {};
+    for (const key of source.keys()) entries[key] = wideGlyphLocalizeTemplate(source.template(key) ?? key);
+    return createTextCatalogue(JSON.stringify({ kind: 'localization', schemaVersion: 1, locale: 'pseudo-wide', entries }));
+}

@@ -1,7 +1,10 @@
 /**
  * AUT-LOC-001 engine-free text catalogue: key → string with simple `{param}` placeholders.
- * Lookups never throw. A missing key resolves to the key itself and a missing parameter
- * leaves its `{param}` in place; both are reported to the injectable sink.
+ * Lookups never throw; a missing parameter leaves its `{param}` in place and every miss is reported to the injectable sink.
+ * AUT-070 missing-key policy (what a missing key renders as):
+ *   1. the `fallback` catalogue (English for any future language) when it has the key;
+ *   2. otherwise, `missingKeyDisplay: 'key'` (the default of a bare catalogue: tests, DEBUG builds) returns the key itself so the gap is visible;
+ *      `'blank'` (the release path, see `setShowMissingKeys` in index.ts) returns an empty string: a raw dotted key is never shown to a player.
  */
 
 export type TextParamValue = string | number;
@@ -70,15 +73,30 @@ export function parseTextCatalogueDocument(text: string): TextCatalogueDocument 
     return Object.freeze({ kind: 'localization', schemaVersion: 1, locale: record.locale, entries: Object.freeze(copy) });
 }
 
+export type MissingKeyDisplay = 'key' | 'blank';
+
 export class TextCatalogue {
     public readonly locale: string;
     private readonly entries: ReadonlyMap<string, string>;
     private sink: MissingTextSink | null;
+    private fallback: TextCatalogue | null;
+    private missingKeyDisplay: MissingKeyDisplay = 'key';
 
-    constructor(document: TextCatalogueDocument, sink: MissingTextSink | null = null) {
+    constructor(document: TextCatalogueDocument, sink: MissingTextSink | null = null, fallback: TextCatalogue | null = null) {
         this.locale = document.locale;
         this.entries = new Map(Object.entries(document.entries));
         this.sink = sink;
+        this.fallback = fallback;
+    }
+
+    /** AUT-070: catalogue to use for keys this one lacks (English for a translation); null for none. */
+    public setFallback(fallback: TextCatalogue | null): void {
+        this.fallback = fallback === this ? null : fallback;
+    }
+
+    /** AUT-070: what a key missing everywhere renders as (see the policy in the file header). */
+    public setMissingKeyDisplay(display: MissingKeyDisplay): void {
+        this.missingKeyDisplay = display;
     }
 
     public setMissingTextSink(sink: MissingTextSink | null): void {
@@ -98,12 +116,13 @@ export class TextCatalogue {
         return this.entries.get(key);
     }
 
-    /** Resolves a key. Never throws: a missing key returns the key, a missing param keeps `{param}`. */
+    /** Resolves a key. Never throws: a missing key follows the AUT-070 policy, a missing param keeps `{param}`. */
     public resolveText(key: string, params?: TextParams): string {
         const template = this.entries.get(key);
         if (template === undefined) {
             this.report({ kind: 'missing_key', locale: this.locale, key });
-            return key;
+            if (this.fallback?.has(key)) return this.fallback.resolveText(key, params);
+            return this.missingKeyDisplay === 'key' ? key : '';
         }
         return template.replace(PLACEHOLDER_PATTERN, (placeholder, name: string) => {
             const value = params !== undefined && Object.prototype.hasOwnProperty.call(params, name) ? params[name] : undefined;

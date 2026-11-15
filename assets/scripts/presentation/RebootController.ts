@@ -2,6 +2,8 @@ import { _decorator, Button, Color, Component, EventHandler, EventTouch, Graphic
 import type { GameCommand } from '../domain/Commands.ts';
 import type { LifecycleCommandResult } from '../lifecycle/LifecycleSessionCoordinator.ts';
 import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
+import { fitLabel } from './LabelFit.ts';
+import { TEXT_MIN_BODY_FONT_SIZE, TEXT_MIN_BUTTON_FONT_SIZE } from './TextFit.ts';
 import { drawAiMark } from './IdentityGraphics';
 import {
     REBOOT_BUTTON_FONT_SIZE,
@@ -288,12 +290,12 @@ export class RebootController extends Component {
         return button;
     }
 
-    private placeLabel(label: Label, rect: RebootLocalRect, fontSize: number, lineHeight: number, color: Rgba, text: string, alpha: number = color.a): void {
+    private placeLabel(label: Label, rect: RebootLocalRect, fontSize: number, lineHeight: number, color: Rgba, text: string, alpha: number = color.a, minFontSize: number = TEXT_MIN_BODY_FONT_SIZE): void {
         label.node.setPosition(new Vec3(rect.x, rect.y, 0));
         label.node.getComponent(UITransform)!.setContentSize(rect.w, rect.h);
         label.fontSize = fontSize;
         label.lineHeight = lineHeight;
-        label.string = text;
+        label.string = fitLabel(label, text, minFontSize);
         label.color = colorOf(color, alpha);
     }
 
@@ -488,9 +490,9 @@ export class RebootController extends Component {
         const layout = this.layout;
         const alpha = this.inFlight ? BUTTON_IN_FLIGHT_ALPHA : 255;
         this.fillRect(this.confirmGraphics!, layout.confirm.w, layout.confirm.h, colors.cyan, null, alpha);
-        this.placeLabel(this.confirmLabel!, { x: 0, y: 0, w: layout.confirm.w - 24, h: layout.confirm.h }, REBOOT_BUTTON_FONT_SIZE, layout.confirm.h, colors.darkText, viewModel.texts.confirm, alpha);
+        this.placeLabel(this.confirmLabel!, { x: 0, y: 0, w: layout.confirm.w - 24, h: layout.confirm.h }, REBOOT_BUTTON_FONT_SIZE, layout.confirm.h, colors.darkText, viewModel.texts.confirm, alpha, TEXT_MIN_BUTTON_FONT_SIZE);
         this.fillRect(this.cancelGraphics!, layout.cancel.w, layout.cancel.h, colors.graphite, colors.cyan, alpha);
-        this.placeLabel(this.cancelLabel!, { x: 0, y: 0, w: layout.cancel.w - 24, h: layout.cancel.h }, REBOOT_BUTTON_FONT_SIZE, layout.cancel.h, colors.text, viewModel.texts.cancel, alpha);
+        this.placeLabel(this.cancelLabel!, { x: 0, y: 0, w: layout.cancel.w - 24, h: layout.cancel.h }, REBOOT_BUTTON_FONT_SIZE, layout.cancel.h, colors.text, viewModel.texts.cancel, alpha, TEXT_MIN_BUTTON_FONT_SIZE);
         if (this.confirmButton) this.confirmButton.interactable = !this.inFlight;
         if (this.cancelButton) this.cancelButton.interactable = !this.inFlight;
     }

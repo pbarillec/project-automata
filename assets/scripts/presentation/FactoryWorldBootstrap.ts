@@ -53,7 +53,7 @@ import { SettingsController } from './SettingsController';
 import { mapEventsToCues } from './AudioCueMapper.ts';
 import { SettingsStore, type SettingsEvent } from '../settings/SettingsStore.ts';
 import type { UserSettings } from '../settings/UserSettings.ts';
-import { getDefaultTextCatalogue, type MissingTextReport } from '../localization/index.ts';
+import { getDefaultTextCatalogue, setShowMissingKeys, type MissingTextReport } from '../localization/index.ts';
 import type { AudioService } from '../services/AudioService.ts';
 import type { HapticsService } from '../services/HapticsService.ts';
 import { SilentAudioService } from '../platform/noop/SilentAudioService';
@@ -194,6 +194,8 @@ export class FactoryWorldBootstrap extends Component {
         // AUT-UI-002: the engine FPS/debug overlay obstructs product and device gates; diagnostics stay on the [AUT-DEVICE] log channel.
         profiler.hideStats();
         configureDeviceDiagnostics({ enabled: DEBUG === true });
+        // AUT-070: DEBUG builds show a missing text key; release builds never render a raw key (English fallback / blank).
+        setShowMissingKeys(DEBUG === true);
         installDeviceErrorHook();
         emitDeviceEvent('scene_ready', { reason: 'bootstrap_loaded', scene: 'FactoryWorld' });
     }

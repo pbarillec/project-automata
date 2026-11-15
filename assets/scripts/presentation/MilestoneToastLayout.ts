@@ -30,7 +30,9 @@ export interface MilestoneToastTierLayout {
 /** Local layout, y measured down from the top of the band (0 = band top, negative = below). */
 export const MILESTONE_TOAST_LAYOUT: Readonly<Record<PresentedMilestoneTier, MilestoneToastTierLayout>> = Object.freeze({
     minor: Object.freeze({
-        width: 440, height: 44,
+        // AUT-070: 440 -> 384 so the centred Minor band (right edge at 552 units) clears the 150-wide AI chip (left edge at 554 units, first chip line);
+        // the 440 band overlapped the chip by 26 units (the AI mark) since the chip grew to 150. The title still fits at the 20-unit minimum (TextFit).
+        width: 384, height: 44,
         titleFontSize: 24, titleLineHeight: 36, titleCenterY: -22,
         subtitleFontSize: 0, subtitleLineHeight: 0, subtitleCenterY: 0,
         underlineHeight: 3, underlineCenterY: -41, underlineInset: 12,
@@ -84,7 +86,7 @@ export function milestoneToastTopOffset(): number {
 /**
  * AUT-066 round 3: the Major and Exceptional bands are wide (620 / 680 of 720 units) and used to run under / over the Settings, Extended Overclock, AI,
  * Reboot and Founder chips (the toast icon landed on the SET chip and the underline struck through the Extended Overclock text). They now start BELOW the
- * lowest chip (Founder third line on the right, Extended Overclock second line on the left). The Minor band (440 wide, 44 tall) already sits clear of the
+ * lowest chip (Founder third line on the right, Extended Overclock second line on the left). The Minor band (384 wide since AUT-070, 44 tall) sits clear of the
  * left chips on the first line and keeps the original top.
  */
 export const MILESTONE_TOAST_GAP_BELOW_CHIPS = 8;
