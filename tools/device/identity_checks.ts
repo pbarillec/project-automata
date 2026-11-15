@@ -66,7 +66,8 @@ export function evaluateIdentity(events: readonly IdentityTimelineEvent[], expec
         const icons = iconsOf(last);
         const missing = IDENTITY_REQUIRED_ICON_SLOTS.filter((slot) => !icons.some((icon) => icon.slot === slot && icon.rect !== null));
         checks.push({ id: 'identity_icons_drawn', ok: missing.length === 0, detail: missing.length === 0 ? icons.map((icon) => `${icon.slot}=${icon.icon}`).join(' ') : `missing ${missing.join(', ')}` });
-        const tiny = icons.filter((icon) => icon.rect !== null && Math.min(icon.rect.w, icon.rect.h) < IDENTITY_MIN_ICON_PX);
+        // icons of hidden surfaces (e.g. the Founder chip without a store) report a zero-size rect: not drawn, so not judged
+        const tiny = icons.filter((icon) => icon.rect !== null && Math.min(icon.rect.w, icon.rect.h) > 0 && Math.min(icon.rect.w, icon.rect.h) < IDENTITY_MIN_ICON_PX);
         checks.push({ id: 'identity_icon_rects_sane', ok: tiny.length === 0 && icons.every((icon) => icon.rect !== null), detail: tiny.length === 0 ? `${icons.length} icons, min edge >= ${IDENTITY_MIN_ICON_PX}px` : `too small: ${tiny.map((icon) => icon.slot).join(', ')}` });
     } else {
         const core = (last.aiCore ?? {}) as Record<string, unknown>;
