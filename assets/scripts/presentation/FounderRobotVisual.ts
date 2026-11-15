@@ -1,3 +1,4 @@
+import { Log } from '../logging/Log.ts';
 import { Color, Layers, Material, Mesh, MeshRenderer, Node, primitives, utils, Vec3 } from 'cc';
 import { WORKER_BOT_SCALE } from './AssemblySliceLayout.ts';
 import {
@@ -98,7 +99,7 @@ function tintShell(robot: Node): TintedSlot[] {
                 instance.setProperty('mainColor', toColor(shell));
                 slots.push({ instance, original, shell });
             } catch (error) {
-                console.warn(`[AUT-062] shell tint skipped for a material slot: ${String(error)}`);
+                Log.warn('presentation', `[AUT-062] shell tint skipped for a material slot: ${String(error)}`);
             }
         }
     }

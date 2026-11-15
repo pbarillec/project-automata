@@ -1,3 +1,4 @@
+import { Log } from '../logging/Log.ts';
 import { _decorator, Animation, Component, instantiate, Node } from 'cc';
 import type { Prefab } from 'cc';
 import type { DomainEvent } from '../domain/Events.ts';
@@ -181,7 +182,7 @@ export class FirstRobotPresentationController extends Component {
             this.robotNode = existing;
         } else {
             if (!this.robotPrefab) {
-                console.warn('[AUT-039] Missing serialized Worker Bot prefab.');
+                Log.warn('presentation', '[AUT-039] Missing serialized Worker Bot prefab.');
                 return;
             }
             const robot = instantiate(this.robotPrefab);

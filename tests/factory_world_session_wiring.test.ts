@@ -78,7 +78,7 @@ test('load_failed keeps FactoryWorld inert and reports a DEBUG session_state dia
     const source = await read('assets/scripts/presentation/FactoryWorldBootstrap.ts');
     const startSession = methodBody(source, 'private startPersistentSession(');
     // AUT-071: a failed load logs why (non-fatal diagnostic), then stays inert exactly as before.
-    assert.match(startSession, /if \(!result\.startup\.ok\) \{\s*(?:\/\/[^\n]*\s*)?console\.warn\([^\n]*\);\s*this\.emitSessionState\('load_failed', result\.startup\.status, null, false\);\s*return;\s*\}/);
+    assert.match(startSession, /if \(!result\.startup\.ok\) \{\s*(?:\/\/[^\n]*\s*)?Log\.warn\('save',[^\n]*\);\s*this\.emitSessionState\('load_failed', result\.startup\.status, null, false\);\s*return;\s*\}/);
     assert.match(source, /emitDeviceEvent\('session_state', \{ phase, status, saveOk, autoFeederOwned, writablePath: this\.saveRootPath \}\)/);
     assert.match(source, /configureDeviceDiagnostics\(\{ enabled: DEBUG === true \}\)/);
 });

@@ -133,7 +133,7 @@ export interface RevealCaptureResult {
 }
 
 export const DEFAULT_REVEAL_EVENT_TYPES: readonly string[] = Object.freeze([
-    'scene_ready', 'session_state', 'ui_layout', 'command_result', 'construction_state', 'camera_focus', 'reveal_state',
+    'scene_ready', 'build_info', 'session_state', 'ui_layout', 'command_result', 'construction_state', 'camera_focus', 'reveal_state',
     'milestone_presentation', 'era_transition', 'debug_command', 'reboot_presentation', 'offline_report', 'offline_double', 'extended_overclock', 'founder_shop', 'analytics', 'ads_state', 'consent_state', 'permanent_upgrades', 'reboot_ui', 'settings', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'robot_founder', 'identity', 'robot_perf', 'robot_benchmark', 'perf_second', 'perf_scene', 'error',
 ]);
 
@@ -383,8 +383,17 @@ export function evaluateEraTransition(events: readonly TimelineEvent[], expectEr
     return checks;
 }
 
+/** AUT-072: the one-line build identity from the DEBUG `build_info` event: `build: <sha>[+] <TYPE> ...` (or an explicit 'unknown' when the build did not report one). */
+export function describeBuildInfo(events: readonly TimelineEvent[]): string {
+    const hit = events.find((e) => e.event.evt === 'build_info')?.event;
+    if (!hit) return 'build: unknown (no build_info event)';
+    const sha = String(hit.gitSha ?? 'unknown');
+    const dirty = hit.gitDirty === true ? '+' : '';
+    return `build: ${sha}${dirty} ${String(hit.buildType ?? 'unknown')} (version ${String(hit.gameVersion)} #${String(hit.buildNumber)}, save v${String(hit.saveVersion)}, content ${String(hit.contentVersion)}, ${String(hit.engine)})`;
+}
+
 export function renderRevealSummary(label: string, frames: readonly TimelineFrame[], events: readonly TimelineEvent[], checks: readonly RevealCheck[]): string {
-    const lines = [`# Reveal capture: ${label}`, '', '| check | ok | detail |', '|---|---|---|', ...checks.map((c) => `| ${c.id} | ${c.ok ? 'PASS' : 'FAIL'} | ${c.detail} |`), '', '## Frames', '',
+    const lines = [`# Reveal capture: ${label}`, '', describeBuildInfo(events), '', '| check | ok | detail |', '|---|---|---|', ...checks.map((c) => `| ${c.id} | ${c.ok ? 'PASS' : 'FAIL'} | ${c.detail} |`), '', '## Frames', '',
         ...frames.map((f) => `- ${f.file} (t=${f.tMs} ms, ${f.phase})`), '', '## Events (relative to trigger)', '',
         ...events.filter((e) => e.event.evt !== 'ui_layout').map((e) => `- t=${e.tMs} ms ${e.event.evt}${typeof e.event.phase === 'string' ? `:${e.event.phase}` : ''}`)];
     return `${lines.join('\n')}\n`;

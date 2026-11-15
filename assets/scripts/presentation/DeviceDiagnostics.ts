@@ -10,11 +10,15 @@
  * build flag is true, so release builds never emit or depend on these events.
  * Emitting never changes presentation or gameplay behaviour.
  */
+import { Log } from '../logging/Log.ts';
+
 export const DEVICE_DIAGNOSTIC_PREFIX = '[AUT-DEVICE]';
 export const DEVICE_DIAGNOSTIC_VERSION = 1;
 
 export const DEVICE_EVENT_TYPES = [
     'scene_ready',
+    // AUT-072 (DEBUG only): the build identity, once at startup: { gameVersion, buildNumber, gitSha, gitDirty, saveVersion, contentVersion, engine, buildType, platform }.
+    'build_info',
     'reveal_state',
     'touch_start',
     'touch_end',
@@ -103,7 +107,7 @@ interface DiagnosticsState {
 
 const state: DiagnosticsState = {
     enabled: false,
-    sink: (line) => console.log(line),
+    sink: (line) => Log.rawLine(line),
     seq: 0,
 };
 

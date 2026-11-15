@@ -1,3 +1,4 @@
+import { Log } from '../logging/Log.ts';
 import {
     _decorator,
     Component,
@@ -313,7 +314,7 @@ export class FabricatorVisualController extends Component {
         const prefabIndex = SERIALIZED_PREFAB_MODULES.indexOf(moduleName as typeof SERIALIZED_PREFAB_MODULES[number]);
         const prefab = prefabIndex >= 0 ? this.factoryPrefabs[prefabIndex] : null;
         if (!prefab) {
-            console.warn(`[AUT-038] Missing serialized prefab for ${moduleName}.`);
+            Log.warn('presentation', `[AUT-038] Missing serialized prefab for ${moduleName}.`);
             return;
         }
 

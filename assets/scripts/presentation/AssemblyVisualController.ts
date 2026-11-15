@@ -1,3 +1,4 @@
+import { Log } from '../logging/Log.ts';
 import { _decorator, Component, instantiate, Node } from 'cc';
 import type { Prefab } from 'cc';
 import type { GameState } from '../state/GameState.ts';
@@ -132,7 +133,7 @@ export class AssemblyVisualController extends Component implements ConstructionT
         if (moduleNode.getChildByName(`${moduleId}_KenneyAsset`)) return;
         const prefab = this.assemblyPrefabs[ASSEMBLY_SERIALIZED_PREFAB_MODULES.indexOf(moduleId)] ?? null;
         if (!prefab) {
-            console.warn(`[AUT-039] Missing serialized prefab for ${moduleId}.`);
+            Log.warn('presentation', `[AUT-039] Missing serialized prefab for ${moduleId}.`);
             return;
         }
         const imported = instantiate(prefab);

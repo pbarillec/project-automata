@@ -1,3 +1,4 @@
+import { Log } from '../logging/Log.ts';
 import { _decorator, Animation, Camera, Component, director, instantiate, Light, MeshRenderer, Node, ParticleSystem, SkinnedMeshRenderer, screen, UIRenderer, Vec3 } from 'cc';
 import { DEBUG } from 'cc/env';
 import type { Prefab } from 'cc';
@@ -129,7 +130,7 @@ export class RobotPopulationController extends Component {
             if ((JSON.parse(text) as { perf?: unknown }).perf === true) this.perfSeconds = new PerfSecondSampler();
             emitDeviceEvent('robot_benchmark', { maxVisible });
         } catch (error) {
-            console.warn(`[AUT-041] benchmark override ignored: ${String(error)}`);
+            Log.warn('perf', `[AUT-041] benchmark override ignored: ${String(error)}`);
         }
     }
 
@@ -300,7 +301,7 @@ export class RobotPopulationController extends Component {
     private ensureRobots(count: number): void {
         while (this.robots.length < count) {
             if (!this.robotPrefab) {
-                console.warn('[AUT-041] Missing serialized Robot prefab.');
+                Log.warn('presentation', '[AUT-041] Missing serialized Robot prefab.');
                 return;
             }
             const slot = this.robots.length;

@@ -236,6 +236,8 @@ export function buildBaselineDocument(input: { scenario: string; events: readonl
             package: packageName,
             packageInfo: text('package').trim().split(/\r?\n/).map((l) => l.trim()).filter(Boolean),
             appBuildType: 'DEBUG (FactoryWorld)',
+            // AUT-072: what the app itself reported at startup (null when the build predates the build_info event).
+            appBuildInfo: (() => { const hit = input.events.find((e) => e.event.evt === 'build_info'); if (!hit) return null; const { v: _v, seq: _seq, evt: _evt, ...rest } = hit.event; return rest as Record<string, unknown>; })(),
         },
         device: {
             manufacturer: capture.props['ro.product.manufacturer'] ?? null,

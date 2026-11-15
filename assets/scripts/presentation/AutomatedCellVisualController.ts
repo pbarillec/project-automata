@@ -1,3 +1,4 @@
+import { Log } from '../logging/Log.ts';
 import { _decorator, Animation, Component, instantiate, Node } from 'cc';
 import type { Prefab } from 'cc';
 import type { DomainEvent } from '../domain/Events.ts';
@@ -229,7 +230,7 @@ export class AutomatedCellVisualController extends Component implements Construc
         const slot = AUTOMATED_CELL_MODULE_PREFAB[moduleId];
         const prefab = slot ? this.prefabFor(slot) : null;
         if (!slot || !prefab) {
-            console.warn(`[AUT-043] Missing serialized prefab for ${moduleId}.`);
+            Log.warn('presentation', `[AUT-043] Missing serialized prefab for ${moduleId}.`);
             return;
         }
         const imported = instantiate(prefab);
@@ -320,7 +321,7 @@ export class AutomatedCellVisualController extends Component implements Construc
         while (this.items.length < AUTOMATED_CELL_POOL_LIMIT) {
             const boxPrefab = this.prefabFor('box');
             if (!boxPrefab || !this.robotPrefab) {
-                console.warn('[AUT-043] Missing serialized box / Robot prefab.');
+                Log.warn('presentation', '[AUT-043] Missing serialized box / Robot prefab.');
                 return;
             }
             const slot = this.items.length;

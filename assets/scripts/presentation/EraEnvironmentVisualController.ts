@@ -1,3 +1,4 @@
+import { Log } from '../logging/Log.ts';
 import { _decorator, Camera, Color, Component, DirectionalLight, instantiate, MeshRenderer, Node } from 'cc';
 import type { Material, Prefab } from 'cc';
 import type { DomainEvent } from '../domain/Events.ts';
@@ -131,7 +132,7 @@ export class EraEnvironmentVisualController extends Component {
         if (this.instantiated || !this.resolved) return;
         const prefab = this.environmentPrefabs[ERA_ENV_PREFAB_SLOTS.indexOf('structure_high')] ?? null;
         if (!prefab) {
-            console.warn('[AUT-045] Missing serialized structure-high prefab.');
+            Log.warn('presentation', '[AUT-045] Missing serialized structure-high prefab.');
             return;
         }
         for (const instance of ERA_ENV_PREFAB_INSTANCES) {

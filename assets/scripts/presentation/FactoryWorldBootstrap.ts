@@ -1,3 +1,5 @@
+import { Log, configureLog } from '../logging/Log.ts';
+import { buildInfoEventPayload, createBuildInfo } from '../logging/BuildInfo.ts';
 import {
     _decorator,
     Camera,
@@ -16,6 +18,7 @@ import {
     primitives,
     SafeArea,
     screen,
+    sys,
     utils,
     Vec3,
     Color,
@@ -193,6 +196,8 @@ export class FactoryWorldBootstrap extends Component {
     public onLoad(): void {
         // AUT-UI-002: the engine FPS/debug overlay obstructs product and device gates; diagnostics stay on the [AUT-DEVICE] log channel.
         profiler.hideStats();
+        // AUT-072: the log policy follows the build: DEBUG logs everything, release only warn / error.
+        configureLog({ buildType: DEBUG === true ? 'DEBUG' : 'RELEASE' });
         configureDeviceDiagnostics({ enabled: DEBUG === true });
         // AUT-070: DEBUG builds show a missing text key; release builds never render a raw key (English fallback / blank).
         setShowMissingKeys(DEBUG === true);
@@ -326,16 +331,17 @@ export class FactoryWorldBootstrap extends Component {
         this.purchases = purchaseSelection.service;
         this.purchaseSource = purchaseSelection.source;
         bootstrapGameSession({ storage, timeService: new DefaultTimeService() }).then((result) => {
+            this.emitBuildInfo(result.configRepository.contentVersion);
             if (!result.startup.ok) {
                 // AUT-071: a failed load (read error / save from a newer build) stays inert, never overwrites the save, and says why.
-                console.warn(`[AUT-071] Save load failed (${result.startup.load.reason}): ${result.startup.load.message}`);
+                Log.warn('save', `[AUT-071] Save load failed (${result.startup.load.reason}): ${result.startup.load.message}`);
                 this.emitSessionState('load_failed', result.startup.status, null, false);
                 return;
             }
             // AUT-071: a recovery from the backup / a fresh start over unreadable saves is non-fatal but never silent.
             const load = result.startup.load;
             if (load.status !== 'loaded_main') {
-                console.warn(`[AUT-071] Save recovery: ${load.status} (unreadable copy preserved: ${load.quarantine.status}).`);
+                Log.warn('save', `[AUT-071] Save recovery: ${load.status} (unreadable copy preserved: ${load.quarantine.status}).`);
             }
             const binding = new FactoryWorldStateBinding({
                 session: result.startup.session,
@@ -373,9 +379,17 @@ export class FactoryWorldBootstrap extends Component {
             });
             this.pendingBinding = { binding, status: result.startup.status, displayNames: result.configRepository };
         }).catch((error: unknown) => {
+            this.emitBuildInfo('unavailable');
             this.reportSessionError('bootstrap', error);
             this.emitSessionState('load_failed', 'bootstrap_error', null, false);
         });
+    }
+
+    /** AUT-072: DEBUG-only `build_info` device event: the exact build / config baseline every capture timeline and logcat identifies. */
+    private emitBuildInfo(contentVersion: string): void {
+        if (!isDeviceDiagnosticsEnabled()) return;
+        const info = createBuildInfo({ contentVersion, buildType: DEBUG === true ? 'DEBUG' : 'RELEASE', platform: sys.isNative ? String(sys.os).toLowerCase() : 'web' });
+        emitDeviceEvent('build_info', buildInfoEventPayload(info));
     }
 
     /**

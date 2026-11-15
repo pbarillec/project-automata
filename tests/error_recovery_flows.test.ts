@@ -447,7 +447,7 @@ test('AUT-071 MISSING ASSET every prefab instantiate() in presentation is behind
             const variable = match[1].split('.').pop()!;
             const window = lines.slice(Math.max(0, index - 14), index).join('\n');
             const nullGuarded = new RegExp(`!\\s*(this\\.)?${variable}\\b`).test(window);
-            const warned = /console\.(warn|error)\(/.test(window);
+            const warned = /(console|Log)\.(warn|error)\(/.test(window);
             if (nullGuarded && warned) guarded += 1;
             else offenders.push(`${file}:${index + 1} instantiate(${match[1]})`);
         });

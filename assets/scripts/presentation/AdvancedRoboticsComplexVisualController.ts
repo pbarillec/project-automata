@@ -1,3 +1,4 @@
+import { Log } from '../logging/Log.ts';
 import { _decorator, Animation, Component, instantiate, Node } from 'cc';
 import type { Prefab } from 'cc';
 import type { DomainEvent } from '../domain/Events.ts';
@@ -238,7 +239,7 @@ export class AdvancedRoboticsComplexVisualController extends Component implement
         const slot = ARC_MODULE_PREFAB[moduleId];
         const prefab = slot ? this.prefabFor(slot) : null;
         if (!slot || !prefab) {
-            console.warn(`[AUT-044] Missing serialized prefab for ${moduleId}.`);
+            Log.warn('presentation', `[AUT-044] Missing serialized prefab for ${moduleId}.`);
             return;
         }
         const imported = instantiate(prefab);
@@ -331,7 +332,7 @@ export class AdvancedRoboticsComplexVisualController extends Component implement
         while (this.items.length < ARC_POOL_LIMIT) {
             const boxPrefab = this.prefabFor('box');
             if (!boxPrefab || !this.robotPrefab) {
-                console.warn('[AUT-044] Missing serialized box / Robot prefab.');
+                Log.warn('presentation', '[AUT-044] Missing serialized box / Robot prefab.');
                 return;
             }
             const slot = this.items.length;

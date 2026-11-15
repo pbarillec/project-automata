@@ -16,6 +16,7 @@ const expectedDebugApkName = 'ProjectAutomata-debug.apk';
 const taskName = 'AUT-CX-004 Android Debug';
 const progressIntervalMs = 30000;
 const requiredCreatorVersion = '3.8.8';
+const { applyBuildInfo } = require('./write_build_info.js');
 
 function fail(message, code = 1) {
   console.error(message);
@@ -1162,7 +1163,13 @@ async function main() {
   const startedAtMs = Date.now() - 1000;
 
   if (!options.skipGeneration) {
-    await runCocosGeneration(options, startedAtMs, sdkPath, ndkPath, javaHome, javaPath, sourceEnginePath);
+    // AUT-072: stamp the build identity (git sha / build number) into BuildInfoData.ts only while Cocos compiles the scripts.
+    const restoreBuildInfo = applyBuildInfo();
+    try {
+      await runCocosGeneration(options, startedAtMs, sdkPath, ndkPath, javaHome, javaPath, sourceEnginePath);
+    } finally {
+      restoreBuildInfo();
+    }
   }
 
   if (!fileExists(gradleWrapper)) {

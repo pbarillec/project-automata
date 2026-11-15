@@ -1,3 +1,4 @@
+import { Log } from '../logging/Log.ts';
 import { _decorator, Animation, Component, instantiate, Node } from 'cc';
 import type { Prefab } from 'cc';
 import type { DomainEvent } from '../domain/Events.ts';
@@ -237,7 +238,7 @@ export class RobotLineVisualController extends Component implements Construction
         const slot = ROBOT_LINE_MODULE_PREFAB[moduleId];
         const prefab = slot ? this.prefabFor(slot) : null;
         if (!slot || !prefab) {
-            console.warn(`[AUT-042] Missing serialized prefab for ${moduleId}.`);
+            Log.warn('presentation', `[AUT-042] Missing serialized prefab for ${moduleId}.`);
             return;
         }
         if (moduleId === 'belt') {
@@ -322,7 +323,7 @@ export class RobotLineVisualController extends Component implements Construction
         while (this.items.length < ROBOT_LINE_ITEM_POOL_SIZE) {
             const chassisPrefab = this.prefabFor('chassis');
             if (!chassisPrefab || !this.robotPrefab) {
-                console.warn('[AUT-042] Missing serialized chassis / Robot prefab.');
+                Log.warn('presentation', '[AUT-042] Missing serialized chassis / Robot prefab.');
                 return;
             }
             const slot = this.items.length;
