@@ -15,6 +15,23 @@ def automataAdProperty = { String name, String fallback ->
     return value
 }
 
+// AUT-073: release identity and signing. NOTHING secret is committed: the upload keystore path / passwords come ONLY from the environment
+// (or -P properties as a fallback) and are never printed. The Cocos-generated gradle.properties may carry the Cocos DEBUG keystore as RELEASE_STORE_FILE;
+// that one is rejected so a release can never be signed with it (an unsigned bundle/APK is produced instead and reported as such by tools/ci/build_android.js).
+def automataSigningValue = { String name ->
+    def fromEnv = System.getenv(name)
+    if (fromEnv != null && fromEnv.length() > 0) return fromEnv
+    def fromProject = project.findProperty(name)
+    return fromProject != null ? fromProject.toString() : ''
+}
+def automataStoreFile = automataSigningValue('RELEASE_STORE_FILE')
+def automataIsCocosDebugKeystore = automataStoreFile.replace("\\", "/").toLowerCase().endsWith('/keystore/debug.keystore') || automataSigningValue('RELEASE_KEY_ALIAS') == 'debug_keystore'
+def automataReleaseSigned = !automataStoreFile.isEmpty() && !automataIsCocosDebugKeystore && file(automataStoreFile).isFile()
+// versionCode = git commit count (tools/ci/build_android.js --release exports AUTOMATA_VERSION_CODE); debug builds keep 1.
+def automataVersionCode = automataAdProperty('AUTOMATA_VERSION_CODE', '1').toInteger()
+def automataVersionName = automataAdProperty('AUTOMATA_GAME_VERSION', '1.0')
+logger.lifecycle("AUT-073 identity: applicationId=${APPLICATION_ID} versionCode=${automataVersionCode} versionName=${automataVersionName} releaseSigning=${automataReleaseSigned ? 'configured' : 'UNSIGNED'}")
+
 android {
     compileSdkVersion PROP_COMPILE_SDK_VERSION.toInteger()
     buildToolsVersion PROP_BUILD_TOOLS_VERSION
@@ -30,8 +47,8 @@ android {
         applicationId APPLICATION_ID
         minSdkVersion PROP_MIN_SDK_VERSION
         targetSdkVersion PROP_TARGET_SDK_VERSION
-        versionCode 1
-        versionName "1.0"
+        versionCode automataVersionCode
+        versionName automataVersionName
 
         externalNativeBuild {
             cmake {
@@ -71,11 +88,11 @@ android {
     signingConfigs {
 
        release {
-            if (project.hasProperty("RELEASE_STORE_FILE") && !RELEASE_STORE_FILE.isEmpty()) {
-                storeFile file(RELEASE_STORE_FILE)
-                storePassword RELEASE_STORE_PASSWORD
-                keyAlias RELEASE_KEY_ALIAS
-                keyPassword RELEASE_KEY_PASSWORD
+            if (automataReleaseSigned) {
+                storeFile file(automataStoreFile)
+                storePassword automataSigningValue('RELEASE_STORE_PASSWORD')
+                keyAlias automataSigningValue('RELEASE_KEY_ALIAS')
+                keyPassword automataSigningValue('RELEASE_KEY_PASSWORD')
             }
         }
     }
@@ -85,7 +102,8 @@ android {
             manifestPlaceholders = [
                 ADMOB_APP_ID: automataAdProperty('ADMOB_APP_ID', ''),
                 ADMOB_UNIT_OFFLINE_DOUBLE: automataAdProperty('ADMOB_UNIT_OFFLINE_DOUBLE', ''),
-                ADMOB_UNIT_EXTENDED_OVERCLOCK: automataAdProperty('ADMOB_UNIT_EXTENDED_OVERCLOCK', '')
+                ADMOB_UNIT_EXTENDED_OVERCLOCK: automataAdProperty('ADMOB_UNIT_EXTENDED_OVERCLOCK', ''),
+                USES_CLEARTEXT_TRAFFIC: 'false'
             ]
             debuggable false
             jniDebuggable false
@@ -93,7 +111,7 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            if (project.hasProperty("RELEASE_STORE_FILE")) {
+            if (automataReleaseSigned) {
                 signingConfig signingConfigs.release
             }
                         
@@ -115,7 +133,8 @@ android {
             manifestPlaceholders = [
                 ADMOB_APP_ID: 'ca-app-pub-3940256099942544~3347511713',
                 ADMOB_UNIT_OFFLINE_DOUBLE: 'ca-app-pub-3940256099942544/5224354917',
-                ADMOB_UNIT_EXTENDED_OVERCLOCK: 'ca-app-pub-3940256099942544/5224354917'
+                ADMOB_UNIT_EXTENDED_OVERCLOCK: 'ca-app-pub-3940256099942544/5224354917',
+                USES_CLEARTEXT_TRAFFIC: 'true'
             ]
             debuggable true
             jniDebuggable true

@@ -4,6 +4,8 @@
   "uuid": "6b38d83e-7948-47aa-85a6-7ded96f14a62",
   "scripts": {
     "android:build": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/ci/build_android.ps1",
+    "android:release": "node tools/ci/build_android.js --release",
+    "android:release:check": "node tools/ci/release_checks.js",
     "validate:config": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/ci/validate_config.ps1",
     "simulate:reference": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/ci/simulate.ps1",
     "simulate:pacing": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/ci/pacing_regression.ps1",

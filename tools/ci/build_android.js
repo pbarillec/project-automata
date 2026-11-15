@@ -6,17 +6,23 @@ const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
-const buildConfig = path.join(__dirname, 'cocos_android_debug_build.json');
+const debugBuildConfig = path.join(__dirname, 'cocos_android_debug_build.json');
+const releaseBuildConfig = path.join(__dirname, 'cocos_android_release_build.json');
+// AUT-073: --release switches the Cocos config, task name and Gradle tasks; everything else is shared with the debug path.
+let buildConfig = debugBuildConfig;
 const buildRoot = path.join(repoRoot, 'build', 'android');
 const gradleProject = path.join(buildRoot, 'proj');
 const gradleWrapper = path.join(gradleProject, 'gradlew.bat');
 const gradleProperties = path.join(gradleProject, 'gradle.properties');
 const gradleModule = 'ProjectAutomata';
 const expectedDebugApkName = 'ProjectAutomata-debug.apk';
-const taskName = 'AUT-CX-004 Android Debug';
+let taskName = 'AUT-CX-004 Android Debug';
+let releaseExpectedPackageName = '';
 const progressIntervalMs = 30000;
 const requiredCreatorVersion = '3.8.8';
-const { applyBuildInfo } = require('./write_build_info.js');
+const { applyBuildInfo, readGitIdentity } = require('./write_build_info.js');
+const releaseSupport = require('./release_support.js');
+const releaseChecks = require('./release_checks.js');
 
 function fail(message, code = 1) {
   console.error(message);
@@ -31,12 +37,27 @@ function parseArgs(argv) {
     gradleOffline: false,
     standardGradleUserHome: false,
     skipGeneration: false,
+    release: false,
+    apk: false,
+    requireSigning: false,
+    requireProductionIds: false,
+    allowSampleIds: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--skip-generation' || arg === '-SkipGeneration') {
       options.skipGeneration = true;
+    } else if (arg === '--release') {
+      options.release = true;
+    } else if (arg === '--apk') {
+      options.apk = true;
+    } else if (arg === '--require-signing') {
+      options.requireSigning = true;
+    } else if (arg === '--require-production-ids') {
+      options.requireProductionIds = true;
+    } else if (arg === '--allow-sample-ids') {
+      options.allowSampleIds = true;
     } else if (arg === '--gradle-offline' || arg === '-GradleOffline') {
       options.gradleOffline = true;
     } else if (arg === '--isolated-gradle-user-home' || arg === '-IsolatedGradleUserHome') {
@@ -52,6 +73,10 @@ function parseArgs(argv) {
     } else {
       fail(`Unknown argument: ${arg}`);
     }
+  }
+
+  if (!options.release && (options.apk || options.requireSigning || options.requireProductionIds || options.allowSampleIds)) {
+    fail('--apk, --require-signing, --require-production-ids and --allow-sample-ids are only valid with --release.');
   }
 
   if (!Number.isFinite(options.cocosTimeoutSeconds) || options.cocosTimeoutSeconds <= 0) {
@@ -224,16 +249,20 @@ function resolveStandardGradleUserHome() {
   return path.join(userProfile, '.gradle');
 }
 
-function createResolvedCocosBuildConfig(logDir, sdkPath, ndkPath, javaHome, javaPath) {
-  const resolvedConfig = readJson(buildConfig);
-  resolvedConfig.packages = resolvedConfig.packages || {};
-  resolvedConfig.packages.android = resolvedConfig.packages.android || {};
-  resolvedConfig.packages.android.sdkPath = sdkPath;
-  resolvedConfig.packages.android.ndkPath = ndkPath;
-  resolvedConfig.packages.android.javaHome = javaHome;
-  resolvedConfig.packages.android.javaPath = javaPath;
+function createResolvedCocosBuildConfig(logDir, sdkPath, ndkPath, javaHome, javaPath, releasePackageName) {
+  let resolvedConfig = readJson(buildConfig);
+  if (releasePackageName) {
+    resolvedConfig = releaseSupport.resolveReleaseCocosConfig(resolvedConfig, { packageName: releasePackageName, sdkPath, ndkPath, javaHome, javaPath });
+  } else {
+    resolvedConfig.packages = resolvedConfig.packages || {};
+    resolvedConfig.packages.android = resolvedConfig.packages.android || {};
+    resolvedConfig.packages.android.sdkPath = sdkPath;
+    resolvedConfig.packages.android.ndkPath = ndkPath;
+    resolvedConfig.packages.android.javaHome = javaHome;
+    resolvedConfig.packages.android.javaPath = javaPath;
+  }
 
-  const resolvedConfigPath = path.join(logDir, 'cocos_android_debug_build.resolved.json');
+  const resolvedConfigPath = path.join(logDir, path.basename(buildConfig).replace(/.json$/u, '.resolved.json'));
   fs.writeFileSync(resolvedConfigPath, `${JSON.stringify(resolvedConfig, null, 2)}${os.EOL}`, 'utf8');
   return resolvedConfigPath;
 }
@@ -346,6 +375,7 @@ function testCocosOutputShape() {
     && compileConfig.outputName === 'android'
     && compileConfig.taskName === taskName
     && compileConfig.packages?.android?.apiLevel === 36
+    && (!releaseExpectedPackageName || compileConfig.packages?.android?.packageName === releaseExpectedPackageName)
     && abis.length === 1
     && abis[0] === 'arm64-v8a';
 }
@@ -593,7 +623,7 @@ function closeStream(stream) {
   });
 }
 
-async function runCocosGeneration(options, startedAtMs, sdkPath, ndkPath, javaHome, javaPath, sourceEnginePath) {
+async function runCocosGeneration(options, startedAtMs, sdkPath, ndkPath, javaHome, javaPath, sourceEnginePath, releasePackageName) {
   const logDir = path.join(repoRoot, 'temp', 'ci', `cocos-run-${process.pid}-${Date.now()}`);
   ensureDir(logDir);
 
@@ -601,7 +631,7 @@ async function runCocosGeneration(options, startedAtMs, sdkPath, ndkPath, javaHo
   const stderrLog = path.join(logDir, 'cocos_android_build.stderr.log');
   const cocosBuildLog = path.join(logDir, 'cocos-cli.log');
   const cocosLogPaths = [cocosBuildLog, stdoutLog, stderrLog];
-  const resolvedBuildConfig = createResolvedCocosBuildConfig(logDir, sdkPath, ndkPath, javaHome, javaPath);
+  const resolvedBuildConfig = createResolvedCocosBuildConfig(logDir, sdkPath, ndkPath, javaHome, javaPath, releasePackageName);
 
   [
     stdoutLog,
@@ -819,7 +849,7 @@ function walkFiles(root) {
 function removeExistingApks(buildPath) {
   assertInside(repoRoot, buildPath);
   for (const filePath of walkFiles(buildPath)) {
-    if (filePath.toLowerCase().endsWith('.apk')) {
+    if (filePath.toLowerCase().endsWith('.apk') || filePath.toLowerCase().endsWith('.aab')) {
       try {
         fs.rmSync(filePath, { force: true });
       } catch (error) {
@@ -949,185 +979,113 @@ function assertGradleBuildSuccessful(stdoutLog, stderrLog) {
   }
 }
 
-function findEndOfCentralDirectory(zipBuffer) {
-  const signature = 0x06054b50;
-  const minOffset = Math.max(0, zipBuffer.length - 0xffff - 22);
-
-  for (let offset = zipBuffer.length - 22; offset >= minOffset; offset -= 1) {
-    if (zipBuffer.readUInt32LE(offset) === signature) {
-      return offset;
-    }
-  }
-
-  fail('Could not find APK ZIP central directory.');
-}
-
-function readZipEntries(zipBuffer) {
-  const eocdOffset = findEndOfCentralDirectory(zipBuffer);
-  const entryCount = zipBuffer.readUInt16LE(eocdOffset + 10);
-  const centralDirectoryOffset = zipBuffer.readUInt32LE(eocdOffset + 16);
-  const entries = [];
-  let offset = centralDirectoryOffset;
-
-  for (let index = 0; index < entryCount; index += 1) {
-    if (zipBuffer.readUInt32LE(offset) !== 0x02014b50) {
-      fail('APK ZIP central directory is malformed.');
-    }
-
-    const method = zipBuffer.readUInt16LE(offset + 10);
-    const compressedSize = zipBuffer.readUInt32LE(offset + 20);
-    const uncompressedSize = zipBuffer.readUInt32LE(offset + 24);
-    const nameLength = zipBuffer.readUInt16LE(offset + 28);
-    const extraLength = zipBuffer.readUInt16LE(offset + 30);
-    const commentLength = zipBuffer.readUInt16LE(offset + 32);
-    const localHeaderOffset = zipBuffer.readUInt32LE(offset + 42);
-    const name = zipBuffer.subarray(offset + 46, offset + 46 + nameLength).toString('utf8');
-
-    entries.push({
-      name,
-      method,
-      compressedSize,
-      uncompressedSize,
-      localHeaderOffset,
-    });
-
-    offset += 46 + nameLength + extraLength + commentLength;
-  }
-
-  return entries;
-}
-
-function extractZipEntry(zipBuffer, entry) {
-  const offset = entry.localHeaderOffset;
-  if (zipBuffer.readUInt32LE(offset) !== 0x04034b50) {
-    fail(`APK ZIP local header is malformed for ${entry.name}.`);
-  }
-
-  const nameLength = zipBuffer.readUInt16LE(offset + 26);
-  const extraLength = zipBuffer.readUInt16LE(offset + 28);
-  const dataOffset = offset + 30 + nameLength + extraLength;
-  const compressed = zipBuffer.subarray(dataOffset, dataOffset + entry.compressedSize);
-
-  if (entry.method === 0) {
-    return Buffer.from(compressed);
-  }
-
-  if (entry.method === 8) {
-    return require('node:zlib').inflateRawSync(compressed);
-  }
-
-  fail(`Unsupported APK ZIP compression method ${entry.method} for ${entry.name}.`);
-}
-
-function readUInt(buffer, offset, size, littleEndian) {
-  if (size === 2) {
-    return littleEndian ? buffer.readUInt16LE(offset) : buffer.readUInt16BE(offset);
-  }
-  if (size === 4) {
-    return littleEndian ? buffer.readUInt32LE(offset) : buffer.readUInt32BE(offset);
-  }
-  if (size === 8) {
-    const value = littleEndian ? buffer.readBigUInt64LE(offset) : buffer.readBigUInt64BE(offset);
-    if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
-      fail(`ELF integer at offset ${offset} is too large to inspect safely.`);
-    }
-    return Number(value);
-  }
-  fail(`Unsupported integer size ${size}.`);
-}
-
-function getLoadSegmentAlignments(elfBuffer, entryName) {
-  if (elfBuffer.length < 64
-    || elfBuffer[0] !== 0x7f
-    || elfBuffer[1] !== 0x45
-    || elfBuffer[2] !== 0x4c
-    || elfBuffer[3] !== 0x46) {
-    fail(`${entryName} is not an ELF file.`);
-  }
-
-  const elfClass = elfBuffer[4];
-  const elfData = elfBuffer[5];
-  const littleEndian = elfData === 1;
-  if (!littleEndian && elfData !== 2) {
-    fail(`${entryName} has unsupported ELF data encoding ${elfData}.`);
-  }
-
-  const isElf64 = elfClass === 2;
-  const isElf32 = elfClass === 1;
-  if (!isElf64 && !isElf32) {
-    fail(`${entryName} has unsupported ELF class ${elfClass}.`);
-  }
-
-  const phoff = isElf64
-    ? readUInt(elfBuffer, 32, 8, littleEndian)
-    : readUInt(elfBuffer, 28, 4, littleEndian);
-  const phentsize = readUInt(elfBuffer, isElf64 ? 54 : 42, 2, littleEndian);
-  const phnum = readUInt(elfBuffer, isElf64 ? 56 : 44, 2, littleEndian);
-  const minPhentsize = isElf64 ? 56 : 32;
-
-  if (phentsize < minPhentsize) {
-    fail(`${entryName} has invalid ELF program-header entry size ${phentsize}.`);
-  }
-
-  const alignments = [];
-  for (let index = 0; index < phnum; index += 1) {
-    const headerOffset = phoff + (index * phentsize);
-    if (headerOffset + minPhentsize > elfBuffer.length) {
-      fail(`${entryName} has a program header outside the file.`);
-    }
-
-    const type = readUInt(elfBuffer, headerOffset, 4, littleEndian);
-    if (type === 1) {
-      const alignOffset = isElf64 ? headerOffset + 48 : headerOffset + 28;
-      const align = readUInt(elfBuffer, alignOffset, isElf64 ? 8 : 4, littleEndian);
-      alignments.push(align);
-    }
-  }
-
-  return alignments;
-}
-
 function assertNativeLibraries16Kb(apkPath) {
-  const zipBuffer = fs.readFileSync(apkPath);
-  const entries = readZipEntries(zipBuffer)
-    .filter((entry) => /^lib\/arm64-v8a\/.+\.so$/u.test(entry.name));
+  // AUT-073: the ZIP/ELF inspection moved to release_support.js so the release AAB/APK checks share the exact same implementation.
+  const result = releaseSupport.check16KbAlignment(fs.readFileSync(apkPath));
+  if (result.violations.length > 0) {
+    fail(`16 KB page-size check failed for ${apkPath}: ${result.violations.join('; ')}`);
+  }
+}
 
-  if (entries.length === 0) {
-    fail(`No arm64-v8a native libraries were found in ${apkPath}.`);
+/**
+ * AUT-073: validates every release input BEFORE any slow step and returns the resolved release plan. Secrets are only
+ * classified (present/absent), never printed. Exits non-zero with a clear message when a requested guarantee cannot be met.
+ */
+function prepareRelease(options) {
+  buildConfig = releaseBuildConfig;
+  taskName = 'AUT-073 Android Release';
+  const shapeProblems = releaseSupport.validateReleaseConfigShape(readJson(buildConfig));
+  if (shapeProblems.length > 0) {
+    fail(`${buildConfig} is not a valid release config: ${shapeProblems.join('; ')}`);
   }
 
-  const extractParent = path.join(repoRoot, 'temp', 'ci');
-  ensureDir(extractParent);
-  const extractRoot = fs.mkdtempSync(path.join(extractParent, 'apk-so-'));
-  assertInside(repoRoot, extractRoot);
-
+  let packageName;
+  let version;
   try {
-    for (const entry of entries) {
-      const soPath = path.join(extractRoot, ...entry.name.split('/'));
-      ensureDir(path.dirname(soPath));
-      const extracted = extractZipEntry(zipBuffer, entry);
-      if (extracted.length !== entry.uncompressedSize) {
-        fail(`Extracted ${entry.name} size ${extracted.length}; expected ${entry.uncompressedSize}.`);
-      }
-      fs.writeFileSync(soPath, extracted);
-      const loadSegmentAlignments = getLoadSegmentAlignments(extracted, entry.name);
-      if (loadSegmentAlignments.length === 0) {
-        fail(`No LOAD segments were found in ${entry.name}.`);
-      }
-
-      for (const align of loadSegmentAlignments) {
-        if (align < 16384) {
-          fail(`${entry.name} has LOAD segment alignment 0x${align.toString(16)}; expected at least 0x4000 for 16 KB page-size compatibility.`);
-        }
-      }
-    }
-  } finally {
-    fs.rmSync(extractRoot, { recursive: true, force: true });
+    packageName = releaseSupport.resolvePackageName(process.env);
+    version = releaseSupport.resolveVersionIdentity(process.env, readGitIdentity());
+  } catch (error) {
+    fail(String(error.message || error));
   }
+  releaseExpectedPackageName = packageName;
+
+  const signing = releaseSupport.classifySigningInputs(process.env, fileExists);
+  if (signing.state === 'incomplete') {
+    fail(`Release signing inputs are unusable: ${signing.problems.join('; ')}.`);
+  }
+  if (signing.state === 'unsigned' && options.requireSigning) {
+    fail('--require-signing: RELEASE_STORE_FILE, RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS and RELEASE_KEY_PASSWORD must all be set in the environment. Refusing to build.');
+  }
+
+  const admobValues = {};
+  for (const name of releaseSupport.ADMOB_ENV_NAMES) admobValues[name] = process.env[name] || '';
+  const admobPolicy = releaseSupport.evaluateAdmobPolicy(releaseSupport.classifyAdmobValues(admobValues), options);
+  if (!admobPolicy.ok) {
+    fail(`AdMob configuration rejected: ${admobPolicy.problems.join('; ')}.`);
+  }
+
+  const gitIdentity = readGitIdentity();
+  const plan = { packageName, version, signing, adsMode: admobPolicy.adsMode, gitIdentity };
+  const monotonic = releaseChecks.checkVersionCodeAgainstLedger(plan, process.env);
+  if (!monotonic.ok) {
+    fail(`Release versionCode check failed: ${monotonic.note}`);
+  }
+
+  logPhase(`Release plan: package=${packageName} versionName=${version.versionName} versionCode=${version.versionCode} (${version.source}) gitSha=${gitIdentity.gitSha}${gitIdentity.gitDirty ? '+dirty-assets' : ''}`);
+  logPhase(`Release plan: signing=${signing.state === 'configured' ? 'CONFIGURED (upload key from environment)' : 'UNSIGNED (no RELEASE_* inputs; the bundle must be signed before Play upload)'}; ads=${admobPolicy.adsMode}; versionCode note: ${monotonic.note}`);
+  return plan;
+}
+
+function findFreshReleaseArtifact(extension, sinceMs) {
+  return walkFiles(path.join(gradleProject, 'build', gradleModule, 'outputs'))
+    .filter((filePath) => filePath.toLowerCase().endsWith(extension) && /[\\/]release[\\/]/u.test(filePath))
+    .map((filePath) => ({ filePath, stat: fs.statSync(filePath) }))
+    .filter((item) => item.stat.size > 0 && item.stat.mtimeMs >= sinceMs)
+    .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs)[0]?.filePath || '';
+}
+
+async function finishRelease(options, release, gradleStartedAtMs, sdkPath) {
+  logPhase('Release verification: locating fresh bundle' + (options.apk ? ' and APK' : ''));
+  const aabPath = findFreshReleaseArtifact('.aab', gradleStartedAtMs);
+  if (!aabPath) fail(`Gradle completed but no fresh non-empty release .aab was found under ${path.join(gradleProject, 'build', gradleModule, 'outputs')}.`);
+  const apkPath = options.apk ? findFreshReleaseArtifact('.apk', gradleStartedAtMs) : '';
+  if (options.apk && !apkPath) fail('Gradle completed but no fresh non-empty release .apk was found.');
+
+  const outDir = path.join(repoRoot, 'temp', 'release');
+  ensureDir(outDir);
+  const label = `${release.version.versionName}-${release.version.versionCode}-${release.signing.state === 'configured' ? 'signed' : 'UNSIGNED'}`;
+  const copies = {};
+  copies.aab = path.join(outDir, `ProjectAutomata-${label}.aab`);
+  fs.copyFileSync(aabPath, copies.aab);
+  if (apkPath) {
+    copies.apk = path.join(outDir, `ProjectAutomata-${label}.apk`);
+    fs.copyFileSync(apkPath, copies.apk);
+  }
+
+  logPhase('Release safety checks: running on the built artifacts');
+  const result = releaseChecks.runArtifactChecks({
+    repoRoot,
+    sdkPath,
+    aabPath: copies.aab,
+    apkPath: copies.apk || '',
+    mappingPath: path.join(gradleProject, 'build', gradleModule, 'outputs', 'mapping', 'release', 'mapping.txt'),
+    plan: release,
+    flags: { requireProductionIds: options.requireProductionIds, allowSampleIds: options.allowSampleIds, requireSigning: options.requireSigning },
+  });
+  releaseChecks.printReport(result, console.log);
+  ensureDir(outDir);
+  fs.writeFileSync(path.join(outDir, 'release_checks.json'), `${JSON.stringify(result.report, null, 2)}${os.EOL}`, 'utf8');
+  if (!result.ok) {
+    fail('Release safety checks FAILED (see above). The artifacts were left under temp/release/ for inspection only; do not upload them.');
+  }
+  releaseChecks.recordVersionCode(release);
+  console.log(`Release AAB: ${copies.aab}${release.signing.state === 'configured' ? '' : '  (UNSIGNED: sign with the upload key before Play upload)'}`);
+  if (copies.apk) console.log(`Release APK: ${copies.apk}`);
 }
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  const release = options.release ? prepareRelease(options) : null;
   logPhase(`start: repo=${repoRoot}`);
   logPhase(`start: skipGeneration=${options.skipGeneration}; gradleOffline=${options.gradleOffline}; gradleUserHome=${options.standardGradleUserHome ? 'standard' : 'workspace'}; cocosTimeoutSeconds=${options.cocosTimeoutSeconds}; gradleTimeoutSeconds=${options.gradleTimeoutSeconds}`);
 
@@ -1166,7 +1124,7 @@ async function main() {
     // AUT-072: stamp the build identity (git sha / build number) into BuildInfoData.ts only while Cocos compiles the scripts.
     const restoreBuildInfo = applyBuildInfo();
     try {
-      await runCocosGeneration(options, startedAtMs, sdkPath, ndkPath, javaHome, javaPath, sourceEnginePath);
+      await runCocosGeneration(options, startedAtMs, sdkPath, ndkPath, javaHome, javaPath, sourceEnginePath, release ? release.packageName : '');
     } finally {
       restoreBuildInfo();
     }
@@ -1199,6 +1157,12 @@ async function main() {
     fail(`Generated Android project must target only arm64-v8a. Found ${abi}.`);
   }
 
+  if (release) {
+    if (minSdk !== String(releaseSupport.RECORDED_MIN_SDK)) fail(`Release minSdk must be the recorded ${releaseSupport.RECORDED_MIN_SDK}. Found ${minSdk}.`);
+    if (properties.get('PROP_IS_DEBUG') !== 'false') fail(`Generated release project must have PROP_IS_DEBUG=false. Found ${properties.get('PROP_IS_DEBUG')}.`);
+    if (properties.get('APPLICATION_ID') !== release.packageName) fail(`Generated APPLICATION_ID ${properties.get('APPLICATION_ID')} does not match the requested ${release.packageName}.`);
+  }
+
   console.log(`Observed Android config: compileSdk=${compileSdk} targetSdk=${targetSdk} minSdk=${minSdk} abi=${abi} ndk=${ndkVersion} cmake=${cmakeVersion} sdk=${sdkPath}`);
   console.log('Java:');
   runChecked('java.exe', ['-version']);
@@ -1213,6 +1177,11 @@ async function main() {
       ? resolveStandardGradleUserHome()
       : path.join(buildRoot, 'gradle-user'),
   };
+  if (release) {
+    // Read by native/engine/android/app/build.gradle (versionCode / versionName). Signing + AdMob inputs are already in process.env.
+    gradleEnv.AUTOMATA_VERSION_CODE = String(release.version.versionCode);
+    gradleEnv.AUTOMATA_GAME_VERSION = release.version.versionName;
+  }
   const observedGradleUserHome = gradleEnv.GRADLE_USER_HOME;
   logPhase(`Gradle build: user home ${observedGradleUserHome}${options.standardGradleUserHome ? ' (standard)' : ' (workspace)'}`);
   const gradleArgs = [
@@ -1220,9 +1189,14 @@ async function main() {
     '/c',
     gradleWrapper,
     '--no-problems-report',
-    `:${gradleModule}:assembleDebug`,
+    ...(release
+      ? [`:${gradleModule}:bundleRelease`, ...(options.apk ? [`:${gradleModule}:assembleRelease`] : [])]
+      : [`:${gradleModule}:assembleDebug`]),
     '--no-daemon',
     '--console=plain',
+    // AUT-073: lint-vital needs com.android.tools.lint:lint-gradle, which is not available in the offline Gradle cache (verified: "No cached version ... available for offline mode").
+    // It is an Android Lint analysis step, not part of the shipped artifact; the project's own release-safety checks (tools/ci/release_checks.js) replace it.
+    ...(release ? ['-x', 'lintVitalAnalyzeRelease', '-x', 'lintVitalReportRelease', '-x', 'lintVitalRelease'] : []),
   ];
   if (options.gradleOffline) {
     gradleArgs.splice(3, 0, '--offline');
@@ -1241,6 +1215,11 @@ async function main() {
     stderrLog: gradleStderrLog,
   });
   assertGradleBuildSuccessful(gradleStdoutLog, gradleStderrLog);
+
+  if (release) {
+    await finishRelease(options, release, gradleStartedAtMs, sdkPath);
+    return;
+  }
 
   logPhase(`APK verification: locating fresh non-empty ${expectedDebugApkName}`);
   const apkPath = findFreshDebugApk(gradleStartedAtMs);
