@@ -35,6 +35,8 @@ export interface SessionDeviceDriver extends DeviceDriver {
     /** AUT-057 (optional so older simulated drivers stay valid): BACK key and Wi-Fi / data switch. */
     pressBack?(): Promise<void>;
     setNetworkEnabled?(enabled: boolean): Promise<void>;
+    /** AUT-067 (optional): raw `adb shell` text, used by the performance baseline capture for dumpsys / top / getprop-style reads. */
+    shell?(command: string[], timeoutMs?: number): Promise<string>;
 }
 
 export class AdbDeviceDriver implements SessionDeviceDriver {
@@ -64,6 +66,7 @@ export class AdbDeviceDriver implements SessionDeviceDriver {
     public pressHome() { return this.client.pressHome(); }
     public pressBack() { return this.client.pressBack(); }
     public setNetworkEnabled(enabled: boolean) { return this.client.setNetworkEnabled(enabled); }
+    public shell(command: string[], timeoutMs?: number) { return this.client.shell(command, timeoutMs); }
     public clearAppData(pkg: string) { return this.client.clearAppData(pkg); }
     public appDataDirectory(pkg: string) { return this.client.appDataDirectory(pkg); }
     public listAppFiles(pkg: string, directory: string) { return this.client.listAppFiles(pkg, directory); }

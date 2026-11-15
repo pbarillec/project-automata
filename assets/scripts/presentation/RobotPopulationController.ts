@@ -1,10 +1,11 @@
-import { _decorator, Animation, Camera, Component, director, instantiate, Node, screen, Vec3 } from 'cc';
+import { _decorator, Animation, Camera, Component, director, instantiate, Light, MeshRenderer, Node, ParticleSystem, SkinnedMeshRenderer, screen, UIRenderer, Vec3 } from 'cc';
 import { DEBUG } from 'cc/env';
 import type { Prefab } from 'cc';
 import { CocosFileSystemPort } from '../app/CocosFileSystemPort';
 import { MobileCameraController } from '../camera/MobileCameraController';
 import { isFounderRobotCosmeticOwned } from '../monetization/FounderOffer.ts';
 import { FramePerfSampler } from './FramePerfSampler.ts';
+import { PerfSecondSampler } from './PerfSecondSampler.ts';
 import type { DomainEvent } from '../domain/Events.ts';
 import type { GameState } from '../state/GameState.ts';
 import { assemblyLocal, WORKER_BOT_SCALE } from './AssemblySliceLayout.ts';
@@ -33,6 +34,46 @@ const CLIP_CROSS_FADE_SECONDS = 0.2;
 /** AUT-062 DEBUG: seconds between `robot_founder` samples (crest screen rect) and the maximum number of samples. */
 const FOUNDER_SAMPLE_SECONDS = 2;
 const FOUNDER_SAMPLE_MAX = 12;
+
+interface GfxFrameCounters { drawCalls: number | null; tris: number | null; instances: number | null; source: string }
+
+/** AUT-067 DEBUG: Cocos gfx device per-frame counters (`director.root.device`); null / 'unavailable' when the engine does not expose them. */
+function readGfxFrameCounters(): GfxFrameCounters {
+    try {
+        const device = (director.root as unknown as { device?: { numDrawCalls?: unknown; numTris?: unknown; numInstances?: unknown } } | null)?.device;
+        const pick = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+        const counters = { drawCalls: pick(device?.numDrawCalls), tris: pick(device?.numTris), instances: pick(device?.numInstances) };
+        return { ...counters, source: counters.drawCalls === null && counters.tris === null ? 'unavailable' : 'director.root.device' };
+    } catch {
+        return { drawCalls: null, tris: null, instances: null, source: 'unavailable' };
+    }
+}
+
+/** AUT-067 DEBUG: renderer / light / particle / material counts of the live scene (one traversal, three times per capture). */
+function collectSceneCounts(scene: { children: readonly Node[] } | null): Record<string, number> {
+    const counts = { nodes: 0, activeNodes: 0, meshRenderers: 0, skinnedMeshRenderers: 0, particleSystems: 0, lights: 0, shadowCasters: 0, uiRenderers: 0, uniqueMaterials: 0 };
+    if (!scene) return counts;
+    const materials = new Set<unknown>();
+    const visit = (node: Node): void => {
+        counts.nodes += 1;
+        if (node.activeInHierarchy) counts.activeNodes += 1;
+        for (const component of node.components) {
+            if (component instanceof MeshRenderer) {
+                if (component instanceof SkinnedMeshRenderer) counts.skinnedMeshRenderers += 1;
+                else counts.meshRenderers += 1;
+                if (component.shadowCastingMode === 1) counts.shadowCasters += 1;
+                for (const material of component.sharedMaterials) if (material) materials.add(material);
+            }
+            if (component instanceof ParticleSystem) counts.particleSystems += 1;
+            if (component instanceof Light) counts.lights += 1;
+            if (component instanceof UIRenderer) counts.uiRenderers += 1;
+        }
+        for (const child of node.children) visit(child);
+    };
+    for (const child of scene.children) visit(child);
+    counts.uniqueMaterials = materials.size;
+    return counts;
+}
 
 interface PooledRobot {
     readonly node: Node;
@@ -67,6 +108,8 @@ export class RobotPopulationController extends Component {
     private clock = 0;
     private clipSpeed = 1;
     private perf: FramePerfSampler | null = null;
+    /** AUT-067 DEBUG baseline sampler (per-second frame time + scene counts); only created when the override file has `perf: true`. */
+    private perfSeconds: PerfSecondSampler | null = null;
     /** AUT-062: Founder Robot cosmetic owned (derived from `meta.cosmeticOwnership` on every sync / domain-event batch; no save change). */
     private founderOwned = false;
     private founderKey = '';
@@ -83,6 +126,7 @@ export class RobotPopulationController extends Component {
             if (typeof maxVisible !== 'number' || !Number.isFinite(maxVisible)) return;
             this.viewModel.setOptions({ maxVisible });
             this.perf = new FramePerfSampler();
+            if ((JSON.parse(text) as { perf?: unknown }).perf === true) this.perfSeconds = new PerfSecondSampler();
             emitDeviceEvent('robot_benchmark', { maxVisible });
         } catch (error) {
             console.warn(`[AUT-041] benchmark override ignored: ${String(error)}`);
@@ -110,6 +154,12 @@ export class RobotPopulationController extends Component {
     public update(deltaSeconds: number): void {
         const window = this.perf?.add(deltaSeconds) ?? null;
         if (window) emitDeviceEvent('robot_perf', { visible: (this.snapshotValue?.visible ?? 0), pooled: this.pool.visible, ...window });
+        const second = this.perfSeconds?.add(deltaSeconds) ?? null;
+        if (second) {
+            const counters = readGfxFrameCounters();
+            emitDeviceEvent('perf_second', { ...second, hist: [...second.hist], drawCalls: counters.drawCalls, tris: counters.tris, instances: counters.instances });
+            if (second.index === 0 || second.index === 30 || second.index === 59) emitDeviceEvent('perf_scene', { ...collectSceneCounts(director.getScene()), index: second.index, drawCalls: counters.drawCalls, tris: counters.tris, statsSource: counters.source });
+        }
         this.sampleFounder(deltaSeconds);
         if (this.pool.visible === 0 && this.robots.every((robot) => !robot.visible)) return;
         // AUT-047: presentation time scale (Overclock ~1.3x) speeds the route clock and the clip playback; ramps / scale-in stay real time.

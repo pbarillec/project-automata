@@ -43,6 +43,9 @@ export const DEVICE_EVENT_TYPES = [
     // AUT-041 DEBUG benchmark: { visible, window, frames, seconds, avgMs, p95Ms, maxMs, fps } per sampled window; `robot_benchmark` once when the override is read.
     'robot_perf',
     'robot_benchmark',
+    // AUT-067 DEBUG baseline (only when the benchmark override file asks for `perf`): `perf_second` once per second after a 6 s warm-up: { index, frames, seconds, fps, avgMs, p50Ms, p95Ms, p99Ms, maxMs, jank (> 33.3 ms), bigJank (> 50 ms), hist (1 ms bins, last = overflow), drawCalls, tris, instances (Cocos gfx device frame counters, null when unreachable) }; `perf_scene` { index, nodes, activeNodes, meshRenderers, skinnedMeshRenderers, particleSystems, lights, shadowCasters, uiRenderers, uniqueMaterials, drawCalls, tris, statsSource }.
+    'perf_second',
+    'perf_scene',
     // AUT-062: Founder Robot variant: { phase: 'synced' | 'changed' | 'sample', owned, founderRanks (0 = Worker Bot, slot + 1 = pooled), visible, pooled, shellTinted (per founder robot), fallbackShell, applied, crest? ([{ rank, rect: { x, y, w, h } }] window pixels, bottom-left origin; sample only), screen? }.
     'robot_founder',
     // AUT-066 (DEBUG only): Automata identity: { decals: [{ producerId, parts (merged renderers), rect (window px) }], aiCore: { boxes, renderers, shellBars, arcBoxes, arcSegments, built, modelRenderers }, icons: [{ slot, icon, rect (window px, bottom-left origin) }], screen }.
