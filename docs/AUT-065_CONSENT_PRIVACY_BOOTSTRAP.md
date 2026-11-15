@@ -123,3 +123,9 @@ npm run device:seed-aut065 -- --variant required_obtained
 npm run device:reveal-capture -- --scenario aut065-required-obtained   # also: aut065-not-required | -required-declined | -error | -timeout | -privacy-row | -no-privacy-row
 npm run device:reveal-capture -- --scenario aut065-ump-eea             # REAL UMP, needs network; ENVIRONMENT_BLOCKED otherwise
 ```
+
+## Device evidence (2026-11-15)
+
+Gate APK `aut065b` (incl. fix 64e3368: Extended Overclock chip re-reads ad availability on consent change); `npm run check` 1389 tests green. Captures PASS (0 errors): `aut065-not-required`, `-required-obtained`, `-required-declined`, `-error`, `-timeout`, `-privacy-row`, `-no-privacy-row`; regressions `aut055-success`, `aut056-success`, `aut059-purchase-success`, `aut061-restore-reinstall`.
+- Regression note: with consent gating, ads become available a few ticks after session ready. `aut056-success` initially failed because the Extended chip never re-evaluated (fixed in 64e3368); its check `extended_offer_eligible_and_available` now evaluates the first offer where the ad is available (transient ad-blocked offers before consent resolves are expected).
+- Pending human/owner: real UMP form on a networked phone (`aut065-ump-eea` reports ENVIRONMENT_BLOCKED without network/published UMP message), Settings > Privacy options on device, visual look of the 5-row Settings card, plus owner items (AdMob privacy & messaging, privacy policy URL, Data Safety/AD_ID, EEA/UK handling, production ids). Personalization stays npa=1 (owner decision if ever changed).

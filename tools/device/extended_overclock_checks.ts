@@ -87,7 +87,8 @@ export function evaluateExtendedOverclock(events: readonly ExtendedOverclockTime
 
     // ---- tapped scenarios: success / free_active / closed / failed ----
     const offers = ext(before, 'offer');
-    const offer = offers[0];
+    // AUT-065: ads become available once consent resolves (a few ticks after session ready), so earlier offers may be transiently ad-blocked; the offer must become eligible AND available.
+    const offer = offers.find((e) => e.event.adAvailable === true) ?? offers[0];
     checks.push({
         id: 'extended_offer_eligible_and_available',
         ok: offer !== undefined && offer.event.eligible === true && offer.event.adAvailable === true && offer.event.blockedBy === null,
