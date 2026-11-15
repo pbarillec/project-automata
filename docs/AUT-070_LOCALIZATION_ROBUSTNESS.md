@@ -79,3 +79,9 @@ Changed: `localization/TextCatalogue.ts`, `localization/index.ts`, `localization
 ## 8. Unverified
 
 Real-device appearance of the Minor toast at 384 wide and of any truncated pseudo text; the 0.48 em glyph estimate is an estimate (the Label SHRINK stays as a safety net). Subjective readability of long translations is out of scope until a second language exists.
+
+## Device evidence and visual QA (2026-11-15)
+
+Gate APK `aut070`; `npm run check` 1503 tests green. 15 regression captures PASS (0 errors): aut043, aut044, aut046, aut047, aut049, aut050, aut051, aut052, rbt001, aut055-success, aut056-success, aut059-available, aut066-factory, aut066-panel, aut066-toast-breakthrough.
+- Visual regression QA (scene-presentation, stills): **PASS**. English labels unchanged (not truncated/ellipsised/shrunk), chips/buttons same pixel rects, no overlaps; Major toasts clear of the chips.
+- Evidence gap (accepted, layout-test-backed): no captured frame contains a Minor toast, so the 440 -> 384 narrowing and its clearance of the AI Upgrades chip (x>=554 vs chip at x=831 px) is proven by the pure geometry tests only; capture one Minor-toast scenario when convenient. The device pseudo-locale scenario was not built (pure matrices cover it).
