@@ -365,7 +365,8 @@ export class LifecycleSessionCoordinator {
             ? null
             : createOfflineProgressPreviewFromUtc(options.configRepository, load.state, {
                 persistedAtUtcIso: load.envelope.savedAtUtc,
-                currentUtcIso: options.timeService.nowUtcIso(),
+                // AUT-071: an unreadable wall clock yields an invalid_time preview (no reward), never a failed startup.
+                currentUtcIso: readNowUtcIsoOrNull(options.timeService),
                 config: options.offlineConfig,
             });
         const pendingOfflinePreview = toPendingOfflinePreview(offlinePreview);
@@ -1003,6 +1004,15 @@ function mapLoadStatus(status: LoadGameMainResult['status'] | LoadGameRecoveredB
     }
 
     return 'fresh_game';
+}
+
+function readNowUtcIsoOrNull(timeService: TimeService): UtcTimestampIsoString | null {
+    try {
+        return timeService.nowUtcIso();
+    }
+    catch {
+        return null;
+    }
 }
 
 function toPendingOfflinePreview(offlinePreview: OfflinePreviewResult | null): OfflinePreviewResult | null {

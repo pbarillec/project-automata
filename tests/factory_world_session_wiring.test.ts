@@ -77,7 +77,8 @@ test('update ticks the binding and lifecycle hide/show are wired to suspend/resu
 test('load_failed keeps FactoryWorld inert and reports a DEBUG session_state diagnostic', async () => {
     const source = await read('assets/scripts/presentation/FactoryWorldBootstrap.ts');
     const startSession = methodBody(source, 'private startPersistentSession(');
-    assert.match(startSession, /if \(!result\.startup\.ok\) \{\s*this\.emitSessionState\('load_failed', result\.startup\.status, null, false\);\s*return;\s*\}/);
+    // AUT-071: a failed load logs why (non-fatal diagnostic), then stays inert exactly as before.
+    assert.match(startSession, /if \(!result\.startup\.ok\) \{\s*(?:\/\/[^\n]*\s*)?console\.warn\([^\n]*\);\s*this\.emitSessionState\('load_failed', result\.startup\.status, null, false\);\s*return;\s*\}/);
     assert.match(source, /emitDeviceEvent\('session_state', \{ phase, status, saveOk, autoFeederOwned, writablePath: this\.saveRootPath \}\)/);
     assert.match(source, /configureDeviceDiagnostics\(\{ enabled: DEBUG === true \}\)/);
 });

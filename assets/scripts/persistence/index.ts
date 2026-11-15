@@ -50,6 +50,7 @@ export {
 
 export {
     SAVE_BACKUP_NAME,
+    SAVE_CORRUPT_NAME,
     SAVE_MAIN_NAME,
     SAVE_TEMP_NAME,
     SaveStorageError,
@@ -68,6 +69,7 @@ export type {
     SaveGameFailureResult,
     SaveGameResult,
     SaveGameSuccessResult,
+    SaveQuarantineResult,
     StoredInvalidSaveRead,
     StoredMissingSaveRead,
     StoredReadErrorSaveRead,

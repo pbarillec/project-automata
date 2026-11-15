@@ -1,11 +1,14 @@
 export const SAVE_TEMP_NAME = 'save_temp.json';
 export const SAVE_MAIN_NAME = 'save_main.json';
 export const SAVE_BACKUP_NAME = 'save_backup.json';
+/** AUT-071: diagnostic-only copy of an unreadable save (never loaded, never part of recovery precedence). */
+export const SAVE_CORRUPT_NAME = 'save_corrupt.json';
 
 export type LogicalSaveName =
     | typeof SAVE_TEMP_NAME
     | typeof SAVE_MAIN_NAME
-    | typeof SAVE_BACKUP_NAME;
+    | typeof SAVE_BACKUP_NAME
+    | typeof SAVE_CORRUPT_NAME;
 
 export interface SaveStorage {
     readText(name: LogicalSaveName): Promise<string | undefined>;

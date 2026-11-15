@@ -167,9 +167,13 @@ export class FounderShopController extends Component {
         const viewModel = this.viewModel;
         if (!this.open || !flow || !viewModel || !viewModel.modal.buyEnabled) return;
         this.emitReport('buy_tapped', {});
+        // AUT-071: a rejected flow (it never rejects today; belt and braces) must still re-render so the modal never stays stuck.
         void flow.buy().then((outcome) => {
             this.render();
             this.emitReport('buy_result', { outcome });
+        }, () => {
+            this.render();
+            this.emitReport('buy_result', { outcome: 'failed' });
         });
     }
 

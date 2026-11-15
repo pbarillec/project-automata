@@ -327,8 +327,15 @@ export class FactoryWorldBootstrap extends Component {
         this.purchaseSource = purchaseSelection.source;
         bootstrapGameSession({ storage, timeService: new DefaultTimeService() }).then((result) => {
             if (!result.startup.ok) {
+                // AUT-071: a failed load (read error / save from a newer build) stays inert, never overwrites the save, and says why.
+                console.warn(`[AUT-071] Save load failed (${result.startup.load.reason}): ${result.startup.load.message}`);
                 this.emitSessionState('load_failed', result.startup.status, null, false);
                 return;
+            }
+            // AUT-071: a recovery from the backup / a fresh start over unreadable saves is non-fatal but never silent.
+            const load = result.startup.load;
+            if (load.status !== 'loaded_main') {
+                console.warn(`[AUT-071] Save recovery: ${load.status} (unreadable copy preserved: ${load.quarantine.status}).`);
             }
             const binding = new FactoryWorldStateBinding({
                 session: result.startup.session,

@@ -147,7 +147,30 @@ export class PersistenceCoordinator {
             });
         }
 
-        const save = await this.repository.save(queued.state, this.createMetadata(queued.request.savedAtUtcIso));
+        // AUT-071: an unreadable wall clock or an unexpected repository throw becomes a typed failed save (never an unhandled rejection after the
+        // state was already applied); the tracker stays dirty so the next cadence retries once the clock / storage recovers.
+        let save: SaveGameResult;
+        try {
+            let metadata: SaveEnvelopeMetadata | null = null;
+            let clockMessage = '';
+            try {
+                metadata = this.createMetadata(queued.request.savedAtUtcIso);
+            }
+            catch (error) {
+                clockMessage = error instanceof Error ? error.message : String(error);
+            }
+            save = metadata === null
+                ? Object.freeze({ ok: false as const, status: 'failed' as const, reason: 'clock_unavailable' as const, message: clockMessage })
+                : await this.repository.save(queued.state, metadata);
+        }
+        catch (error) {
+            save = Object.freeze({
+                ok: false as const,
+                status: 'failed' as const,
+                reason: 'unexpected_error' as const,
+                message: error instanceof Error ? error.message : String(error),
+            });
+        }
         if (save.ok) {
             this.dirtyTracker.recordSaveSucceeded(this.timeService.nowMonotonicSeconds());
             return Object.freeze({

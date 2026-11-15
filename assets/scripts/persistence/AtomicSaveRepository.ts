@@ -11,9 +11,11 @@ import {
     deserializeGameStateFromSaveJson,
     serializeGameStateToSaveJson,
 } from './SaveEnvelope.ts';
+import { DEFAULT_SAVE_MIGRATION_REGISTRY } from './SaveEnvelope.ts';
 import type { SaveMigrationRegistry } from './SaveMigrations.ts';
 import {
     SAVE_BACKUP_NAME,
+    SAVE_CORRUPT_NAME,
     SAVE_MAIN_NAME,
     SAVE_TEMP_NAME,
     type LogicalSaveName,
@@ -48,6 +50,10 @@ export interface StoredInvalidSaveRead {
     readonly source: StoredSaveSource;
     readonly name: LogicalSaveName;
     readonly diagnostics: readonly SaveDiagnostic[];
+    /** AUT-071: the raw unreadable text, kept so it can be preserved for diagnosis. */
+    readonly text: string;
+    /** AUT-071: set when the file is a well-formed envelope written by a NEWER save version than this build supports. */
+    readonly futureSaveVersion?: number;
 }
 
 export interface StoredReadErrorSaveRead {
@@ -70,7 +76,11 @@ export type SaveFailureReason =
     | 'temp_verification_failed'
     | 'main_read_failed'
     | 'backup_rotation_failed'
-    | 'main_promotion_failed';
+    | 'main_promotion_failed'
+    /** AUT-071: the wall clock could not be read as a valid UTC instant, so no save metadata could be stamped (nothing was written). */
+    | 'clock_unavailable'
+    /** AUT-071: the repository threw instead of returning a typed result (nothing is assumed written). */
+    | 'unexpected_error';
 
 export interface SaveGameSuccessResult {
     readonly ok: true;
@@ -99,6 +109,13 @@ export interface RecoveryRewriteResult {
     readonly message?: string;
 }
 
+/** AUT-071: outcome of the best-effort diagnostic copy of an unreadable save (never affects the load result). */
+export interface SaveQuarantineResult {
+    readonly status: 'none' | 'preserved' | 'failed';
+    readonly source?: StoredSaveSource;
+    readonly message?: string;
+}
+
 export interface LoadGameMainResult {
     readonly ok: true;
     readonly status: 'loaded_main';
@@ -119,6 +136,7 @@ export interface LoadGameRecoveredBackupResult {
     readonly main: StoredSaveReadResult;
     readonly backup: StoredValidSaveRead;
     readonly recovery: RecoveryRewriteResult;
+    readonly quarantine: SaveQuarantineResult;
 }
 
 export interface LoadGameFreshResult {
@@ -129,12 +147,14 @@ export interface LoadGameFreshResult {
     readonly state: GameState;
     readonly main: StoredSaveReadResult;
     readonly backup: StoredSaveReadResult;
+    readonly quarantine: SaveQuarantineResult;
 }
 
 export interface LoadGameFailureResult {
     readonly ok: false;
     readonly status: 'failed';
-    readonly reason: 'main_read_failed' | 'backup_read_failed';
+    /** AUT-071: `unsupported_future_version` = a save written by a newer build; it is never overwritten, downgraded or replaced by a fresh game. */
+    readonly reason: 'main_read_failed' | 'backup_read_failed' | 'unsupported_future_version';
     readonly message: string;
     readonly main: StoredSaveReadResult;
     readonly backup?: StoredSaveReadResult;
@@ -230,7 +250,21 @@ export class AtomicSaveRepository {
         }
 
         const backup = await this.readStoredSave(SAVE_BACKUP_NAME, 'backup');
+        // AUT-071: a save written by a newer build is never recovered over, overwritten or replaced by a fresh game (that would downgrade / destroy it).
+        const futureRead = [main, backup].find((read): read is StoredInvalidSaveRead => read.status === 'invalid' && read.futureSaveVersion !== undefined);
+        if (futureRead !== undefined) {
+            return Object.freeze({
+                ok: false,
+                status: 'failed',
+                reason: 'unsupported_future_version',
+                message: `${futureRead.name} has saveVersion ${futureRead.futureSaveVersion}, newer than the supported saveVersion ${this.currentSaveVersion()}.`,
+                main,
+                backup,
+            });
+        }
+
         if (backup.status === 'valid') {
+            const quarantine = await this.quarantineUnreadable(main);
             return Object.freeze({
                 ok: true,
                 status: 'recovered_backup',
@@ -241,6 +275,7 @@ export class AtomicSaveRepository {
                 main,
                 backup,
                 recovery: await this.recoverBackupToMain(main, backup.text),
+                quarantine,
             });
         }
 
@@ -266,6 +301,8 @@ export class AtomicSaveRepository {
             });
         }
 
+        // AUT-071: both copies are unreadable: keep the evidence before the first fresh save replaces main.
+        const quarantine = await this.quarantineUnreadable(main.status === 'invalid' ? main : backup);
         return Object.freeze({
             ok: true,
             status: 'fresh_started',
@@ -274,6 +311,7 @@ export class AtomicSaveRepository {
             state: cloneGameState(this.createFreshState()),
             main,
             backup,
+            quarantine,
         });
     }
 
@@ -283,6 +321,25 @@ export class AtomicSaveRepository {
 
     async inspectBackup(): Promise<StoredSaveReadResult> {
         return this.readStoredSave(SAVE_BACKUP_NAME, 'backup');
+    }
+
+    private currentSaveVersion(): number {
+        return (this.migrations ?? DEFAULT_SAVE_MIGRATION_REGISTRY).currentSaveVersion;
+    }
+
+    /** AUT-071: best-effort copy of an unreadable (corrupt / unsupported) save to `save_corrupt.json`; never throws, never touches main / backup. */
+    private async quarantineUnreadable(read: StoredSaveReadResult): Promise<SaveQuarantineResult> {
+        if (read.status !== 'invalid') {
+            return Object.freeze({ status: 'none' });
+        }
+
+        try {
+            await this.storage.writeText(SAVE_CORRUPT_NAME, read.text);
+            return Object.freeze({ status: 'preserved', source: read.source });
+        }
+        catch (error) {
+            return Object.freeze({ status: 'failed', source: read.source, message: messageFromUnknown(error) });
+        }
     }
 
     private async recoverBackupToMain(
@@ -379,6 +436,8 @@ export class AtomicSaveRepository {
                 source,
                 name,
                 diagnostics: result.diagnostics,
+                text,
+                ...futureVersionField(text, this.currentSaveVersion()),
             });
         }
 
@@ -395,6 +454,23 @@ export class AtomicSaveRepository {
     private deserializeSaveJson(text: string): SaveDeserializeResult {
         return deserializeGameStateFromSaveJson(text, { migrations: this.migrations });
     }
+}
+
+function futureVersionField(text: string, currentSaveVersion: number): { readonly futureSaveVersion?: number } {
+    try {
+        const parsed: unknown = JSON.parse(text);
+        if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+            const version = (parsed as { readonly saveVersion?: unknown }).saveVersion;
+            if (typeof version === 'number' && Number.isInteger(version) && version > currentSaveVersion) {
+                return { futureSaveVersion: version };
+            }
+        }
+    }
+    catch {
+        // unparseable text is plain corruption, not a future version
+    }
+
+    return {};
 }
 
 function saveFailure(

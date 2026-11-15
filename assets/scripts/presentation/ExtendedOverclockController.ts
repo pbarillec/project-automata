@@ -117,7 +117,8 @@ export class ExtendedOverclockController extends Component {
         const viewModel = this.viewModel;
         if (!flow || !viewModel || !viewModel.interactable || this.chipVisible !== true || this.suppressed) return;
         this.noteSeconds = 0;
-        void flow.start().then((result) => this.onStartFinished(result));
+        // AUT-071: a rejected flow (it never rejects today; belt and braces) must still end the attempt and re-render.
+        void flow.start().then((result) => this.onStartFinished(result), () => this.onStartFinished('error'));
     }
 
     private onStartFinished(result: ExtendedOverclockFlowResult | null): void {
