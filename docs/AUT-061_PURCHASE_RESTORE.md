@@ -41,3 +41,7 @@ Also covered: Reboot survival, real SaveEnvelope round trip, coordinator critica
 ## Verification status
 
 - Automated: `npm run check` (see report). NOT verified: real Play behaviour (query on resume, refund, pending resolution), the two `aut061-*` device captures (not run, per task), actual timing of the foreground query on a device.
+
+## Device evidence (2026-11-15)
+
+Gate APK `aut061`; `npm run check` 1286 tests green. Captures PASS (0 errors): `aut061-restore-reinstall` (chip Owned, entitlement+cosmetic restored, 0 Surge charges), `aut061-restore-store-error` (local ownership kept, no revoke), regression `aut059-available`. Real Google Play query-on-resume/pending/refund behaviour remains pending (see AUT-060 owner-supplied items). Chip appearance only checked via objective events.
