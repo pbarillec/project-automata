@@ -36,6 +36,7 @@ import { seedAut062 } from './seed_aut062.ts';
 import { seedAut065 } from './seed_aut065.ts';
 import { CONSENT_SETTLE_WAIT_MS, CONSENT_UMP_WAIT_MS, evaluateConsent, type ConsentExpectation } from './consent_checks.ts';
 import { evaluateFounderRobot, type FounderRobotExpectation } from './founder_robot_checks.ts';
+import { evaluateIdentity, type IdentityExpectation } from './identity_checks.ts';
 import { evaluateAnalytics, type AnalyticsExpectation } from './analytics_checks.ts';
 import { BILLING_CHIP_WAIT_MS, BILLING_RESULT_WAIT_MS, BILLING_SHEET_SETTLE_MS, evaluateBilling, type BillingExpectation } from './billing_checks.ts';
 import { FOUNDER_SHOP_RELAUNCH_MARKER_EVT, evaluateFounderShop, type FounderShopExpectation } from './founder_shop_checks.ts';
@@ -89,6 +90,8 @@ export interface RevealCaptureOptions {
     readonly expectFounderRobot?: FounderRobotExpectation;
     /** AUT-064 (optional, added to the AUT-055 / AUT-056 / AUT-059 success scenarios): the DEBUG `analytics` events of the same capture must be clean (valid params, one opportunity per episode, opt-in / completion / grant linkage, one opaque session id, no price text). Objective checks only (analytics_checks.ts). */
     readonly expectAnalytics?: AnalyticsExpectation;
+    /** AUT-066 (Automata identity, objective wiring checks only): 'factory' = decals on every producer + the HUD icons; 'ai_core' = the AI Core model in the Reboot sequence. */
+    readonly expectIdentity?: IdentityExpectation;
     /** AUT-050: 'purchase' = tap the AI chip, open the panel, buy an affordable row with a real tap, switch tab, force-stop + relaunch WITHOUT reseeding (balance / rank persisted). */
     readonly expectPermanentUpgrades?: PermanentUpgradeExpectation;
     /** AUT-052: 'toggle_persist' = tap the Settings chip, open the panel, toggle Music OFF with a real tap, close, force-stop + relaunch WITHOUT reseeding (the file survives), toggle it back ON, close. */
@@ -122,7 +125,7 @@ export interface RevealCaptureResult {
 
 export const DEFAULT_REVEAL_EVENT_TYPES: readonly string[] = Object.freeze([
     'scene_ready', 'session_state', 'ui_layout', 'command_result', 'construction_state', 'camera_focus', 'reveal_state',
-    'milestone_presentation', 'era_transition', 'reboot_presentation', 'offline_report', 'offline_double', 'extended_overclock', 'founder_shop', 'analytics', 'ads_state', 'consent_state', 'permanent_upgrades', 'reboot_ui', 'settings', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'robot_founder', 'robot_perf', 'error',
+    'milestone_presentation', 'era_transition', 'reboot_presentation', 'offline_report', 'offline_double', 'extended_overclock', 'founder_shop', 'analytics', 'ads_state', 'consent_state', 'permanent_upgrades', 'reboot_ui', 'settings', 'boost_presentation', 'robot_state', 'robot_line_state', 'automated_cell_state', 'advanced_robotics_complex_state', 'era_environment_state', 'robot_population', 'robot_founder', 'identity', 'robot_perf', 'error',
 ]);
 
 /** A named live-reveal scenario: the seed (unbuilt variant), the producer whose construction must be observed and whether a camera focus is expected. */
@@ -151,6 +154,7 @@ export interface RevealScenario {
     readonly expectRestore?: RestoreExpectation;
     readonly expectFounderRobot?: FounderRobotExpectation;
     readonly expectAnalytics?: AnalyticsExpectation;
+    readonly expectIdentity?: IdentityExpectation;
 }
 
 export const DEFAULT_REVEAL_SCENARIO_ID = 'aut043';
@@ -171,6 +175,9 @@ export const REVEAL_SCENARIOS: Readonly<Record<string, RevealScenario>> = Object
     'aut048-era3-live': { id: 'aut048-era3-live', label: 'aut048-era3-live', seed: (d, pkg, act) => seedAut048Era3Live(d, pkg, act), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 18_000, intervalMs: 400, expectEraTitle: 'robotics_complex', expectCommands: ['purchaseBreakthrough'] },
     // AUT-049: the DEBUG-only debug_command.json (written by the seed, read once after ready) submits the confirmed Reboot; trigger 'none' on the capture side.
     aut049: { id: 'aut049', label: 'aut049-reboot', seed: (d, pkg, act) => seedAut049(d, pkg, act, 'reboot'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 18_000, intervalMs: 300, expectCommands: ['rebootCivilization'], expectReboot: 'sequence' },
+    // AUT-066: Automata identity. 'aut066-factory' reuses the AUT-047 seed (Free Overclock ACTIVE: HUD / Overclock icons + all five zones); 'aut066-ai-core' reuses the AUT-049 Reboot seed (the AI Core in the sequence).
+    'aut066-factory': { id: 'aut066-factory', label: 'aut066-identity-factory', seed: (d, pkg, act) => seedAut047(d, pkg, act, 'active'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 8_000, intervalMs: 400, expectIdentity: 'factory' },
+    'aut066-ai-core': { id: 'aut066-ai-core', label: 'aut066-identity-ai-core', seed: (d, pkg, act) => seedAut049(d, pkg, act, 'reboot'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 12_000, intervalMs: 300, expectCommands: ['rebootCivilization'], expectReboot: 'sequence', expectIdentity: 'ai_core' },
     // AUT-049: a post-Reboot save (Civilization #2, AI Cores): silent load, persistent relay socket, no sequence.
     'aut049-post': { id: 'aut049-post', label: 'aut049-post-reboot-socket', seed: (d, pkg, act) => seedAut049(d, pkg, act, 'post'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 400, expectReboot: 'silent' },
     // AUT-050: AI Upgrades. Post-Reboot seed (Civilization #2, 4 AI Cores, Optimized Fabrication rank 2): screenshot with the chip, tap the chip, screenshot the open panel, buy an affordable row with a REAL tap, screenshot, switch to Automation (locked row), force-stop + relaunch WITHOUT reseeding (balance / rank persisted).
@@ -243,7 +250,7 @@ export function resolveRevealScenario(id: unknown): RevealScenario | null {
 }
 
 /** Objective checks over a timeline (pure, unit-tested). `tMs` is relative to the trigger (negative = before). */
-export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectOfflineDouble?: OfflineDoubleExpectation; expectExtendedOverclock?: ExtendedOverclockExpectation; expectAdmob?: AdmobExpectation; expectFounderShop?: FounderShopExpectation; expectConsent?: ConsentExpectation; expectBilling?: BillingExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation; expectSettings?: SettingsExpectation; expectRebootUi?: RebootUiExpectation; expectRestore?: RestoreExpectation; expectFounderRobot?: FounderRobotExpectation; expectAnalytics?: AnalyticsExpectation }): RevealCheck[] {
+export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectOfflineDouble?: OfflineDoubleExpectation; expectExtendedOverclock?: ExtendedOverclockExpectation; expectAdmob?: AdmobExpectation; expectFounderShop?: FounderShopExpectation; expectConsent?: ConsentExpectation; expectBilling?: BillingExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation; expectSettings?: SettingsExpectation; expectRebootUi?: RebootUiExpectation; expectRestore?: RestoreExpectation; expectFounderRobot?: FounderRobotExpectation; expectAnalytics?: AnalyticsExpectation; expectIdentity?: IdentityExpectation }): RevealCheck[] {
     const checks: RevealCheck[] = [];
     const errors = events.filter((e) => e.event.evt === 'error');
     checks.push({ id: 'no_error_events', ok: errors.length === 0, detail: `${errors.length} error events` });
@@ -284,6 +291,7 @@ export function evaluateRevealTimeline(events: readonly TimelineEvent[], options
     if (options.expectRestore !== undefined) checks.push(...evaluateRestore(events, options.expectRestore));
     if (options.expectFounderRobot !== undefined) checks.push(...evaluateFounderRobot(events, options.expectFounderRobot));
     if (options.expectAnalytics !== undefined) checks.push(...evaluateAnalytics(events, options.expectAnalytics));
+    if (options.expectIdentity !== undefined) checks.push(...evaluateIdentity(events, options.expectIdentity));
     if (options.expectPermanentUpgrades !== undefined) checks.push(...evaluatePermanentUpgrades(events, options.expectPermanentUpgrades));
     if (options.expectSettings !== undefined) checks.push(...evaluateSettings(events, options.expectSettings));
     if (options.expectRebootUi !== undefined) checks.push(...evaluateRebootUi(events, options.expectRebootUi));
@@ -1100,7 +1108,7 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
     collect(Date.now());
     await driver.stopLogcat();
 
-    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectRestore: options.expectRestore, expectFounderRobot: options.expectFounderRobot, expectAnalytics: options.expectAnalytics, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport, expectOfflineDouble: options.expectOfflineDouble, expectExtendedOverclock: options.expectExtendedOverclock, expectAdmob: options.expectAdmob, expectFounderShop: options.expectFounderShop, expectConsent: options.expectConsent, expectBilling: options.expectBilling, expectPermanentUpgrades: options.expectPermanentUpgrades, expectSettings: options.expectSettings, expectRebootUi: options.expectRebootUi });
+    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectRestore: options.expectRestore, expectFounderRobot: options.expectFounderRobot, expectAnalytics: options.expectAnalytics, expectIdentity: options.expectIdentity, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport, expectOfflineDouble: options.expectOfflineDouble, expectExtendedOverclock: options.expectExtendedOverclock, expectAdmob: options.expectAdmob, expectFounderShop: options.expectFounderShop, expectConsent: options.expectConsent, expectBilling: options.expectBilling, expectPermanentUpgrades: options.expectPermanentUpgrades, expectSettings: options.expectSettings, expectRebootUi: options.expectRebootUi });
     checks.unshift({ id: 'ui_layout_ready', ok: layout !== null, detail: layout ? 'ui_layout received' : 'no ui_layout (app did not reach the HUD)' });
     if (options.expectPermanentUpgrades || options.expectSettings || options.expectRebootUi || options.expectOfflineDouble || options.expectExtendedOverclock || options.expectAdmob || options.expectFounderShop || options.expectBilling || options.expectConsent) checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
     if (trigger !== 'none') checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });

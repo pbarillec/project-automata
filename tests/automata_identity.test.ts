@@ -1,0 +1,308 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import test from 'node:test';
+import {
+    AI_CORE_ARC,
+    AI_CORE_PARTS,
+    AI_CORE_PEAK_SIZE,
+    AI_CORE_PERSISTENT_SIZE,
+    AI_CORE_SHELL_HALF_HEIGHT,
+    DECAL_KINDS,
+    DECAL_MAX_PARTS_PER_PRODUCER,
+    DECAL_MAX_PARTS_TOTAL,
+    DECAL_THICKNESS,
+    ICON_NAMES,
+    ICON_SHAPES,
+    IDENTITY_COLOR_KEYS,
+    IDENTITY_PALETTE,
+    IDENTITY_PRODUCER_IDS,
+    IDENTITY_SOURCE_RECORD,
+    PLACEHOLDER_WORDMARK,
+    SEVEN_SEG,
+    aiCoreScaleFor,
+    aiCoreSummary,
+    decalPartBoundsXZ,
+    decalPartsFor,
+    decalRendererGroups,
+    founderChipIconSlot,
+    groupBoxesByColor,
+    hudIndustrialIconSlot,
+    hudOverclockIconSlot,
+    identityZoneOf,
+    isConvexPolygon,
+    mergeBoxGeometry,
+    milestoneIconFor,
+    milestoneIconSlot,
+    numberPlateBoxes,
+    producerHeaderIconSlot,
+    producerIconFor,
+    ringArcBoxes,
+    type IdentityBox,
+} from '../assets/scripts/presentation/AutomataIdentity.ts';
+import { aiMarkGeometry } from '../assets/scripts/presentation/PermanentUpgradeLayout.ts';
+import { ZONE_LAYOUT } from '../assets/scripts/presentation/FactoryZoneLayout.ts';
+import { CORE_HUD_LAYOUT, PRODUCER_PANEL_LAYOUT, cardRowCenterY, cardRowWidth } from '../assets/scripts/presentation/UiLayout.ts';
+import { MILESTONE_TOAST_LAYOUT } from '../assets/scripts/presentation/MilestoneToastLayout.ts';
+import { FOUNDER_CHIP_HEIGHT, FOUNDER_CHIP_WIDTH } from '../assets/scripts/presentation/FounderShopLayout.ts';
+import { REBOOT_CORE_PEAK_SIZE, REBOOT_CORE_PERSISTENT_SIZE, rebootCoreCenterY } from '../assets/scripts/presentation/RebootPresentation.ts';
+import { FOUNDER_PALETTE } from '../assets/scripts/presentation/FounderRobotVariant.ts';
+import { DEVICE_EVENT_TYPES } from '../assets/scripts/presentation/DeviceDiagnostics.ts';
+import { DEFAULT_REVEAL_EVENT_TYPES, REVEAL_SCENARIOS, evaluateRevealTimeline } from '../tools/device/reveal_capture.ts';
+import { evaluateIdentity } from '../tools/device/identity_checks.ts';
+
+const repoRoot = path.resolve(import.meta.dirname, '..');
+const read = (rel: string) => fs.readFileSync(path.join(repoRoot, rel), 'utf8').replace(/\r\n/g, '\n');
+const presentation = (file: string) => read(`assets/scripts/presentation/${file}`);
+const code = (file: string) => presentation(file).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+// Same definition as the AUT-049 test: red = r dominates BOTH other channels by 1.5x (amber is warm but not red).
+const isRed = (c: { r: number; g: number; b: number }) => c.r > c.g * 1.5 && c.r > c.b * 1.5;
+const allBoxes = (): IdentityBox[] => [...AI_CORE_PARTS];
+
+test('palette is frozen, never red, and the Founder gold is not a usable identity colour', () => {
+    assert.deepEqual(IDENTITY_PALETTE.graphite, { r: 24, g: 29, b: 32 });
+    assert.deepEqual(IDENTITY_PALETTE.offWhite, { r: 232, g: 236, b: 236 });
+    assert.deepEqual(IDENTITY_PALETTE.cyan, { r: 88, g: 170, b: 184 });
+    assert.deepEqual(IDENTITY_PALETTE.amber, { r: 224, g: 168, b: 72 });
+    for (const key of IDENTITY_COLOR_KEYS) {
+        const c = IDENTITY_PALETTE[key];
+        assert.equal(isRed(c), false, `${key} is not red`);
+    }
+    assert.equal(IDENTITY_COLOR_KEYS.includes('founderGold' as never), false);
+    assert.deepEqual(IDENTITY_PALETTE.founderGold, { r: 204, g: 146, b: 40 });
+    const goldInFounder = Object.values(FOUNDER_PALETTE).some((c) => c.r === 204 && c.g === 146 && c.b === 40);
+    assert.ok(goldInFounder, 'the Founder gold is the existing Founder robot gold');
+});
+
+test('every box uses only the allowed colours (no gold, no red) and the decals never use gold', () => {
+    const boxes = [...allBoxes(), ...IDENTITY_PRODUCER_IDS.flatMap((id) => decalPartsFor(id, 1))];
+    for (const box of boxes) assert.ok(IDENTITY_COLOR_KEYS.includes(box.color), `${box.kind} colour ${box.color}`);
+});
+
+test('decals: <= 5 merged parts per producer, <= 30 in total, 4 kinds, dims > 0 and inside the zone footprint, thin and above the surface', () => {
+    assert.equal(IDENTITY_PRODUCER_IDS.length, 5);
+    let total = 0;
+    for (const producerId of IDENTITY_PRODUCER_IDS) {
+        const parts = decalPartsFor(producerId, 1);
+        const groups = decalRendererGroups(parts);
+        total += groups.length;
+        assert.ok(groups.length >= 1 && groups.length <= DECAL_MAX_PARTS_PER_PRODUCER, `${producerId}: ${groups.length} renderers`);
+        assert.deepEqual([...new Set(parts.map((p) => p.kind))].sort(), [...DECAL_KINDS].sort(), `${producerId} has every decal kind`);
+        const zone = ZONE_LAYOUT[identityZoneOf(producerId)!];
+        for (const part of parts) {
+            assert.ok(part.size.x > 0 && part.size.y > 0 && part.size.z > 0, `${producerId}/${part.kind} dims`);
+            assert.equal(part.size.y, DECAL_THICKNESS, 'thin decals');
+            assert.equal(part.face, 'top');
+            const b = decalPartBoundsXZ(part);
+            assert.ok(b.minX >= -zone.width / 2 - 1e-6 && b.maxX <= zone.width / 2 + 1e-6, `${producerId}/${part.kind} x inside ${zone.width}`);
+            assert.ok(b.minZ >= -zone.depth / 2 - 1e-6 && b.maxZ <= zone.depth / 2 + 1e-6, `${producerId}/${part.kind} z inside ${zone.depth}`);
+            assert.ok(part.localPos.y > 0.1, 'above the foundation top (no z-fight)');
+        }
+        // A future bay (level 0) keeps the stripe + zone tag only.
+        assert.deepEqual([...new Set(decalPartsFor(producerId, 0).map((p) => p.kind))].sort(), ['hazardStripe', 'zoneTag']);
+    }
+    assert.ok(total <= DECAL_MAX_PARTS_TOTAL, `${total} total renderers`);
+    assert.deepEqual(decalPartsFor('nope', 1), []);
+});
+
+test('decals: layers stack by thickness (plates under glyphs) and the zone tag shows 1..5 pips = the producer number', () => {
+    IDENTITY_PRODUCER_IDS.forEach((producerId, index) => {
+        const tag = decalPartsFor(producerId, 1).filter((p) => p.kind === 'zoneTag');
+        assert.equal(tag.filter((p) => p.color === 'amber').length, index + 1);
+        const plate = tag.find((p) => p.color === 'graphite')!;
+        assert.ok(tag.filter((p) => p.color === 'amber').every((p) => p.localPos.y > plate.localPos.y));
+    });
+});
+
+test('seven-segment digits and the number plate: 01..14 produce segments, 1 has 2, 8 has 7', () => {
+    assert.equal(SEVEN_SEG['1'].length, 2);
+    assert.equal(SEVEN_SEG['8'].length, 7);
+    for (let n = 1; n <= 14; n += 1) {
+        const boxes = numberPlateBoxes(n);
+        assert.ok(boxes.length >= 4, `n=${n} has segments`);
+        assert.equal(new Set(boxes.map((b) => b.digit)).size, 2, 'two digits');
+        for (const b of boxes) assert.ok(b.w > 0 && b.h > 0);
+    }
+    assert.equal(numberPlateBoxes(1).length, SEVEN_SEG['0'].length + SEVEN_SEG['1'].length);
+});
+
+test('ring arcs: one gap, never a closed ring; the AI Core halo is 3 segments of 8 boxes', () => {
+    const arcs = ringArcBoxes(0.3, 25, 12);
+    assert.equal(arcs.length, 24);
+    assert.equal(arcs.some((a) => a.index === 12), false);
+    assert.equal(AI_CORE_ARC.segmentCount * AI_CORE_ARC.boxesPerSegment, 24);
+    assert.equal(ringArcBoxes(0.3, 8, 3).length, 7);
+});
+
+test('AI Core: hex shell of 6 graphite bars stacked 2 high, floating off-white diamond with a cyan cap, cyan arcs; 3 renderers; hex from aiMarkGeometry', () => {
+    const summary = aiCoreSummary();
+    assert.deepEqual([summary.shellBars, summary.arcBoxes, summary.arcSegments, summary.renderers], [12, 24, 3, 3]);
+    assert.deepEqual(groupBoxesByColor(AI_CORE_PARTS).map((g) => g.color), ['graphite', 'offWhite', 'cyan']);
+    const shell = AI_CORE_PARTS.filter((p) => p.kind === 'shell');
+    const hex = aiMarkGeometry(0, 0, 0.4).hexOuter;
+    // Each bar sits on an edge midpoint of the AI mark hexagon (single source, no duplicated constants).
+    for (const bar of shell.slice(0, 6)) {
+        const hit = hex.some((a, i) => { const b = hex[(i + 1) % hex.length]; return Math.hypot((a.x + b.x) / 2 - bar.center.x, (a.y + b.y) / 2 - bar.center.z) < 1e-9; });
+        assert.ok(hit, 'bar on a hexagon edge');
+        assert.equal(bar.color, 'graphite');
+    }
+    assert.equal(new Set(shell.map((p) => p.center.y.toFixed(4))).size, 2, 'stacked 2 high');
+    const diamond = AI_CORE_PARTS.find((p) => p.kind === 'diamond')!;
+    const cap = AI_CORE_PARTS.find((p) => p.kind === 'cap')!;
+    assert.equal(diamond.color, 'offWhite');
+    assert.equal(cap.color, 'cyan');
+    assert.ok(cap.center.y > diamond.center.y);
+});
+
+test('AI Core sizes: persistent 0.28 (scale 1) < reveal peak 0.8, the shell scales together; the old cube sizes are gone', () => {
+    assert.equal(AI_CORE_PERSISTENT_SIZE, 0.28);
+    assert.equal(AI_CORE_PEAK_SIZE, 0.8);
+    assert.ok(AI_CORE_PERSISTENT_SIZE < AI_CORE_PEAK_SIZE);
+    assert.equal(REBOOT_CORE_PERSISTENT_SIZE, AI_CORE_PERSISTENT_SIZE);
+    assert.equal(REBOOT_CORE_PEAK_SIZE, AI_CORE_PEAK_SIZE);
+    assert.equal(aiCoreScaleFor(AI_CORE_PERSISTENT_SIZE), 1);
+    assert.ok(Math.abs(rebootCoreCenterY(0.28) - (0.42 + AI_CORE_SHELL_HALF_HEIGHT)) < 1e-12, 'Reboot core height mirrors the AI Core shell');
+    assert.ok(Math.abs(aiCoreScaleFor(AI_CORE_PEAK_SIZE) - 0.8 / 0.28) < 1e-12);
+    assert.equal(aiCoreScaleFor(0), 0);
+});
+
+test('merged geometry: triangle winding matches the normals (rotated boxes included) and the bounds are exact', () => {
+    const merged = mergeBoxGeometry(AI_CORE_PARTS);
+    assert.equal(merged.positions.length / 3, AI_CORE_PARTS.length * 24);
+    assert.equal(merged.indices.length, AI_CORE_PARTS.length * 36);
+    for (let t = 0; t < merged.indices.length; t += 3) {
+        const [a, b, c] = [merged.indices[t], merged.indices[t + 1], merged.indices[t + 2]];
+        const p = (i: number) => [merged.positions[i * 3], merged.positions[i * 3 + 1], merged.positions[i * 3 + 2]];
+        const [pa, pb, pc] = [p(a), p(b), p(c)];
+        const e1 = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]];
+        const e2 = [pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]];
+        const cross = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+        const n = [merged.normals[a * 3], merged.normals[a * 3 + 1], merged.normals[a * 3 + 2]];
+        assert.ok(cross[0] * n[0] + cross[1] * n[1] + cross[2] * n[2] > 0, `triangle ${t / 3} faces outward`);
+    }
+    assert.ok(merged.min.x < 0 && merged.max.x > 0 && merged.boundingRadius > 0);
+    assert.equal(mergeBoxGeometry([]).indices.length, 0);
+});
+
+test('icons: 8 icons, every polygon is a convex closed polygon inside the 0..1 unit square', () => {
+    assert.equal(ICON_NAMES.length, 8);
+    assert.deepEqual(Object.keys(ICON_SHAPES).sort(), [...ICON_NAMES].sort());
+    for (const name of ICON_NAMES) {
+        assert.ok(ICON_SHAPES[name].length >= 2, `${name} has parts`);
+        for (const polygon of ICON_SHAPES[name]) {
+            assert.ok(polygon.points.length >= 3, `${name} closed polygon`);
+            assert.equal(isConvexPolygon(polygon.points), true, `${name} convex`);
+            for (const p of polygon.points) assert.ok(p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1, `${name} inside the unit square`);
+        }
+    }
+    assert.equal(isConvexPolygon([{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0.5, y: 0.2 }, { x: 1, y: 1 }, { x: 0, y: 1 }]), false);
+    assert.equal(producerIconFor('fabricator'), 'industrial_output');
+    assert.equal(producerIconFor(null), null);
+    assert.equal(milestoneIconFor('breakthrough'), 'breakthrough');
+    assert.equal(milestoneIconFor('era_title'), null);
+});
+
+test('icon slots sit inside existing rows / chips and leave the centred text alone', () => {
+    const io = hudIndustrialIconSlot();
+    const half = cardRowWidth(CORE_HUD_LAYOUT) / 2;
+    assert.ok(io.x - io.size / 2 >= -half && io.x + io.size / 2 < -half + half * 0.12);
+    assert.equal(io.y, cardRowCenterY(CORE_HUD_LAYOUT, 0));
+    assert.ok(io.size <= CORE_HUD_LAYOUT.rows[0].height);
+    const oc = hudOverclockIconSlot();
+    assert.ok(oc.x - oc.size / 2 >= -half && oc.x + oc.size / 2 < -half + half * 0.2);
+    assert.ok(oc.size <= 60);
+    const header = producerHeaderIconSlot();
+    assert.ok(header.size <= PRODUCER_PANEL_LAYOUT.rows[0].height && header.x - header.size / 2 >= -cardRowWidth(PRODUCER_PANEL_LAYOUT) / 2);
+    for (const tier of ['minor', 'major', 'exceptional'] as const) {
+        const slot = milestoneIconSlot(tier);
+        const layout = MILESTONE_TOAST_LAYOUT[tier];
+        assert.ok(slot.x - slot.size / 2 >= -layout.width / 2 && slot.size <= layout.titleLineHeight);
+    }
+    const founder = founderChipIconSlot();
+    assert.ok(founder.x - founder.size / 2 >= -FOUNDER_CHIP_WIDTH / 2 && founder.size <= FOUNDER_CHIP_HEIGHT - 8);
+});
+
+test('source record and placeholder wordmark (no final logo)', () => {
+    assert.match(IDENTITY_SOURCE_RECORD, /procedurally/);
+    assert.match(IDENTITY_SOURCE_RECORD, /no AI generation/);
+    assert.deepEqual(PLACEHOLDER_WORDMARK, { text: 'AUTOMATA', font: 'engine-default', mark: 'ai_core', status: 'PLACEHOLDER' });
+    for (const file of fs.readdirSync(path.join(repoRoot, 'assets/scripts/presentation')).filter((f) => f.endsWith('.ts') && f !== 'AutomataIdentity.ts')) {
+        assert.doesNotMatch(read(`assets/scripts/presentation/${file}`), /PLACEHOLDER_WORDMARK/, `${file} does not wire the placeholder wordmark`);
+    }
+});
+
+test('wiring pins: shared drawAiMark, no bespoke copies, fill-only drawing, decals + AI Core built from the pure module', () => {
+    for (const file of ['PermanentUpgradeController.ts', 'RebootController.ts']) {
+        const source = code(file);
+        assert.match(source, /import \{ drawAiMark \} from '\.\/IdentityGraphics'/);
+        assert.doesNotMatch(source, /private drawAiMark|aiMarkGeometry\(/, `${file}: no bespoke AI mark copy`);
+    }
+    const graphics = code('IdentityGraphics.ts');
+    assert.doesNotMatch(graphics, /\.stroke\(|Sprite\b/);
+    assert.match(graphics, /aiMarkGeometry\(cx, cy, size\)/);
+    const mesh = code('AutomataIdentityMesh.ts');
+    assert.match(mesh, /effectName: 'builtin-unlit', defines: \{ USE_COLOR: true \}/);
+    assert.match(mesh, /materialCache/);
+    assert.doesNotMatch(mesh, /\.active\s*=/);
+    const applier = code('AutomataDecalApplier.ts');
+    assert.match(applier, /decalPartsFor\(producerId, DECAL_BUILT_LEVEL\)/);
+    assert.match(applier, /AI_CORE_PARTS/);
+    const bootstrap = code('FactoryWorldBootstrap.ts');
+    assert.match(bootstrap, /applyAutomataDecalsToSite\(site\);/);
+    assert.match(bootstrap, /buildAiCoreModel\(core\);/);
+    assert.match(bootstrap, /emitDeviceEvent\('identity'/);
+    assert.match(code('CoreHudController.ts'), /drawIcon\(graphics, 'overclock'/);
+    assert.match(code('CoreHudController.ts'), /drawIcon\(graphics, 'industrial_output'/);
+    assert.match(code('ProducerPanelController.ts'), /drawIcon\(graphics, icon, slot\.x/);
+    assert.match(code('MilestonePresentationController.ts'), /drawIcon\(graphics, icon, slot\.x/);
+    assert.match(code('FounderShopController.ts'), /drawIcon\(graphics, 'robot'/);
+    assert.doesNotMatch(code('FounderShopController.ts'), /founderGold|204, 146, 40/, 'gold stays on the Founder robot');
+    const reboot = code('RebootPresentationController.ts');
+    assert.match(reboot, /aiCoreScaleFor\(frame\.coreSize\)/);
+    assert.doesNotMatch(reboot, /EULER/);
+});
+
+test('diagnostics, scenarios and capture checks', () => {
+    assert.ok((DEVICE_EVENT_TYPES as readonly string[]).includes('identity'));
+    assert.ok(DEFAULT_REVEAL_EVENT_TYPES.includes('identity'));
+    assert.equal(REVEAL_SCENARIOS['aut066-factory'].expectIdentity, 'factory');
+    assert.equal(REVEAL_SCENARIOS['aut066-ai-core'].expectIdentity, 'ai_core');
+    assert.equal(REVEAL_SCENARIOS['aut066-ai-core'].expectReboot, 'sequence');
+    const cli = read('tools/device/cli.ts');
+    assert.match(cli, /expectIdentity: scenario\.expectIdentity/);
+    assert.match(read('tools/device/reveal_capture.ts'), /expectIdentity: options\.expectIdentity/);
+
+    const ev = (tMs: number, evt: string, rest: Record<string, unknown>) => ({ tMs, event: { v: 1, seq: tMs, evt, ...rest } as never });
+    const rect = { x: 10, y: 10, w: 40, h: 30 };
+    const factory = ev(5000, 'identity', {
+        decals: IDENTITY_PRODUCER_IDS.map((producerId) => ({ producerId, parts: 4, rect })),
+        aiCore: {},
+        icons: [{ slot: 'hud_industrial_output', icon: 'industrial_output', rect }, { slot: 'hud_overclock', icon: 'overclock', rect }],
+    });
+    assert.equal(evaluateIdentity([factory], 'factory').every((c) => c.ok), true);
+    assert.equal(evaluateIdentity([], 'factory').some((c) => !c.ok), true, 'no identity event fails');
+    const over = ev(5000, 'identity', { decals: IDENTITY_PRODUCER_IDS.map((producerId) => ({ producerId, parts: 6, rect })), icons: [] });
+    assert.equal(evaluateIdentity([over], 'factory').some((c) => c.id === 'identity_decal_budget' && !c.ok), true);
+    assert.equal(evaluateIdentity([over], 'factory').some((c) => c.id === 'identity_icons_drawn' && !c.ok), true);
+    const core = ev(6000, 'identity', { decals: [], icons: [], aiCore: { ...aiCoreSummary(), built: true, modelRenderers: 3 } });
+    const applied = ev(6100, 'reboot_presentation', { phase: 'effect_applied', part: 'core', aiCoreParts: 3 });
+    assert.equal(evaluateIdentity([core, applied], 'ai_core').every((c) => c.ok), true);
+    assert.equal(evaluateIdentity([core], 'ai_core').some((c) => c.id === 'identity_ai_core_in_sequence' && !c.ok), true);
+    assert.equal(evaluateIdentity([ev(1, 'error', {}), factory], 'factory').some((c) => c.id === 'identity_no_errors' && !c.ok), true);
+    assert.equal(evaluateRevealTimeline([factory], { expectConstruction: null, expectFocus: false, triggered: false, frameCount: 10, expectIdentity: 'factory' }).some((c) => c.id.startsWith('identity_')), true);
+    assert.equal(evaluateRevealTimeline([factory], { expectConstruction: null, expectFocus: false, triggered: false, frameCount: 10 }).some((c) => c.id.startsWith('identity_')), false);
+});
+
+test('.ts.meta files: typescript importer, unique a0660000 uuids; no asset was added', () => {
+    const seen = new Set<string>();
+    for (const file of ['AutomataIdentity', 'AutomataIdentityMesh', 'AutomataDecalApplier', 'IdentityGraphics']) {
+        const meta = JSON.parse(presentation(`${file}.ts.meta`));
+        assert.equal(meta.importer, 'typescript');
+        assert.match(meta.uuid, /^a0660000-0000-4000-8000-\d{12}$/);
+        seen.add(meta.uuid);
+    }
+    assert.equal(seen.size, 4);
+    assert.match(read('docs/ASSET_MANIFEST.md'), /CUSTOM_AUTOMATA_DECALS_01/);
+    assert.match(read('docs/ASSET_MANIFEST.md'), /CUSTOM_ADV_ROBOTICS_CORE_01[^\n]*NOT CREATED/);
+});

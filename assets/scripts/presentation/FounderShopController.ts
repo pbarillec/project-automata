@@ -1,6 +1,8 @@
 import { _decorator, Button, Color, Component, EventHandler, EventTouch, Graphics, Label, Layers, Node, UITransform, Vec3, view, Widget } from 'cc';
 import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
 import type { FounderShopFlow } from './FounderShopFlow.ts';
+import { IDENTITY_PALETTE, founderChipIconSlot } from './AutomataIdentity.ts';
+import { drawIcon, recordIcon } from './IdentityGraphics';
 import {
     FOUNDER_BUY_FONT_SIZE,
     FOUNDER_CHIP_HEIGHT,
@@ -383,6 +385,10 @@ export class FounderShopController extends Component {
         graphics.fillColor = colorOf(colors.graphite, model.alpha);
         graphics.fillRect(-outline.inner.w / 2, -outline.inner.h / 2, outline.inner.w, outline.inner.h);
         const chipLayout = resolveFounderChipLayout();
+        // AUT-066: the Robot icon (off-white / amber; Founder gold stays on the Founder robot) at the left edge of the chip.
+        const iconSlot = founderChipIconSlot();
+        drawIcon(graphics, 'robot', iconSlot.x, iconSlot.y, iconSlot.size, { ink: IDENTITY_PALETTE.offWhite, accent: IDENTITY_PALETTE.amber, alpha: model.alpha });
+        recordIcon({ slot: iconSlot.slot, icon: 'robot', node: graphics.node, x: iconSlot.x, y: iconSlot.y, size: iconSlot.size });
         this.placeLabel(this.chipLabel!, chipLayout.label, FOUNDER_CHIP_LABEL_FONT_SIZE, colors.text, model.alpha, model.label);
         this.placeLabel(this.chipTag!, chipLayout.tag, FOUNDER_CHIP_TAG_FONT_SIZE, colors.secondary, model.alpha, model.tag);
         const changed = this.chipVisible !== model.visible;

@@ -4,6 +4,8 @@ import { resolveManualProduceAction, resolveNextGoalAction, resolveOverclockActi
 import { resolveOverclockDisplayState, type HudViewModel } from './HudViewModel.ts';
 import { defaultHudTexts, formatHudTexts, type DisplayNameSource } from './PresentationText.ts';
 import { BOOST_HUD_OUTLINE_THICKNESS, resolveBoostHudPill, resolveOverclockRowText } from './BoostHudPill.ts';
+import { IDENTITY_PALETTE, hudIndustrialIconSlot, hudOverclockIconSlot } from './AutomataIdentity.ts';
+import { drawIcon, recordIcon } from './IdentityGraphics';
 import { CORE_HUD_LAYOUT, HUD_ACTION_KEYS, cardActionFontSize, cardActionRect, cardHeight, cardRowCenterY, cardRowWidth, hudActionCard, type HudActionKey } from './UiLayout.ts';
 
 const { ccclass } = _decorator;
@@ -38,6 +40,9 @@ export class CoreHudController extends Component {
     private overclockPill: Node | null = null;
     private overclockPillGraphics: Graphics | null = null;
     private pillKey = 'none';
+    /** AUT-066: icons drawn inside the existing Industrial Output row and Overclock button (no text / hit rect change). */
+    private iconGraphics: Graphics | null = null;
+    private overclockIconFilled: boolean | null = null;
     private rowTextState = 'none';
 
     /**
@@ -98,11 +103,36 @@ export class CoreHudController extends Component {
             }
             pill.setScale(style.visible ? 1 : 0, style.visible ? 1 : 0, 1);
         }
+        this.drawOverclockIcon(style.visible && !!style.fill);
         const textColor = new Color(style.text.r, style.text.g, style.text.b, style.text.a);
         for (const key of ['FreeOverclockValue', 'FreeOverclockTimer']) {
             const label = this.labels.get(key);
             if (label) label.color = textColor;
         }
+    }
+
+    /** AUT-066: the bolt is amber on the plain pill and graphite on the amber-filled ACTIVE pill; the Industrial Output icon is static. */
+    private drawOverclockIcon(filled: boolean): void {
+        const graphics = this.iconGraphics;
+        if (!graphics || filled === this.overclockIconFilled) return;
+        this.overclockIconFilled = filled;
+        graphics.clear();
+        const io = hudIndustrialIconSlot();
+        drawIcon(graphics, 'industrial_output', io.x, io.y, io.size);
+        const oc = hudOverclockIconSlot();
+        const ink = filled ? IDENTITY_PALETTE.graphite : IDENTITY_PALETTE.amber;
+        drawIcon(graphics, 'overclock', oc.x, oc.y, oc.size, { ink, accent: ink });
+        recordIcon({ slot: io.slot, icon: 'industrial_output', node: graphics.node, x: io.x, y: io.y, size: io.size });
+        recordIcon({ slot: oc.slot, icon: 'overclock', node: graphics.node, x: oc.x, y: oc.y, size: oc.size });
+    }
+
+    private createIconLayer(): void {
+        const node = new Node('HudIdentityIcons');
+        node.layer = Layers.Enum.UI_2D;
+        node.parent = this.node;
+        node.addComponent(UITransform);
+        this.iconGraphics = node.addComponent(Graphics);
+        this.drawOverclockIcon(false);
     }
 
     private createOverclockPill(): void {
@@ -236,6 +266,7 @@ export class CoreHudController extends Component {
             button.clickEvents = [event];
             this.buttons.set(key, button);
         }
+        this.createIconLayer();
         this.applyActionStates();
         const transform = this.node.getComponent(UITransform) ?? this.node.addComponent(UITransform);
         transform.setContentSize(layout.width, cardHeight(layout));

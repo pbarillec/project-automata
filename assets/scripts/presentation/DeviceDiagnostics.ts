@@ -45,6 +45,8 @@ export const DEVICE_EVENT_TYPES = [
     'robot_benchmark',
     // AUT-062: Founder Robot variant: { phase: 'synced' | 'changed' | 'sample', owned, founderRanks (0 = Worker Bot, slot + 1 = pooled), visible, pooled, shellTinted (per founder robot), fallbackShell, applied, crest? ([{ rank, rect: { x, y, w, h } }] window pixels, bottom-left origin; sample only), screen? }.
     'robot_founder',
+    // AUT-066 (DEBUG only): Automata identity: { decals: [{ producerId, parts (merged renderers), rect (window px) }], aiCore: { boxes, renderers, shellBars, arcBoxes, arcSegments, built, modelRenderers }, icons: [{ slot, icon, rect (window px, bottom-left origin) }], screen }.
+    'identity',
     // AUT-042: Robot Line / Era II reveal hook: { phase: 'synced' | 'construction_started' | 'activated' | 'focus_requested' | 'item_cycle', ... }.
     'robot_line_state',
     // AUT-043: Automated Cell: { phase: 'synced' | 'construction_started' | 'activated' | 'focus_requested' | 'item_cycle', ... }.

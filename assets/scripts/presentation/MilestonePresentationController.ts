@@ -10,6 +10,8 @@ import { MilestonePresentationViewModel, type MilestoneUpdate } from './Mileston
 import type { MilestoneToastItem } from './MilestoneToastQueue.ts';
 import type { RebootBeat } from './RebootPresentation.ts';
 import { MILESTONE_TOAST_COLORS, MILESTONE_TOAST_LAYOUT } from './MilestoneToastLayout.ts';
+import { IDENTITY_PALETTE, milestoneIconFor, milestoneIconSlot } from './AutomataIdentity.ts';
+import { drawIcon, recordIcon } from './IdentityGraphics';
 import { formatMilestoneToast } from './MilestoneToastText.ts';
 import type { MilestoneAccent, MilestoneTrigger } from './MilestoneTier.ts';
 import type { DisplayNameSource } from './PresentationText.ts';
@@ -60,6 +62,7 @@ export class MilestonePresentationController extends Component {
     private underline: Node | null = null;
     private pillGraphics: Graphics | null = null;
     private underlineGraphics: Graphics | null = null;
+    private iconGraphics: Graphics | null = null;
     private builtLayoutTier: string | null = null;
     private shownText = '';
     private effect: RunningEffect | null = null;
@@ -235,6 +238,7 @@ export class MilestonePresentationController extends Component {
         this.underline = this.makeChild('MilestoneUnderline');
         this.underline.getComponent(UITransform)?.setAnchorPoint(0, 0.5);
         this.underlineGraphics = this.underline.addComponent(Graphics);
+        this.iconGraphics = this.makeChild('MilestoneIcon').addComponent(Graphics);
     }
 
     private makeChild(name: string): Node {
@@ -304,6 +308,7 @@ export class MilestonePresentationController extends Component {
             underlineGraphics.fillColor = new Color(accent.r, accent.g, accent.b, Math.round(accent.a * alpha));
             underlineGraphics.fillRect(0, -layout.underlineHeight / 2, underlineWidth, layout.underlineHeight);
         }
+        this.drawToastIcon(trigger.kind, trigger.tier, alpha);
         this.node.setScale(1, 1, 1);
         if (isReboot && this.rebootBeat !== beat) {
             this.rebootBeat = beat;
@@ -314,6 +319,18 @@ export class MilestonePresentationController extends Component {
             const pill = this.pill!;
             this.emitEra('title_applied', { id: item.id, eraId: trigger.eraId, bandScale: this.node.scale.x, labelText: this.titleLabel!.string, fontSize: this.titleLabel!.fontSize, underlineRgb: { r: accent.r, g: accent.g, b: accent.b }, pillWorldPos: { x: pill.worldPosition.x, y: pill.worldPosition.y, z: pill.worldPosition.z }, wipe });
         }
+    }
+
+    /** AUT-066: a small icon left of the centred title, inside the existing pill (title rect unchanged). */
+    private drawToastIcon(kind: string, tier: 'minor' | 'major' | 'exceptional', alpha: number): void {
+        const graphics = this.iconGraphics;
+        if (!graphics) return;
+        graphics.clear();
+        const icon = milestoneIconFor(kind);
+        if (icon === null) return;
+        const slot = milestoneIconSlot(tier);
+        drawIcon(graphics, icon, slot.x, slot.y, slot.size, { ink: IDENTITY_PALETTE.offWhite, accent: IDENTITY_PALETTE.amber, alpha });
+        recordIcon({ slot: slot.slot, icon, node: graphics.node, x: slot.x, y: slot.y, size: slot.size });
     }
 
     private layoutLabel(label: Label, width: number, lineHeight: number, fontSize: number, centerY: number, text: string): void {

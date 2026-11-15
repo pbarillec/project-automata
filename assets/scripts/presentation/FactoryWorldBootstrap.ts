@@ -58,7 +58,10 @@ import type { AudioService } from '../services/AudioService.ts';
 import type { HapticsService } from '../services/HapticsService.ts';
 import { SilentAudioService } from '../platform/noop/SilentAudioService';
 import { NoOpHapticsService } from '../platform/noop/NoOpHapticsService';
-import { REBOOT_CORE_EULER_DEG, REBOOT_SOCKET, socketRingBars } from './RebootPresentation.ts';
+import { REBOOT_SOCKET, socketRingBars } from './RebootPresentation.ts';
+import { applyAutomataDecalsToSite, buildAiCoreModel, DECAL_ROOT_NODE_NAME } from './AutomataDecalApplier';
+import { IDENTITY_PRODUCER_IDS, identityZoneOf, aiCoreSummary } from './AutomataIdentity.ts';
+import { drawnIconWorldCorners, getDrawnIcons } from './IdentityGraphics';
 import { milestoneToastTopOffset } from './MilestoneToastLayout.ts';
 import { MILESTONE_ACCENT_RGB, producerZoneName } from './MilestoneFeedback.ts';
 import { ERA_ENV_BOXES, ERA_ENV_GROUP_IDS, ERA_ENV_GROUP_NODE_NAMES, ERA_ENV_ROOT_NODE_NAME } from './EraEnvironmentLayout.ts';
@@ -200,6 +203,8 @@ export class FactoryWorldBootstrap extends Component {
         this.createRobotLineSlice(site);
         this.createAutomatedCellSlice(site);
         this.createAdvancedRoboticsComplexSlice(site);
+        // AUT-066: Automata decals under every producer zone (non-authoritative, non-pickable primitives).
+        applyAutomataDecalsToSite(site);
         this.createCameraRig(site);
         this.connectFirstAutomationPresentation(site);
         this.connectFirstRobotPresentation(site);
@@ -1050,9 +1055,12 @@ export class FactoryWorldBootstrap extends Component {
             socketRingBars().forEach((bar, index) => {
                 this.createBox(socket!, `RebootSocket_Ring${index}`, new Vec3(bar.sizeX, ring.height, bar.sizeZ), new Vec3(bar.x, ring.y, bar.z), new Color(colors.ring.r, colors.ring.g, colors.ring.b, 255));
             });
-            // Placeholder AI Core: a unit cube balanced on a vertex, sized by the controller (hidden at scale 0).
-            const core = this.createBox(socket, 'RebootCore', new Vec3(1, 1, 1), new Vec3(0, 0.6, 0), new Color(colors.core.r, colors.core.g, colors.core.b, 255));
-            core.setRotationFromEuler(REBOOT_CORE_EULER_DEG.x, REBOOT_CORE_EULER_DEG.y, REBOOT_CORE_EULER_DEG.z);
+            // AUT-066 AI Core: an empty node at the SAME socket holding the merged primitive model (3 renderers), scaled by the controller (hidden at scale 0).
+            const core = new Node('RebootCore');
+            core.layer = Layers.Enum.DEFAULT;
+            core.parent = socket;
+            core.setPosition(0, 0.6, 0);
+            buildAiCoreModel(core);
             core.setScale(0, 0, 0);
             socket.setScale(0, 0, 0);
         }
@@ -1762,6 +1770,40 @@ export class FactoryWorldBootstrap extends Component {
             hudActions,
             assemblyBatch,
         });
+        this.emitIdentity(uiCamera);
+    }
+
+    /** AUT-066 DEBUG `identity` diagnostic: decal renderers per producer, the AI Core model and every icon drawn with its window rect (emit only). */
+    private emitIdentity(uiCamera: Camera): void {
+        const site = this.node.getChildByName('FactorySite');
+        const worldCamera = site?.getChildByName('CameraRig')?.getChildByName('WorldCamera')?.getComponent(Camera) ?? null;
+        const decals = IDENTITY_PRODUCER_IDS.map((producerId) => {
+            const zoneId = identityZoneOf(producerId);
+            const root = zoneId === null ? null : site?.getChildByName(`Zone_${zoneId}`)?.getChildByName(DECAL_ROOT_NODE_NAME) ?? null;
+            let rect: UiRect | null = null;
+            if (root && worldCamera) {
+                let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+                for (const child of root.children) {
+                    const box = child.getComponent(MeshRenderer)?.model?.worldBounds ?? null;
+                    if (!box) continue;
+                    for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+                        const p = worldCamera.worldToScreen(new Vec3(box.center.x + box.halfExtents.x * sx, box.center.y + box.halfExtents.y * sy, box.center.z + box.halfExtents.z * sz), new Vec3());
+                        minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+                    }
+                }
+                if (Number.isFinite(minX)) rect = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+            }
+            return { producerId, parts: root?.children.length ?? 0, rect };
+        });
+        const core = site?.getChildByName('RebootSocket')?.getChildByName('RebootCore') ?? null;
+        const aiCore = { ...aiCoreSummary(), built: core?.getChildByName('AiCoreModel') !== null && core?.getChildByName('AiCoreModel') !== undefined, modelRenderers: core?.getChildByName('AiCoreModel')?.children.length ?? 0 };
+        const icons = getDrawnIcons().map((entry) => {
+            const [a, b] = drawnIconWorldCorners(entry);
+            const sa = uiCamera.worldToScreen(a, new Vec3());
+            const sb = uiCamera.worldToScreen(b, new Vec3());
+            return { slot: entry.slot, icon: entry.icon, rect: { x: Math.min(sa.x, sb.x), y: Math.min(sa.y, sb.y), w: Math.abs(sb.x - sa.x), h: Math.abs(sb.y - sa.y) } };
+        });
+        emitDeviceEvent('identity', { decals, aiCore, icons, screen: { w: screen.windowSize.width, h: screen.windowSize.height } });
     }
 
     // ---- AUT-R-031-02 DEBUG `camera_state` diagnostic (emit only; never changes camera, selection or input) ----

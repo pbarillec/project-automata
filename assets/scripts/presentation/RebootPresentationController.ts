@@ -2,9 +2,9 @@ import { _decorator, Component, Node } from 'cc';
 import type { DomainEvent } from '../domain/Events.ts';
 import type { GameState } from '../state/GameState.ts';
 import type { MobileCameraController } from '../camera/MobileCameraController';
+import { aiCoreScaleFor, aiCoreSummary } from './AutomataIdentity.ts';
 import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
 import {
-    REBOOT_CORE_EULER_DEG,
     REBOOT_FOCUS_PRODUCER_ID,
     REBOOT_SCAN,
     RebootPresentationModel,
@@ -23,7 +23,7 @@ const CORE_SIZE_EPSILON = 1e-4;
  * AUT-049 thin `cc` controller over the pure `RebootPresentationModel`: the WORLD part of the Reboot presentation (the title card is the
  * `reboot_title` kind of the AUT-046 toast band, `MilestonePresentationController`). It starts ONLY from the `rebootCompleted` domain
  * event (the coordinator appends it after the durable `reboot_saved`), never on load; it draws a thin cyan scan ring (4 opaque outline
- * bars), then a placeholder AI Core (primitive boxes, intentionally temporary) on a small relay socket, asks the existing
+ * bars), then a AI Core (AUT-066 primitive boxes merged per colour) on a small relay socket, asks the existing
  * `focusOnRevealTarget` once (skipped when on-centre / a focus is active), and leaves the static persistent socket when
  * `aiCores > 0 || civilization >= 2`. Scale-based visibility (never `node.active`), inert (no touch listener, no state write, no
  * command), nothing runs while idle and nothing outside the 4.0 s window. The nodes are built by FactoryWorldBootstrap.
@@ -105,7 +105,7 @@ export class RebootPresentationController extends Component {
         }
         if (frame.running && !this.coreReported && frame.socketVisible && frame.coreSize > 0.3) {
             this.coreReported = true;
-            this.emit('effect_applied', { part: 'core', socketScale: this.socketRoot?.scale.x ?? null, socketWorldPos: this.worldPos(this.socketRoot), coreScale: this.coreNode?.scale.x ?? null, coreWorldPos: this.worldPos(this.coreNode) });
+            this.emit('effect_applied', { part: 'core', socketScale: this.socketRoot?.scale.x ?? null, socketWorldPos: this.worldPos(this.socketRoot), coreScale: this.coreNode?.scale.x ?? null, coreWorldPos: this.worldPos(this.coreNode), aiCoreParts: this.coreNode?.getChildByName('AiCoreModel')?.children.length ?? 0, aiCore: aiCoreSummary() });
         }
     }
 
@@ -143,9 +143,10 @@ export class RebootPresentationController extends Component {
         const core = this.coreNode;
         if (core && Math.abs(frame.coreSize - this.coreSize) > CORE_SIZE_EPSILON) {
             this.coreSize = frame.coreSize;
-            core.setScale(frame.coreSize, frame.coreSize, frame.coreSize);
+            // AUT-066: the AI Core model is authored at the persistent size (scale 1); the reveal scales the whole model (shell included) together.
+            const scale = aiCoreScaleFor(frame.coreSize);
+            core.setScale(scale, scale, scale);
             core.setPosition(0, rebootCoreCenterY(frame.coreSize), 0);
-            core.setRotationFromEuler(REBOOT_CORE_EULER_DEG.x, REBOOT_CORE_EULER_DEG.y, REBOOT_CORE_EULER_DEG.z);
         }
     }
 

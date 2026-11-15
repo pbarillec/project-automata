@@ -1,7 +1,9 @@
-import { _decorator, Button, Color, Component, EventHandler, EventTouch, Label, Layers, Node, Sprite, UITransform, Vec3 } from 'cc';
+import { _decorator, Button, Color, Component, EventHandler, EventTouch, Graphics, Label, Layers, Node, Sprite, UITransform, Vec3 } from 'cc';
 import type { GameCommand } from '../domain/Commands.ts';
 import type { ProducerPanelActionId, ProducerPanelViewModel } from './ProducerPanelViewModel.ts';
 import { defaultPanelTexts, formatPanelTexts, pendingSelectionPanelTexts, type DisplayNameSource, type PanelTexts } from './PresentationText.ts';
+import { producerHeaderIconSlot, producerIconFor, type IconName } from './AutomataIdentity.ts';
+import { clearIconRecord, drawIcon, recordIcon } from './IdentityGraphics';
 import { PANEL_ACTION_KEYS, PRODUCER_PANEL_LAYOUT, cardActionRect, cardHeight, cardRowCenterY, cardRowWidth, type PanelActionKey } from './UiLayout.ts';
 
 const { ccclass } = _decorator;
@@ -17,6 +19,9 @@ export class ProducerPanelController extends Component {
     private latest: ProducerPanelViewModel | null = null;
     private selectedProducerId: string | null = null;
     private touchBlockRegistered = false;
+    /** AUT-066: the producer icon inside the existing ProducerName row (text rect unchanged). */
+    private iconGraphics: Graphics | null = null;
+    private iconName: IconName | null | undefined = undefined;
 
     public start(): void { this.ensureLayout(); }
 
@@ -80,11 +85,28 @@ export class ProducerPanelController extends Component {
     }
 
     private applyTexts(texts: PanelTexts): void {
+        this.drawHeaderIcon();
         this.setText('ProducerName', texts.name);
         this.setText('ProducerLevel', texts.level);
         this.setText('ProducerProduction', texts.production);
         this.setText('ProducerMilestone', texts.milestone);
         for (const id of ['x1', 'x10', 'xMax'] as const) this.setText(`Action_${id}`, texts.actions[id]);
+    }
+
+    private drawHeaderIcon(): void {
+        const icon = producerIconFor(this.selectedProducerId);
+        if (icon === this.iconName) return;
+        this.iconName = icon;
+        let graphics = this.iconGraphics;
+        if (!graphics) {
+            const node = new Node('ProducerHeaderIcon'); node.layer = Layers.Enum.UI_2D; node.parent = this.node; node.addComponent(UITransform);
+            graphics = this.iconGraphics = node.addComponent(Graphics);
+        }
+        graphics.clear();
+        const slot = producerHeaderIconSlot();
+        if (icon === null) { clearIconRecord(slot.slot); return; }
+        drawIcon(graphics, icon, slot.x, slot.y, slot.size);
+        recordIcon({ slot: slot.slot, icon, node: graphics.node, x: slot.x, y: slot.y, size: slot.size });
     }
 
     /** The panel claims touches on its own card area (UiLayout; after child Buttons) so camera and selection never receive them. */

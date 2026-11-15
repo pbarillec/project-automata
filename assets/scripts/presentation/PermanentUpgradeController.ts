@@ -3,6 +3,7 @@ import type { GameCommand } from '../domain/Commands.ts';
 import type { DomainEvent } from '../domain/Events.ts';
 import type { LifecycleCommandResult } from '../lifecycle/LifecycleSessionCoordinator.ts';
 import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
+import { drawAiMark } from './IdentityGraphics';
 import {
     PERMANENT_UPGRADE_BALANCE_FONT_SIZE,
     PERMANENT_UPGRADE_BUY_FONT_SIZE,
@@ -19,7 +20,6 @@ import {
     PERMANENT_UPGRADE_RANK_FONT_SIZE,
     PERMANENT_UPGRADE_ROW_SLOTS,
     PERMANENT_UPGRADE_TAB_FONT_SIZE,
-    aiMarkGeometry,
     permanentUpgradeChipWidgetOffsets,
     permanentUpgradePanelCenterOffsetY,
     pulseRingBars,
@@ -403,15 +403,6 @@ export class PermanentUpgradeController extends Component {
         graphics.fill();
     }
 
-    /** Placeholder AI mark (cyan hexagon outline, off-white diamond); drawn over graphite. */
-    private drawAiMark(graphics: Graphics, cx: number, cy: number, size: number): void {
-        const colors = PERMANENT_UPGRADE_COLORS;
-        const mark = aiMarkGeometry(cx, cy, size);
-        this.fillPolygon(graphics, mark.hexOuter, colors.cyan);
-        this.fillPolygon(graphics, mark.hexInner, colors.graphite);
-        this.fillPolygon(graphics, mark.diamond, colors.text);
-    }
-
     private renderChip(): void {
         const viewModel = this.viewModel;
         const chip = this.chipNode;
@@ -425,7 +416,7 @@ export class PermanentUpgradeController extends Component {
         const h = PERMANENT_UPGRADE_CHIP_HEIGHT;
         const graphics = this.chipGraphics!;
         this.fillRect(graphics, w, h, colors.graphite, colors.cyan);
-        this.drawAiMark(graphics, -w / 2 + 28, 0, 34);
+        drawAiMark(graphics, -w / 2 + 28, 0, 34);
         this.placeLabel(this.chipLabel!, { x: 22, y: 0, w: 92, h }, PERMANENT_UPGRADE_CHIP_FONT_SIZE, h, colors.text, viewModel.texts.chip);
         const changed = this.chipVisible !== visible;
         this.chipVisible = visible;
@@ -459,7 +450,7 @@ export class PermanentUpgradeController extends Component {
         }
         this.placeLabel(this.balanceLabel!, layout.balance, PERMANENT_UPGRADE_BALANCE_FONT_SIZE, layout.balance.h, colors.text, viewModel.texts.balance);
         this.markGraphics!.clear();
-        this.drawAiMark(this.markGraphics!, 0, 0, layout.mark.w);
+        drawAiMark(this.markGraphics!, 0, 0, layout.mark.w);
 
         // Tabs.
         viewModel.branches.forEach((branch, index) => {

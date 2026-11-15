@@ -2,6 +2,7 @@ import { _decorator, Button, Color, Component, EventHandler, EventTouch, Graphic
 import type { GameCommand } from '../domain/Commands.ts';
 import type { LifecycleCommandResult } from '../lifecycle/LifecycleSessionCoordinator.ts';
 import { emitDeviceEvent, isDeviceDiagnosticsEnabled } from './DeviceDiagnostics';
+import { drawAiMark } from './IdentityGraphics';
 import {
     REBOOT_BUTTON_FONT_SIZE,
     REBOOT_CHIP_FONT_SIZE,
@@ -19,7 +20,6 @@ import {
     REBOOT_HERO_FONT_SIZE,
     REBOOT_PROGRESS_FONT_SIZE,
     REBOOT_ACCENT_HEIGHT,
-    aiMarkGeometry,
     rebootChipWidgetOffsets,
     rebootPanelCenterOffsetY,
     regularPolygonPoints,
@@ -394,15 +394,6 @@ export class RebootController extends Component {
         graphics.fill();
     }
 
-    /** Placeholder AI mark (cyan hexagon outline, off-white diamond); drawn over graphite. */
-    private drawAiMark(graphics: Graphics, cx: number, cy: number, size: number): void {
-        const colors = REBOOT_COLORS;
-        const mark = aiMarkGeometry(cx, cy, size);
-        this.fillPolygon(graphics, mark.hexOuter, colors.cyan);
-        this.fillPolygon(graphics, mark.hexInner, colors.graphite);
-        this.fillPolygon(graphics, mark.diamond, colors.text);
-    }
-
     private renderChip(): void {
         const viewModel = this.viewModel;
         const chip = this.chipNode;
@@ -416,7 +407,7 @@ export class RebootController extends Component {
         const h = REBOOT_CHIP_HEIGHT;
         const graphics = this.chipGraphics!;
         this.fillRect(graphics, w, h, colors.graphite, colors.cyan);
-        this.drawAiMark(graphics, REBOOT_CHIP_MARK.x, REBOOT_CHIP_MARK.y, REBOOT_CHIP_MARK.size);
+        drawAiMark(graphics, REBOOT_CHIP_MARK.x, REBOOT_CHIP_MARK.y, REBOOT_CHIP_MARK.size);
         this.placeLabel(this.chipLabel!, REBOOT_CHIP_LABEL, REBOOT_CHIP_FONT_SIZE, h, colors.text, viewModel.texts.chip);
         const changed = this.chipVisible !== visible;
         this.chipVisible = visible;
@@ -450,7 +441,7 @@ export class RebootController extends Component {
 
         // Header, hero (AI mark + reward), Civilization line (also the failure-note slot).
         this.placeLabel(this.headerLabel!, layout.header, REBOOT_HEADER_FONT_SIZE, layout.header.h, colors.text, viewModel.texts.title);
-        this.drawAiMark(card, layout.heroMark.x, layout.heroMark.y, layout.heroMark.w);
+        drawAiMark(card, layout.heroMark.x, layout.heroMark.y, layout.heroMark.w);
         this.placeLabel(this.heroLabel!, layout.hero, REBOOT_HERO_FONT_SIZE, layout.hero.h, colors.cyan, viewModel.texts.reward);
         const civilizationText = this.note ?? viewModel.texts.civilization;
         this.placeLabel(this.civilizationLabel!, layout.civilization, REBOOT_CIVILIZATION_FONT_SIZE, layout.civilization.h, this.note !== null ? colors.cyan : colors.secondary, civilizationText);

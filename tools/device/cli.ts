@@ -411,6 +411,7 @@ async function main(): Promise<number> {
             expectRestore: scenario.expectRestore,
             expectFounderRobot: scenario.expectFounderRobot,
             expectAnalytics: scenario.expectAnalytics,
+            expectIdentity: scenario.expectIdentity,
             expectPermanentUpgrades: scenario.expectPermanentUpgrades,
             expectSettings: scenario.expectSettings,
             expectRebootUi: scenario.expectRebootUi,

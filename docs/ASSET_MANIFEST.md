@@ -857,3 +857,19 @@ The default response to an art gap is therefore:
 This keeps Project Automata aligned with the Mobile Game Factory strategy:
 
 > **maximum visible progression and product identity for minimum bespoke art cost.**
+
+---
+
+## AUT-066 records (identity assets, MVP set)
+
+Added by task AUT-066 (`docs/AUT-066_AUTOMATA_IDENTITY.md`). Minimal MVP, authored procedurally in this repository: opaque primitives only, no external generation, no third-party asset, no PNG atlas. **Deviation from the entries above:** `CUSTOM_CORE_ICONS_01` was specified as a small vector/atlas set; it is realised as convex polygon lists drawn with Graphics fills (no texture atlas), because a texture path would need a SpriteFrame and Android renders a spriteFrame-less Sprite as nothing.
+
+| ID | Result | Source / licence | Status |
+|---|---|---|---|
+| `CUSTOM_AI_CORE_01` | 3D Core on the Reboot relay socket (hex shell of 6 graphite bars stacked 2 high, floating off-white diamond with a cyan cap, cyan arc halo with one gap; persistent 0.28, reveal peak 0.8) + the shared AI mark / AI Core icon | original, authored procedurally in-repo (`AutomataIdentity.ts`), AUT-066, project-owned, no AI generation | INTEGRATED (device visual QA pending) |
+| `CUSTOM_AUTOMATA_DECALS_01` | per producer: symbol, number plate (seven-segment "01".."05"), hazard stripe, zone tag; thin boxes merged per colour (<= 5 renderers per producer, <= 30 in total) | original, authored procedurally in-repo, AUT-066, project-owned, no AI generation | INTEGRATED (device visual QA pending) |
+| `CUSTOM_CORE_ICONS_01` | 8 UI icons (Industrial Output, AI Core, Robot, Automation, Overclock, Reboot, Milestone, Breakthrough) as convex polygons; the Settings gear is unchanged | original, authored procedurally in-repo, AUT-066, project-owned, no AI generation; deviation: no PNG atlas | INTEGRATED (device visual QA pending) |
+| `CUSTOM_LOGO_01` | NO final logo. A pure `PLACEHOLDER_WORDMARK` constant (text "AUTOMATA", engine default font, AI mark) exists and is wired nowhere | final brand typography / font licence / app icon / store art are owner-level decisions | OPEN (owner) |
+| `CUSTOM_ADV_ROBOTICS_CORE_01` | NOT CREATED. Conditional on a post-decal visual QA of the Advanced Robotics Complex | n/a | NOT CREATED |
+
+Palette (frozen): graphite (24,29,32), off-white (232,236,236), cyan (88,170,184; AI and permanent only), amber (224,168,72; hazard / primary), Founder gold (204,146,40; the existing Founder robot only). Never red.

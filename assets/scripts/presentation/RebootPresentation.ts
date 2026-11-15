@@ -11,12 +11,12 @@ import type { MilestoneTrigger } from './MilestoneTier.ts';
  *
  *   A scan      0.0 - 1.2 s  thin cyan scan ring (opaque outline bars) + title "REBOOT"
  *   B silence   1.2 - 1.7 s  nothing
- *   C AI Core   1.7 - 3.2 s  placeholder AI Core on a small relay socket + "AI CORE x N"
+ *   C AI Core   1.7 - 3.2 s  AI Core (AUT-066 primitives: hex shell, floating diamond, cyan arc halo) on a small relay socket + "AI CORE x N"
  *   D new civ   3.2 - 4.0 s  "CIVILIZATION #N"
  *
  * The toast (title card) and the world visuals (ring, socket, core) are two independent consumers of the same event on the same clock
  * (like the AUT-048 title card and the AUT-045 fade): neither waits for the other. The Core is an intentionally simple, temporary
- * placeholder built from primitive boxes (no asset); the final CUSTOM_AI_CORE_01 is NOT made here.
+ * model built from primitive boxes (AUT-066 AutomataIdentity AI_CORE_PARTS, merged per colour; no asset).
  */
 export const REBOOT_SEQUENCE_SECONDS = 4.0;
 
@@ -143,16 +143,18 @@ export const REBOOT_SOCKET = Object.freeze({
     }),
 });
 
-/** Placeholder Core edge length (world units): the persistent marker is small and static; the reveal peaks at 0.55. */
-export const REBOOT_CORE_PERSISTENT_SIZE = 0.2;
-export const REBOOT_CORE_PEAK_SIZE = 0.55;
-/** Core rests on the pedestal top (0.4) balanced on a vertex (a cube turned 45 / 35.26 deg: half-diagonal = size * sqrt(3) / 2). */
-export const REBOOT_CORE_EULER_DEG = Object.freeze({ x: 35.264, y: 45, z: 0 });
+/** AI Core presentation size (the model scales with it, 0.28 = authored scale 1): the persistent marker is small and static; the reveal peaks at 0.8 (AUT-066). */
+/** Literals mirror AutomataIdentity AI_CORE_* (a direct import would be a module cycle through the layout modules); tests/automata_identity.test.ts pins them equal. */
+export const REBOOT_CORE_PERSISTENT_SIZE = 0.28;
+export const REBOOT_CORE_PEAK_SIZE = 0.8;
+const REBOOT_CORE_REFERENCE_SIZE = 0.28;
+const REBOOT_CORE_SHELL_HALF_HEIGHT = 0.05;
+/** The Core rests on the pedestal top (0.4); its node origin is the centre of the hex shell. */
 const REBOOT_CORE_REST_Y = 0.4;
 const REBOOT_CORE_GROW_SECONDS = 0.3;
 
 export function rebootCoreCenterY(size: number): number {
-    return REBOOT_CORE_REST_Y + 0.02 + (size * Math.sqrt(3)) / 2;
+    return REBOOT_CORE_REST_Y + 0.02 + REBOOT_CORE_SHELL_HALF_HEIGHT * (Math.max(0, size) / REBOOT_CORE_REFERENCE_SIZE);
 }
 
 /** Scan ring: a thin outline growing from the starting area over the whole site, then gone. */
