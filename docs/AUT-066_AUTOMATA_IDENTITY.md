@@ -32,3 +32,14 @@ Minimal MVP identity set, authored procedurally in the repository (Art Director 
 - AI Core: persistent size 0.28 -> 0.36 (node scale 0.36 / 0.28 = 1.286; reveal peak stays 0.8 = scale 2.857, `RebootPresentation.ts` literals updated). Upper shell layer is now an off-white rim (lower layer graphite), the diamond edge 0.10 -> 0.12, the cyan cap 0.06 -> 0.10, halo boxes 0.065 x 0.028 -> 0.08 x 0.04. Still 3 renderers, palette unchanged; AUT-049 timing and diagnostics untouched.
 - Founder chip icon slot 26 -> 36 design units (x inset 24; hit rect and text rect unchanged).
 - Producer 3 symbol vs the "Tap a producer" label: the label is the producer panel header (a UI row over the translucent panel); the world decal is seen through the panel, so there is nothing to nudge without moving the panel text. Not changed. The cyan stripe seen at producer 3 is NOT a decal part: the stripe is amber / graphite only (pinned by test); it is an existing machine light.
+
+## Round 3 (visual QA of bf14ccd)
+
+Presentation only; no gameplay, timing or colour change.
+
+- Toast clearance: Major / Exceptional milestone toasts now start below the lowest chip (Settings / Extended Overclock / AI / Reboot / Founder) + 8 design units (`milestoneToastTopOffsetFor`, top offset 476 vs 260 for the Minor band, which keeps its first-line position). The icon no longer lands on a chip and the underline no longer crosses chip text. Pure test over 5 screens: no overlap with any chip, still inside the factory band.
+- Evidence: new reveal scenarios `aut066-panel` (trigger `select-producers` taps Fabricator, Robot Line and Advanced Robotics Complex zones; check `identity_panel_header_icons` + `identity_panel_header_rects` >= 40 px per reported `producer_header` rect) and `aut066-toast-breakthrough` (breakthrough toast icon + `identity_toast_clear_of_chips_*`). `aut066-ai-core` also checks the Reboot toast icon.
+- Toast icon per kind: breakthrough -> breakthrough; reboot_title -> reboot; producer_milestone / producer_constructed -> milestone; automation -> automation; robots_built -> robot; era_title -> none. Producer headers: fabricator -> industrial_output; assembly_station / advanced_robotics_complex -> robot; robot_line / automated_cell -> automation.
+- Plate '1': thicker stem (1.6x), foot serif and a top-left flag so it no longer reads as a bar ("O I").
+- Persistent AI Core socket marker size 0.36 -> 0.6 (scale 2.14, ~1.7x, ~30 px); reveal peak 0.8 unchanged, AUT-049 timing unchanged, cyan only.
+- Not verified here: on-device rendering and toast fit on every real screen.

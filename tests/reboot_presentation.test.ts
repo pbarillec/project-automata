@@ -110,7 +110,7 @@ test('AUT-049 world timeline: the ring only in A, nothing in B, socket + Core fr
     assert.equal(at(3.19).coreSize, R.REBOOT_CORE_PEAK_SIZE);
     assert.ok(at(3.9).coreSize < R.REBOOT_CORE_PEAK_SIZE && at(3.9).coreSize > R.REBOOT_CORE_PERSISTENT_SIZE, 'D settles to the persistent size');
     for (const t of [4.0, 4.5, 100]) assert.deepEqual(at(t), { phase: 'complete', complete: true, scanVisible: false, scanProgress: 0, socketVisible: false, coreSize: 0 });
-    assert.ok(R.REBOOT_CORE_PERSISTENT_SIZE < R.REBOOT_CORE_PEAK_SIZE / 2, 'persistent marker is subtle');
+    assert.ok(R.REBOOT_CORE_PERSISTENT_SIZE <= R.REBOOT_CORE_PEAK_SIZE * 0.75, 'persistent marker stays clearly below the reveal peak (AUT-066 round 3: 0.6 vs 0.8)');
 });
 
 test('AUT-049 scan ring: 4 thin opaque outline bars that grow and stay inside the site', () => {

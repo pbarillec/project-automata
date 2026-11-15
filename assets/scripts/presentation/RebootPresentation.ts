@@ -145,7 +145,7 @@ export const REBOOT_SOCKET = Object.freeze({
 
 /** AI Core presentation size (the model scales with it, 0.28 = authored scale 1): the persistent marker is small and static; the reveal peaks at 0.8 (AUT-066). */
 /** Literals mirror AutomataIdentity AI_CORE_* (a direct import would be a module cycle through the layout modules); tests/automata_identity.test.ts pins them equal. */
-export const REBOOT_CORE_PERSISTENT_SIZE = 0.36;
+export const REBOOT_CORE_PERSISTENT_SIZE = 0.6;
 export const REBOOT_CORE_PEAK_SIZE = 0.8;
 const REBOOT_CORE_REFERENCE_SIZE = 0.28;
 const REBOOT_CORE_SHELL_HALF_HEIGHT = 0.05;

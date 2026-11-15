@@ -154,7 +154,15 @@ test('seven-segment digits and the number plate: 01..14 produce segments, 1 has 
         assert.equal(new Set(boxes.map((b) => b.digit)).size, 2, 'two digits');
         for (const b of boxes) assert.ok(b.w > 0 && b.h > 0);
     }
-    assert.equal(numberPlateBoxes(1).length, SEVEN_SEG['0'].length + SEVEN_SEG['1'].length);
+    // Round 3: the '1' has a thicker stem, a foot serif and a top-left flag (a bare 2-segment '1' read as a bar: 'O I').
+    const one = numberPlateBoxes(1).filter((b) => b.digit === 1);
+    assert.equal(numberPlateBoxes(1).length, SEVEN_SEG['0'].length + one.length);
+    assert.deepEqual(one.map((b) => b.segment).sort(), ['a', 'b', 'c', 'd']);
+    const stem = one.find((b) => b.segment === 'b')!;
+    const zeroStem = numberPlateBoxes(1).find((b) => b.digit === 0 && b.segment === 'b')!;
+    assert.ok(stem.w > zeroStem.w * 1.5, 'thicker stem');
+    const foot = one.find((b) => b.segment === 'd')!;
+    assert.ok(foot.w > stem.w * 2, 'foot serif wider than the stem');
 });
 
 test('ring arcs: one gap, never a closed ring; the AI Core halo is 3 segments of 8 boxes', () => {
@@ -189,13 +197,14 @@ test('AI Core: hex shell of 6 graphite bars stacked 2 high, floating off-white d
     assert.ok(cap.center.y > diamond.center.y);
 });
 
-test('AI Core sizes: persistent 0.36 < reveal peak 0.8, the shell scales together; the old cube sizes are gone', () => {
-    assert.equal(AI_CORE_PERSISTENT_SIZE, 0.36);
+test('AI Core sizes: persistent 0.6 (round 3) < reveal peak 0.8, the shell scales together; the old cube sizes are gone', () => {
+    assert.equal(AI_CORE_PERSISTENT_SIZE, 0.6);
     assert.equal(AI_CORE_PEAK_SIZE, 0.8);
     assert.ok(AI_CORE_PERSISTENT_SIZE < AI_CORE_PEAK_SIZE);
     assert.equal(REBOOT_CORE_PERSISTENT_SIZE, AI_CORE_PERSISTENT_SIZE);
     assert.equal(REBOOT_CORE_PEAK_SIZE, AI_CORE_PEAK_SIZE);
-    assert.ok(Math.abs(aiCoreScaleFor(AI_CORE_PERSISTENT_SIZE) - 0.36 / 0.28) < 1e-12);
+    assert.ok(Math.abs(aiCoreScaleFor(AI_CORE_PERSISTENT_SIZE) - 0.6 / 0.28) < 1e-12);
+    assert.ok(AI_CORE_PERSISTENT_SIZE / 0.36 >= 1.65, 'round 3: the marker is >= 1.65x the round-2 size (~18 px -> >= 30 px)');
     assert.ok(Math.abs(rebootCoreCenterY(0.28) - (0.42 + AI_CORE_SHELL_HALF_HEIGHT)) < 1e-12, 'Reboot core height mirrors the AI Core shell');
     assert.ok(Math.abs(aiCoreScaleFor(AI_CORE_PEAK_SIZE) - 0.8 / 0.28) < 1e-12);
     assert.equal(aiCoreScaleFor(0), 0);
@@ -255,6 +264,32 @@ test('icon slots sit inside existing rows / chips and leave the centred text alo
     }
     const founder = founderChipIconSlot();
     assert.ok(founder.x - founder.size / 2 >= -FOUNDER_CHIP_WIDTH / 2 && founder.size <= FOUNDER_CHIP_HEIGHT - 8);
+});
+
+test('round 3 toast: the Major / Exceptional bands start below every chip, the Minor band keeps the first line; every tier clear of the chips on 5 screens', async () => {
+    const toast = await import('../assets/scripts/presentation/MilestoneToastLayout.ts');
+    const settings = await import('../assets/scripts/presentation/SettingsLayout.ts');
+    const extended = await import('../assets/scripts/presentation/ExtendedOverclockLayout.ts');
+    const founder = await import('../assets/scripts/presentation/FounderShopLayout.ts');
+    const reboot = await import('../assets/scripts/presentation/RebootLayout.ts');
+    const ai = await import('../assets/scripts/presentation/PermanentUpgradeLayout.ts');
+    const { rectsOverlap, computeUiLayout } = await import('../assets/scripts/presentation/UiLayout.ts');
+    assert.equal(toast.milestoneToastTopOffsetFor('minor'), toast.milestoneToastTopOffset());
+    assert.ok(toast.milestoneToastTopOffsetFor('major') > extended.extendedOverclockChipWidgetOffsets().top + 64 - 1e-9);
+    assert.ok(toast.milestoneToastTopOffsetFor('exceptional') > founder.founderChipWidgetOffsets().top + 64 - 1e-9);
+    for (const [w, h] of [[1080, 2412], [1080, 1920], [720, 1280], [1080, 2340], [1440, 3120]]) {
+        const screen = { w, h };
+        const chips = [settings.computeSettingsRects(screen).chip, extended.computeExtendedOverclockChipRect(screen), ai.computePermanentUpgradeRects(screen).chip, reboot.computeRebootRects(screen).chip, founder.computeFounderShopRects(screen).chip];
+        for (const tier of ['major', 'exceptional'] as const) {
+            const rect = toast.computeMilestoneToastRect(screen, undefined, tier);
+            for (const chip of chips) assert.equal(rectsOverlap(rect, chip), false, `${w}x${h} ${tier} toast clear of every chip`);
+            assert.equal(toast.milestoneToastFitsFactoryBand(screen, undefined, tier), true, `${w}x${h} ${tier} still inside the factory band`);
+            const ui = computeUiLayout(screen);
+            assert.ok(rect.y >= ui.factoryBand.y && rect.y + rect.h <= ui.hud.y);
+        }
+    }
+    const controller = code('MilestonePresentationController.ts');
+    assert.match(controller, /widget\.top = milestoneToastTopOffsetFor\(trigger\.tier\)/);
 });
 
 test('source record and placeholder wordmark (no final logo)', () => {
@@ -321,11 +356,37 @@ test('diagnostics, scenarios and capture checks', () => {
     assert.equal(evaluateIdentity([over], 'factory').some((c) => c.id === 'identity_icons_drawn' && !c.ok), true);
     const core = ev(6000, 'identity', { decals: [], icons: [], aiCore: { ...aiCoreSummary(), built: true, modelRenderers: 3 } });
     const applied = ev(6100, 'reboot_presentation', { phase: 'effect_applied', part: 'core', aiCoreParts: 3 });
-    assert.equal(evaluateIdentity([core, applied], 'ai_core').every((c) => c.ok), true);
+    const rebootToast = ev(6050, 'identity', { phase: 'toast_icon', kind: 'reboot_title', icon: 'reboot', tier: 'exceptional', topOffset: 232, chipsBottom: 224 });
+    assert.equal(evaluateIdentity([core, applied, rebootToast], 'ai_core').every((c) => c.ok), true);
     assert.equal(evaluateIdentity([core], 'ai_core').some((c) => c.id === 'identity_ai_core_in_sequence' && !c.ok), true);
     assert.equal(evaluateIdentity([ev(1, 'error', {}), factory], 'factory').some((c) => c.id === 'identity_no_errors' && !c.ok), true);
     assert.equal(evaluateRevealTimeline([factory], { expectConstruction: null, expectFocus: false, triggered: false, frameCount: 10, expectIdentity: 'factory' }).some((c) => c.id.startsWith('identity_')), true);
     assert.equal(evaluateRevealTimeline([factory], { expectConstruction: null, expectFocus: false, triggered: false, frameCount: 10 }).some((c) => c.id.startsWith('identity_')), false);
+});
+
+test('round 3 capture checks: panel header icons per producer (>= 40 px), toast icon kinds and chip clearance', () => {
+    const ev = (tMs: number, evt: string, rest: Record<string, unknown>) => ({ tMs, event: { v: 1, seq: tMs, evt, ...rest } as never });
+    const r = { x: 10, y: 10, w: 45, h: 45 };
+    const header = (icon: string, rect: unknown = r) => ev(1000, 'identity', { decals: [], icons: [{ slot: 'producer_header', icon, rect }], aiCore: {} });
+    const good = [header('industrial_output'), header('automation'), header('robot')];
+    assert.equal(evaluateIdentity(good, 'panel').every((c) => c.ok), true);
+    assert.equal(evaluateIdentity([header('industrial_output'), header('robot')], 'panel').some((c) => c.id === 'identity_panel_header_icons' && !c.ok), true, 'a missing producer icon fails');
+    assert.equal(evaluateIdentity([...good, header('robot', { x: 0, y: 0, w: 30, h: 30 })], 'panel').some((c) => c.id === 'identity_panel_header_rects' && !c.ok), true, 'a header icon under 40 px fails');
+    const toastEv = (kind: string, icon: string, tier: string, topOffset: number) => ev(2000, 'identity', { phase: 'toast_icon', kind, icon, tier, topOffset, chipsBottom: 224 });
+    const base = header('robot');
+    assert.equal(evaluateIdentity([base, toastEv('breakthrough', 'breakthrough', 'major', 232)], 'toast_breakthrough').every((c) => c.ok), true);
+    assert.equal(evaluateIdentity([base, toastEv('breakthrough', 'breakthrough', 'major', 100)], 'toast_breakthrough').some((c) => !c.ok), true, 'a band over the chips fails');
+    assert.equal(evaluateIdentity([base, toastEv('breakthrough', 'milestone', 'major', 232)], 'toast_breakthrough').some((c) => !c.ok), true, 'wrong icon fails');
+    const core = ev(6000, 'identity', { decals: [], icons: [], aiCore: { ...aiCoreSummary(), built: true, modelRenderers: 3 } });
+    const applied = ev(6100, 'reboot_presentation', { phase: 'effect_applied', part: 'core', aiCoreParts: 3 });
+    assert.equal(evaluateIdentity([core, applied, toastEv('reboot_title', 'reboot', 'exceptional', 232)], 'ai_core').every((c) => c.ok), true);
+    assert.equal(evaluateIdentity([core, applied], 'ai_core').some((c) => c.id === 'identity_toast_icon_reboot_title' && !c.ok), true);
+    assert.equal(REVEAL_SCENARIOS['aut066-panel'].trigger, 'select-producers');
+    assert.equal(REVEAL_SCENARIOS['aut066-panel'].expectIdentity, 'panel');
+    assert.equal(REVEAL_SCENARIOS['aut066-toast-breakthrough'].expectIdentity, 'toast_breakthrough');
+    assert.deepEqual([milestoneIconFor('breakthrough'), milestoneIconFor('reboot_title'), milestoneIconFor('robots_built'), milestoneIconFor('automation'), milestoneIconFor('producer_milestone')], ['breakthrough', 'reboot', 'robot', 'automation', 'milestone']);
+    assert.deepEqual(['fabricator', 'robot_line', 'advanced_robotics_complex'].map(producerIconFor), ['industrial_output', 'automation', 'robot']);
+    assert.match(read('tools/device/reveal_capture.ts'), /trigger === 'select-producers'/);
 });
 
 test('.ts.meta files: typescript importer, unique a0660000 uuids; no asset was added', () => {

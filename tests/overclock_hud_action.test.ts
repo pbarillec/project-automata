@@ -217,7 +217,7 @@ test('AUT-UI-003 device tooling: ui003 scenario, overclock trigger, seed command
     assert.match(cli, /expectCommands: scenario\.expectCommands/);
     const capture = read('tools/device/reveal_capture.ts');
     assert.match(capture, /trigger === 'overclock' \? 'OverclockAction'/);
-    assert.match(capture, /export type RevealTrigger = 'none' \| 'next-goal' \| 'overclock' \| 'robot-line-build' \| 'offline-collect';/);
+    assert.match(capture, /export type RevealTrigger = 'none' \| 'next-goal' \| 'overclock' \| 'robot-line-build' \| 'offline-collect' \| 'select-producers';/);
 
     const event = (tMs: number, evt: string, extra: Record<string, unknown>): TimelineEvent => ({ tMs, event: { v: 1, seq: tMs, evt, ...extra } as TimelineEvent['event'] });
     const chain = [

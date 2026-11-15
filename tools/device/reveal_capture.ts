@@ -52,8 +52,9 @@ import { seedUi003 } from './seed_ui003.ts';
 import { parseHudActions } from './scenarios/ui001_core_loop.ts';
 import { parseUiLayout, rectCentre, toRect } from './ui_geometry.ts';
 
+/** select-producers (AUT-066): tap the Fabricator, Robot Line and Advanced Robotics Complex zones in turn (the existing tap-to-select path), a frame after each. */
 /** robot-line-build (AUT-048 Era II): tap the Robot Line zone (projected position), then the producer panel x1 button: both existing player tap paths. */
-export type RevealTrigger = 'none' | 'next-goal' | 'overclock' | 'robot-line-build' | 'offline-collect';
+export type RevealTrigger = 'none' | 'next-goal' | 'overclock' | 'robot-line-build' | 'offline-collect' | 'select-producers';
 
 export interface RevealCaptureOptions {
     readonly label: string;
@@ -177,6 +178,9 @@ export const REVEAL_SCENARIOS: Readonly<Record<string, RevealScenario>> = Object
     aut049: { id: 'aut049', label: 'aut049-reboot', seed: (d, pkg, act) => seedAut049(d, pkg, act, 'reboot'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 18_000, intervalMs: 300, expectCommands: ['rebootCivilization'], expectReboot: 'sequence' },
     // AUT-066: Automata identity. 'aut066-factory' reuses the AUT-047 seed (Free Overclock ACTIVE: HUD / Overclock icons + all five zones); 'aut066-ai-core' reuses the AUT-049 Reboot seed (the AI Core in the sequence).
     'aut066-factory': { id: 'aut066-factory', label: 'aut066-identity-factory', seed: (d, pkg, act) => seedAut047(d, pkg, act, 'active'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 8_000, intervalMs: 400, expectIdentity: 'factory' },
+    // AUT-066 round 3: the producer panel OPEN with the header icon of three producers (real zone taps), and the breakthrough toast icon (AUT-046 seed, Next Goal tap).
+    'aut066-panel': { id: 'aut066-panel', label: 'aut066-identity-panel', seed: (d, pkg, act) => seedAut044(d, pkg, act, 'lv1'), expectConstruction: null, expectFocus: false, trigger: 'select-producers', durationMs: 2_000, intervalMs: 500, expectIdentity: 'panel' },
+    'aut066-toast-breakthrough': { id: 'aut066-toast-breakthrough', label: 'aut066-identity-toast-breakthrough', seed: (d, pkg, act) => seedAut046(d, pkg, act, 'breakthrough'), expectConstruction: null, expectFocus: false, expectIdentity: 'toast_breakthrough' },
     'aut066-ai-core': { id: 'aut066-ai-core', label: 'aut066-identity-ai-core', seed: (d, pkg, act) => seedAut049(d, pkg, act, 'reboot'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 12_000, intervalMs: 300, expectCommands: ['rebootCivilization'], expectReboot: 'sequence', expectIdentity: 'ai_core' },
     // AUT-049: a post-Reboot save (Civilization #2, AI Cores): silent load, persistent relay socket, no sequence.
     'aut049-post': { id: 'aut049-post', label: 'aut049-post-reboot-socket', seed: (d, pkg, act) => seedAut049(d, pkg, act, 'post'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 6_000, intervalMs: 400, expectReboot: 'silent' },
@@ -436,6 +440,27 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
             } else {
                 tapDetail = 'RobotLine zone not projected on screen (or display size missing)';
             }
+        }
+        if (trigger === 'select-producers') {
+            const display = pngSize(baseline);
+            const zones = stream.allEvents().filter((e) => (e.evt === 'zones_projected' || (e.evt === 'scene_ready' && e.reason === 'scene_ready') || e.evt === 'camera_state') && Array.isArray(e.zones)).pop()?.zones as Array<{ id: string; sx: number | null; sy: number | null; onScreen: boolean }> | undefined;
+            const details: string[] = [];
+            for (const id of ['Fabricator', 'RobotLine', 'AdvancedRoboticsComplex']) {
+                const zone = zones?.find((z) => z.id === id);
+                if (display && zone && zone.onScreen && typeof zone.sx === 'number' && typeof zone.sy === 'number') {
+                    const point = cocosToAdb({ x: zone.sx, y: zone.sy }, { w: layout.screen.w, h: layout.screen.h }, display);
+                    const tapCursor = stream.cursor;
+                    await driver.tap(Math.round(point.x), Math.round(point.y));
+                    await stream.waitFor((e) => e.evt === 'ui_layout' && e.reason === 'selection_refresh', tapCursor, 5_000);
+                    await sleep(900);
+                    await frame('post');
+                    triggered = true;
+                    details.push(`tapped ${id} at ${Math.round(point.x)},${Math.round(point.y)}`);
+                } else {
+                    details.push(`${id} not projected on screen`);
+                }
+            }
+            tapDetail = details.join('; ');
         }
         const actionKey = trigger === 'next-goal' ? 'NextGoalAction' : trigger === 'overclock' ? 'OverclockAction' : null;
         if (actionKey) {

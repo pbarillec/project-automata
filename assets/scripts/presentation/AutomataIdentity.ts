@@ -213,6 +213,13 @@ export function numberPlateBoxes(n: number): GlyphBox[] {
             }
         };
         for (const segment of SEVEN_SEG[ch] ?? []) out.push(place(segment));
+        if (ch === '1') {
+            // AUT-066 round 3: a bare seven-segment '1' read as a thin bar next to the '0' ('O I'). Thicker stem, a foot serif and a top-left flag make it read '1'.
+            const stem = t * 1.6;
+            for (const box of out.filter((b) => b.digit === digit && (b.segment === 'b' || b.segment === 'c'))) { out.splice(out.indexOf(box), 1, { ...box, u: cu + dw / 2 - stem / 2, w: stem }); }
+            out.push({ u: cu, v: -dh / 2 + t / 2, w: dw, h: t, digit, segment: 'd' });
+            out.push({ u: cu + dw / 2 - stem - dw / 4 + t / 2, v: dh / 2 - t / 2, w: dw / 2, h: t, digit, segment: 'a' });
+        }
     });
     return out;
 }
@@ -248,8 +255,8 @@ export function ringArcBoxes(r: number, segs: number, gapIndex: number): RingArc
 
 /** Core scale 1 is this reference size: the authored sizes below are world units at scale 1. */
 export const AI_CORE_REFERENCE_SIZE = 0.28;
-/** AUT-066 tuning: 0.28 -> 0.36 (the model is authored at AI_CORE_REFERENCE_SIZE, so the persistent scale is 0.36 / 0.28). */
-export const AI_CORE_PERSISTENT_SIZE = 0.36;
+/** AUT-066 tuning: 0.28 -> 0.36 (round 2) -> 0.6 (round 3, the marker measured ~18 x 12 px; the model is authored at AI_CORE_REFERENCE_SIZE, so the persistent scale is 0.6 / 0.28 = 2.14). */
+export const AI_CORE_PERSISTENT_SIZE = 0.6;
 export const AI_CORE_PEAK_SIZE = 0.8;
 export const AI_CORE_HEX_RADIUS = 0.2;
 export const AI_CORE_BAR = 0.05;

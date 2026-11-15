@@ -1,5 +1,7 @@
 import { CORE_HUD_LAYOUT, UI_DESIGN_RESOLUTION, UI_EDGE_MARGIN, UI_MIN_BODY_FONT_SIZE, cardHeight, computeUiLayout, type UiRect } from './UiLayout.ts';
 import type { MilestoneAccent, PresentedMilestoneTier } from './MilestoneTier.ts';
+import { FOUNDER_CHIP_HEIGHT, founderChipWidgetOffsets } from './FounderShopLayout.ts';
+import { EXTENDED_OVERCLOCK_CHIP_HEIGHT, extendedOverclockChipWidgetOffsets } from './ExtendedOverclockLayout.ts';
 
 /**
  * AUT-046 milestone toast layout (engine-free, design units of the 720x1280 fixed-width design resolution).
@@ -79,6 +81,20 @@ export function milestoneToastTopOffset(): number {
     return UI_EDGE_MARGIN + cardHeight(CORE_HUD_LAYOUT) + MILESTONE_TOAST_GAP_BELOW_HUD;
 }
 
+/**
+ * AUT-066 round 3: the Major and Exceptional bands are wide (620 / 680 of 720 units) and used to run under / over the Settings, Extended Overclock, AI,
+ * Reboot and Founder chips (the toast icon landed on the SET chip and the underline struck through the Extended Overclock text). They now start BELOW the
+ * lowest chip (Founder third line on the right, Extended Overclock second line on the left). The Minor band (440 wide, 44 tall) already sits clear of the
+ * left chips on the first line and keeps the original top.
+ */
+export const MILESTONE_TOAST_GAP_BELOW_CHIPS = 8;
+
+export function milestoneToastTopOffsetFor(tier: PresentedMilestoneTier): number {
+    if (tier === 'minor') return milestoneToastTopOffset();
+    const chipsBottom = Math.max(founderChipWidgetOffsets().top + FOUNDER_CHIP_HEIGHT, extendedOverclockChipWidgetOffsets().top + EXTENDED_OVERCLOCK_CHIP_HEIGHT);
+    return chipsBottom + MILESTONE_TOAST_GAP_BELOW_CHIPS;
+}
+
 /** Predicted screen rect (pixels, bottom-left origin) of a toast of `tier` for a screen and its safe area. */
 export function computeMilestoneToastRect(
     screenPx: { w: number; h: number },
@@ -89,7 +105,7 @@ export function computeMilestoneToastRect(
     const layout = MILESTONE_TOAST_LAYOUT[tier];
     const w = layout.width * scale;
     const h = layout.height * scale;
-    const top = safeAreaPx.y + safeAreaPx.h - milestoneToastTopOffset() * scale;
+    const top = safeAreaPx.y + safeAreaPx.h - milestoneToastTopOffsetFor(tier) * scale;
     return { x: safeAreaPx.x + (safeAreaPx.w - w) / 2, y: top - h, w, h };
 }
 

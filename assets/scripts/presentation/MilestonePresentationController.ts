@@ -1,4 +1,4 @@
-import { _decorator, Color, Component, Graphics, MeshRenderer, Label, Layers, Node, UITransform, Vec3 } from 'cc';
+import { _decorator, Color, Component, Graphics, MeshRenderer, Label, Layers, Node, UITransform, Vec3, Widget } from 'cc';
 import type { DomainEvent } from '../domain/Events.ts';
 import type { GameState } from '../state/GameState.ts';
 import type { MobileCameraController } from '../camera/MobileCameraController';
@@ -9,7 +9,7 @@ import { MILESTONE_ACCENT_RGB, MILESTONE_RING_HEIGHT, MILESTONE_RING_VISIBLE_ABO
 import { MilestonePresentationViewModel, type MilestoneUpdate } from './MilestonePresentationViewModel.ts';
 import type { MilestoneToastItem } from './MilestoneToastQueue.ts';
 import type { RebootBeat } from './RebootPresentation.ts';
-import { MILESTONE_TOAST_COLORS, MILESTONE_TOAST_LAYOUT } from './MilestoneToastLayout.ts';
+import { MILESTONE_TOAST_COLORS, MILESTONE_TOAST_GAP_BELOW_CHIPS, MILESTONE_TOAST_LAYOUT, milestoneToastTopOffsetFor } from './MilestoneToastLayout.ts';
 import { IDENTITY_PALETTE, milestoneIconFor, milestoneIconSlot } from './AutomataIdentity.ts';
 import { drawIcon, recordIcon } from './IdentityGraphics';
 import { formatMilestoneToast } from './MilestoneToastText.ts';
@@ -63,6 +63,7 @@ export class MilestonePresentationController extends Component {
     private pillGraphics: Graphics | null = null;
     private underlineGraphics: Graphics | null = null;
     private iconGraphics: Graphics | null = null;
+    private toastIconKey = '';
     private builtLayoutTier: string | null = null;
     private shownText = '';
     private effect: RunningEffect | null = null;
@@ -278,6 +279,9 @@ export class MilestonePresentationController extends Component {
         if (this.shownText !== signature || this.builtLayoutTier !== trigger.tier) {
             this.shownText = signature;
             this.builtLayoutTier = trigger.tier;
+            // AUT-066 round 3: Major / Exceptional bands start below the chip stack (the Minor band keeps the original top).
+            const widget = this.node.getComponent(Widget);
+            if (widget) { widget.top = milestoneToastTopOffsetFor(trigger.tier); widget.updateAlignment(); }
             this.node.getComponent(UITransform)?.setContentSize(layout.width, layout.height);
             this.pill!.getComponent(UITransform)!.setContentSize(layout.width, layout.height);
             this.pill!.setPosition(new Vec3(0, 0, 0));
@@ -329,6 +333,10 @@ export class MilestonePresentationController extends Component {
         const icon = milestoneIconFor(kind);
         if (icon === null) return;
         const slot = milestoneIconSlot(tier);
+        if (isDeviceDiagnosticsEnabled() && this.toastIconKey !== `${kind}|${tier}`) {
+            this.toastIconKey = `${kind}|${tier}`;
+            emitDeviceEvent('identity', { phase: 'toast_icon', kind, tier, icon, slot: { x: slot.x, y: slot.y, size: slot.size }, topOffset: milestoneToastTopOffsetFor(tier), chipsBottom: milestoneToastTopOffsetFor('major') - MILESTONE_TOAST_GAP_BELOW_CHIPS });
+        }
         drawIcon(graphics, icon, slot.x, slot.y, slot.size, { ink: IDENTITY_PALETTE.offWhite, accent: IDENTITY_PALETTE.amber, alpha });
         recordIcon({ slot: slot.slot, icon, node: graphics.node, x: slot.x, y: slot.y, size: slot.size });
     }
