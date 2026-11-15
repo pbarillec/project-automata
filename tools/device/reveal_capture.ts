@@ -36,7 +36,7 @@ import { seedAut062 } from './seed_aut062.ts';
 import { seedAut065 } from './seed_aut065.ts';
 import { CONSENT_SETTLE_WAIT_MS, CONSENT_UMP_WAIT_MS, evaluateConsent, type ConsentExpectation } from './consent_checks.ts';
 import { evaluateFounderRobot, type FounderRobotExpectation } from './founder_robot_checks.ts';
-import { evaluateIdentity, type IdentityExpectation } from './identity_checks.ts';
+import { evaluateIdentity, nextProducerTap, type IdentityExpectation, type ProjectedZoneLike } from './identity_checks.ts';
 import { evaluateAnalytics, type AnalyticsExpectation } from './analytics_checks.ts';
 import { BILLING_CHIP_WAIT_MS, BILLING_RESULT_WAIT_MS, BILLING_SHEET_SETTLE_MS, evaluateBilling, type BillingExpectation } from './billing_checks.ts';
 import { FOUNDER_SHOP_RELAUNCH_MARKER_EVT, evaluateFounderShop, type FounderShopExpectation } from './founder_shop_checks.ts';
@@ -443,22 +443,24 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
         }
         if (trigger === 'select-producers') {
             const display = pngSize(baseline);
-            const zones = stream.allEvents().filter((e) => (e.evt === 'zones_projected' || (e.evt === 'scene_ready' && e.reason === 'scene_ready') || e.evt === 'camera_state') && Array.isArray(e.zones)).pop()?.zones as Array<{ id: string; sx: number | null; sy: number | null; onScreen: boolean }> | undefined;
+            const latestZones = (): ProjectedZoneLike[] | undefined => stream.allEvents().filter((e) => (e.evt === 'zones_projected' || (e.evt === 'scene_ready' && e.reason === 'scene_ready')) && Array.isArray(e.zones)).pop()?.zones as ProjectedZoneLike[] | undefined;
+            const panel = parseUiLayout(layoutHit?.event)?.rects.ProducerPanel ?? null;
+            const tapped = new Set<string>();
             const details: string[] = [];
-            for (const id of ['Fabricator', 'RobotLine', 'AdvancedRoboticsComplex']) {
-                const zone = zones?.find((z) => z.id === id);
-                if (display && zone && zone.onScreen && typeof zone.sx === 'number' && typeof zone.sy === 'number') {
-                    const point = cocosToAdb({ x: zone.sx, y: zone.sy }, { w: layout.screen.w, h: layout.screen.h }, display);
-                    const tapCursor = stream.cursor;
-                    await driver.tap(Math.round(point.x), Math.round(point.y));
-                    await stream.waitFor((e) => e.evt === 'ui_layout' && e.reason === 'selection_refresh', tapCursor, 5_000);
-                    await sleep(900);
-                    await frame('post');
-                    triggered = true;
-                    details.push(`tapped ${id} at ${Math.round(point.x)},${Math.round(point.y)}`);
-                } else {
-                    details.push(`${id} not projected on screen`);
-                }
+            // Re-read the settled projection before every tap: each selection re-focuses the camera (stale coordinates missed in the 2026-11-15 capture).
+            for (let i = 0; i < 4 && display; i++) {
+                const zone = nextProducerTap(latestZones(), tapped, panel, 40, layout.screen);
+                if (!zone) { details.push('no further producer on screen'); break; }
+                tapped.add(zone.id);
+                const point = cocosToAdb({ x: zone.sx as number, y: zone.sy as number }, { w: layout.screen.w, h: layout.screen.h }, display);
+                const tapCursor = stream.cursor;
+                await driver.tap(Math.round(point.x), Math.round(point.y));
+                await stream.waitFor((e) => e.evt === 'ui_layout' && e.reason === 'selection_refresh', tapCursor, 5_000);
+                await stream.waitFor((e) => e.evt === 'zones_projected' && e.reason === 'camera_settled', tapCursor, 3_000);
+                await sleep(900);
+                await frame('post');
+                triggered = true;
+                details.push(`tapped ${zone.id} at ${Math.round(point.x)},${Math.round(point.y)}`);
             }
             tapDetail = details.join('; ');
         }

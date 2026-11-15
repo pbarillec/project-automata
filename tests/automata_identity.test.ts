@@ -55,7 +55,7 @@ import { REBOOT_CORE_PEAK_SIZE, REBOOT_CORE_PERSISTENT_SIZE, rebootCoreCenterY }
 import { FOUNDER_PALETTE } from '../assets/scripts/presentation/FounderRobotVariant.ts';
 import { DEVICE_EVENT_TYPES } from '../assets/scripts/presentation/DeviceDiagnostics.ts';
 import { DEFAULT_REVEAL_EVENT_TYPES, REVEAL_SCENARIOS, evaluateRevealTimeline } from '../tools/device/reveal_capture.ts';
-import { evaluateIdentity } from '../tools/device/identity_checks.ts';
+import { evaluateIdentity, nextProducerTap, IDENTITY_PANEL_TAP_ORDER } from '../tools/device/identity_checks.ts';
 
 const repoRoot = path.resolve(import.meta.dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(repoRoot, rel), 'utf8').replace(/\r\n/g, '\n');
@@ -387,6 +387,29 @@ test('round 3 capture checks: panel header icons per producer (>= 40 px), toast 
     assert.deepEqual([milestoneIconFor('breakthrough'), milestoneIconFor('reboot_title'), milestoneIconFor('robots_built'), milestoneIconFor('automation'), milestoneIconFor('producer_milestone')], ['breakthrough', 'reboot', 'robot', 'automation', 'milestone']);
     assert.deepEqual(['fabricator', 'robot_line', 'advanced_robotics_complex'].map(producerIconFor), ['industrial_output', 'automation', 'robot']);
     assert.match(read('tools/device/reveal_capture.ts'), /trigger === 'select-producers'/);
+});
+
+test('select-producers picks each tap from the SETTLED projection (device capture 2026-11-15: stale coordinates missed after the camera focus)', () => {
+    const z = (id: string, sx: number | null, sy: number | null, onScreen = true) => ({ id, sx, sy, onScreen });
+    const screen = { w: 1080, h: 2412 };
+    // Real zones_projected of the capture after the Fabricator focus: the Robot Line is at x = -266 (off screen).
+    const afterFabricator = [z('Fabricator', 548, 1210), z('AssemblyStation', 243, 1088), z('RobotLine', -267, 798, false), z('AdvancedRoboticsComplex', null, null, false)];
+    const tapped = new Set(['Fabricator']);
+    assert.equal(nextProducerTap(afterFabricator, tapped, null, 40, screen)?.id, 'AssemblyStation', 'off-screen Robot Line / Complex are skipped, never tapped blindly');
+    // Once the camera settles on the Assembly Station the Robot Line is projected on screen: it is now chosen.
+    const afterAssembly = [z('Fabricator', 800, 1210), z('AssemblyStation', 540, 1100), z('RobotLine', 120, 900), z('AdvancedRoboticsComplex', 300, 700)];
+    tapped.add('AssemblyStation');
+    assert.equal(nextProducerTap(afterAssembly, tapped, null, 40, screen)?.id, 'RobotLine');
+    tapped.add('RobotLine');
+    assert.equal(nextProducerTap(afterAssembly, tapped, null, 40, screen)?.id, 'AdvancedRoboticsComplex');
+    // Zones under the panel or on the screen edge are not tapped.
+    assert.equal(nextProducerTap([z('Fabricator', 500, 300)], new Set(), { x: 0, y: 0, w: 1080, h: 600 }, 40, screen), null);
+    assert.equal(nextProducerTap([z('Fabricator', 10, 1000)], new Set(), null, 40, screen), null);
+    assert.equal(nextProducerTap(undefined, new Set()), null);
+    assert.deepEqual(IDENTITY_PANEL_TAP_ORDER.slice(0, 3), ['Fabricator', 'RobotLine', 'AdvancedRoboticsComplex']);
+    const capture = read('tools/device/reveal_capture.ts');
+    assert.match(capture, /nextProducerTap\(latestZones\(\), tapped, panel/);
+    assert.match(capture, /reason === 'camera_settled'/);
 });
 
 test('.ts.meta files: typescript importer, unique a0660000 uuids; no asset was added', () => {

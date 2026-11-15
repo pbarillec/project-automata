@@ -43,3 +43,7 @@ Presentation only; no gameplay, timing or colour change.
 - Plate '1': thicker stem (1.6x), foot serif and a top-left flag so it no longer reads as a bar ("O I").
 - Persistent AI Core socket marker size 0.36 -> 0.6 (scale 2.14, ~1.7x, ~30 px); reveal peak 0.8 unchanged, AUT-049 timing unchanged, cyan only.
 - Not verified here: on-device rendering and toast fit on every real screen.
+
+### Round 3b (aut066-panel device fix)
+
+The first device run only saw the Fabricator header icon: each selection re-focuses the camera, so the Robot Line (x = -266 after the Fabricator focus) and the Complex were off screen and the coordinates read before the first tap were stale. The `select-producers` trigger now re-reads the settled `zones_projected` (reason `camera_settled`) before every tap and takes the first untapped producer on screen and clear of the panel (`nextProducerTap`, order Fabricator, Robot Line, Complex, Assembly Station, Automated Cell; up to 4 taps). Capture-tool change only; no runtime change.

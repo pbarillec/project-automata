@@ -22,6 +22,30 @@ export const IDENTITY_AI_CORE_RENDERERS = 3;
 export const IDENTITY_PANEL_ICONS: readonly string[] = Object.freeze(['industrial_output', 'automation', 'robot']);
 export const IDENTITY_PANEL_MIN_ICON_PX = 40;
 
+/**
+ * The producers the 'select-producers' trigger taps, in preference order. A selection re-focuses the camera, so a zone
+ * that was on screen before a tap can be off screen after it (device capture 2026-11-15: after the Fabricator focus the
+ * Robot Line projected at x = -266). The trigger therefore re-reads the `zones_projected` of the SETTLED camera before
+ * every tap and takes the first not-yet-tapped producer that is on screen and clear of the panel.
+ */
+export const IDENTITY_PANEL_TAP_ORDER: readonly string[] = Object.freeze(['Fabricator', 'RobotLine', 'AdvancedRoboticsComplex', 'AssemblyStation', 'AutomatedCell']);
+
+export interface ProjectedZoneLike { readonly id: string; readonly sx: number | null; readonly sy: number | null; readonly onScreen: boolean }
+
+/** First untapped producer in IDENTITY_PANEL_TAP_ORDER that is projected on screen (and outside `avoid`, a cocos-space rect), or null. */
+export function nextProducerTap(zones: readonly ProjectedZoneLike[] | undefined, tapped: ReadonlySet<string>, avoid?: { x: number; y: number; w: number; h: number } | null, margin = 40, screen?: { w: number; h: number }): ProjectedZoneLike | null {
+    if (!zones) return null;
+    for (const id of IDENTITY_PANEL_TAP_ORDER) {
+        if (tapped.has(id)) continue;
+        const z = zones.find((zone) => zone.id === id);
+        if (!z || !z.onScreen || typeof z.sx !== 'number' || typeof z.sy !== 'number') continue;
+        if (screen && (z.sx < margin || z.sy < margin || z.sx > screen.w - margin || z.sy > screen.h - margin)) continue;
+        if (avoid && z.sx >= avoid.x && z.sx <= avoid.x + avoid.w && z.sy >= avoid.y && z.sy <= avoid.y + avoid.h) continue;
+        return z;
+    }
+    return null;
+}
+
 interface DecalRow { producerId: string; parts: number; rect: { w: number; h: number } | null }
 interface IconRow { slot: string; icon: string; rect: { x: number; y: number; w: number; h: number } | null }
 
