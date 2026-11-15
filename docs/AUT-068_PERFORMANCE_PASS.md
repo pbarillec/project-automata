@@ -42,3 +42,13 @@ Era III worst case, 14 robots: avg 49.1 fps, p95 25.5 ms, 805 draw calls, 103k t
 
 ## Post-pass results
 _To be filled by the orchestrator from `npm run device:reveal-capture -- --scenario aut067-baseline` and `aut067-baseline-founder` (same seed), plus the aut066-factory / aut049 / aut062 / aut043 visual captures._
+
+## Post-pass results (2026-11-15, orchestrator device run, OnePlus NE2215, DEBUG APK aut068, same seed as AUT-067)
+
+| variant | uniqueMaterials | draw calls | fps avg | p95 ms | p99 ms | max ms | jank >33 ms | top CPU |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| standard before -> after | 153 -> 54 | 805 -> 751 | 49.1 -> 49.5 | 25.5 -> 25.5 | 28.5 -> 29.5 | 47.5 -> 42.5 | 4 -> 3 | 146% -> 160% |
+| founder before -> after | n/a -> 57 | 839 -> 785 | 47.9 -> 48.5 | 25.5 -> 25.5 | 28.5 -> 28.5 | 35.1 -> 37.6 | 2 -> 2 | 135% -> 138% |
+
+Renderer/node counts unchanged (609 mesh renderers / 2,333 nodes). Evidence: latest two temp/perf/* runs, temp/reveal/aut067-baseline-*.
+Reading: the material/draw-call reduction is real (-65% unique materials, -54 draw calls, about -7%) but frame time moved within run-to-run noise (+0.4-0.6 fps). The device is CPU-bound (process 135-160% of one core, GPU busy ~27%), so the draw-call cut did not translate into a measurable frame-time gain. Acceptance ("stable improvement, no visual regression") is met only weakly: no visual regression (scene-presentation visual QA PASS on shared-box surfaces: aut066-factory, aut066-ai-core, aut062-owned-many, aut043, aut049, aut047), improvement small. Further gains need a release-build measurement (the DEBUG build logs diagnostics heavily) and a CPU-side profile (skinned robot animation, JS update loops) before more changes; no speculative work done here.
