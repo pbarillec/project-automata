@@ -171,10 +171,12 @@ export const SEVEN_SEG: Readonly<Record<string, readonly SegmentId[]>> = Object.
  * 1.5x so the marks stay above ~24 px at the normal camera on a 1080 px wide screen (never recoloured).
  */
 export const DECAL_SCALE = 1.5;
+/** Plate / digits / pips are scaled separately (AUT-066 tuning: the 1.5x plates read as dashes on device). */
+export const PLATE_SCALE = 2.2;
 export const DECAL_THICKNESS = 0.004;
 /** Offset of the decal layer above the surface (no z-fight). */
 export const DECAL_SURFACE_OFFSET = 0.01;
-export const NUMBER_PLATE = Object.freeze({ width: 0.3 * DECAL_SCALE, height: 0.12 * DECAL_SCALE, digitHeight: 0.07 * DECAL_SCALE, digitWidth: 0.04 * DECAL_SCALE, stroke: 0.011 * DECAL_SCALE, digitGap: 0.012 * DECAL_SCALE });
+export const NUMBER_PLATE = Object.freeze({ width: 0.3 * PLATE_SCALE, height: 0.12 * PLATE_SCALE, digitHeight: 0.07 * PLATE_SCALE, digitWidth: 0.04 * PLATE_SCALE, stroke: 0.011 * PLATE_SCALE, digitGap: 0.012 * PLATE_SCALE });
 
 export interface GlyphBox {
     /** Centre in the glyph frame (u right, v up) and size (w along u, h along v). */
@@ -244,17 +246,18 @@ export function ringArcBoxes(r: number, segs: number, gapIndex: number): RingArc
 // ---------------------------------------------------------------------------------------------------------------
 // AI Core 3D (replaces the AUT-049 placeholder cube at the same socket)
 
-/** Core scale 1 is the persistent size: the authored sizes below are world units at that size. */
+/** Core scale 1 is this reference size: the authored sizes below are world units at scale 1. */
 export const AI_CORE_REFERENCE_SIZE = 0.28;
-export const AI_CORE_PERSISTENT_SIZE = 0.28;
+/** AUT-066 tuning: 0.28 -> 0.36 (the model is authored at AI_CORE_REFERENCE_SIZE, so the persistent scale is 0.36 / 0.28). */
+export const AI_CORE_PERSISTENT_SIZE = 0.36;
 export const AI_CORE_PEAK_SIZE = 0.8;
 export const AI_CORE_HEX_RADIUS = 0.2;
 export const AI_CORE_BAR = 0.05;
 export const AI_CORE_LAYERS = 2;
-export const AI_CORE_DIAMOND_EDGE = 0.1;
+export const AI_CORE_DIAMOND_EDGE = 0.12;
 export const AI_CORE_DIAMOND_Y = 0.08;
-export const AI_CORE_CAP_EDGE = 0.06;
-export const AI_CORE_ARC = Object.freeze({ radius: 0.3, slots: 25, gapIndex: 12, segmentCount: 3, boxesPerSegment: 8, length: 0.065, width: 0.028, height: 0.028, y: 0.08 });
+export const AI_CORE_CAP_EDGE = 0.1;
+export const AI_CORE_ARC = Object.freeze({ radius: 0.3, slots: 25, gapIndex: 12, segmentCount: 3, boxesPerSegment: 8, length: 0.08, width: 0.04, height: 0.04, y: 0.08 });
 /** Half height of the hex shell (the origin of the core node is the shell centre). */
 export const AI_CORE_SHELL_HALF_HEIGHT = (AI_CORE_BAR * AI_CORE_LAYERS) / 2;
 
@@ -271,7 +274,8 @@ function aiCoreBoxes(): IdentityBox[] {
             const b = hex[(i + 1) % hex.length];
             const length = Math.hypot(b.x - a.x, b.y - a.y);
             const rotYDeg = (Math.atan2(-(b.y - a.y), b.x - a.x) * 180) / Math.PI;
-            boxes.push(box('shell', 'graphite', [length + AI_CORE_BAR * 0.5, AI_CORE_BAR, AI_CORE_BAR], [(a.x + b.x) / 2, y, (a.y + b.y) / 2], rotYDeg));
+            // Tuning: the lower layer stays graphite, the upper layer is an off-white rim so the hexagon reads on the dark pedestal / floor.
+            boxes.push(box('shell', layer === AI_CORE_LAYERS - 1 ? 'offWhite' : 'graphite', [length + AI_CORE_BAR * 0.5, AI_CORE_BAR, AI_CORE_BAR], [(a.x + b.x) / 2, y, (a.y + b.y) / 2], rotYDeg));
         }
     }
     // Floating off-white diamond (a cube standing on a vertex: Rz 45, Rx -35.264) with a cyan cap on its top vertex.
@@ -364,18 +368,43 @@ function glyphRotY(glyphAngleDeg: number): number {
 }
 
 /** The anchor offsets of the decal cluster, relative to the camera-near footprint corner (w/2, -d/2) of the zone. */
-function clusterAnchors(zone: FactoryZoneRect): { symbol: { x: number; z: number }; plate: { x: number; z: number }; tag: { x: number; z: number }; stripe: { x: number; z: number } } {
+/**
+ * AUT-066 tuning: where the plate + zone tag go. Machines cover the foundation corners (device captures: the Advanced Robotics Complex hid its own plate
+ * and pips), so the plate and the tag sit OUTSIDE the footprint (>= 0.15 away) on the ground strip: in front of the -Z edge ('front') or beside the +X edge
+ * ('east', the Automated Cell: its front strip is the Robot Line lane). The symbol and the stripe stay on the foundation, except the complex stripe, which
+ * is shortened to 3 boxes and moved onto the ground in front of the lip (a barrel stood at the end of the 5-box stripe). Footprints measured from the layout
+ * modules + the AUT-066 device captures; not read from prefab bounds at runtime.
+ */
+export interface DecalPlacement {
+    readonly side: 'front' | 'east';
+    readonly stripeOnGround: boolean;
+    readonly stripeBoxes: number;
+}
+
+export const DECAL_PLACEMENT: Readonly<Record<FactoryZoneId, DecalPlacement>> = Object.freeze({
+    Fabricator: Object.freeze({ side: 'front' as const, stripeOnGround: false, stripeBoxes: 5 }),
+    AssemblyStation: Object.freeze({ side: 'front' as const, stripeOnGround: false, stripeBoxes: 5 }),
+    RobotLine: Object.freeze({ side: 'front' as const, stripeOnGround: false, stripeBoxes: 5 }),
+    AutomatedCell: Object.freeze({ side: 'east' as const, stripeOnGround: false, stripeBoxes: 5 }),
+    AdvancedRoboticsComplex: Object.freeze({ side: 'front' as const, stripeOnGround: true, stripeBoxes: 3 }),
+});
+
+/** Minimum distance between the plate / tag and the zone footprint. */
+export const DECAL_OUTSIDE_MARGIN = 0.15;
+
+function clusterAnchors(zoneId: FactoryZoneId, zone: FactoryZoneRect): { symbol: { x: number; z: number }; plate: { x: number; z: number }; tag: { x: number; z: number }; stripe: { x: number; z: number } } {
+    const placement = DECAL_PLACEMENT[zoneId];
     const cornerX = zone.width / 2;
     const cornerZ = -zone.depth / 2;
     const symbol = { x: cornerX - 0.5, z: cornerZ + 0.5 };
-    const plate = glyphPoint(symbol, 0, 0.62);
-    const tag = glyphPoint(plate, 0, 0.34);
-    return { symbol, plate, tag, stripe: { x: cornerX - 0.7, z: cornerZ + 0.12 } };
+    const plate = placement.side === 'front' ? { x: cornerX - 0.95, z: cornerZ - 0.55 } : { x: cornerX + 0.6, z: cornerZ + 0.6 };
+    const tag = glyphPoint(plate, 0, -0.34);
+    return { symbol, plate, tag, stripe: { x: cornerX - 0.7, z: placement.stripeOnGround ? cornerZ - 0.12 : cornerZ + 0.12 } };
 }
 
 export const DECAL_SYMBOL = Object.freeze({ hexSize: 0.17 * DECAL_SCALE * 2, bar: 0.036 * DECAL_SCALE, tile: 0.34, core: 0.14 });
 export const DECAL_STRIPE = Object.freeze({ boxes: 5, boxLength: 0.2, boxDepth: 0.12 });
-export const DECAL_TAG = Object.freeze({ width: 0.3 * DECAL_SCALE, height: 0.08 * DECAL_SCALE, pip: 0.05, pipGap: 0.075 });
+export const DECAL_TAG = Object.freeze({ width: 0.8, height: 0.18, pip: 0.1, pipGap: 0.15 });
 
 /** Decal boxes of one producer (<= 5 colour groups). `level` 0 = a future bay (stripe + zone tag), >= 1 = built (all four kinds). */
 export function decalPartsFor(producerId: string, level: number): DecalPart[] {
@@ -384,7 +413,8 @@ export function decalPartsFor(producerId: string, level: number): DecalPart[] {
     const zone = ZONE_LAYOUT[zoneId];
     const number = producerNumberOf(producerId);
     const built = Number.isFinite(level) && level >= DECAL_BUILT_LEVEL;
-    const anchors = clusterAnchors(zone);
+    const anchors = clusterAnchors(zoneId, zone);
+    const placement = DECAL_PLACEMENT[zoneId];
     const parts: DecalPart[] = [];
     const surface = (a: { x: number; z: number }): number => floorHeightAt(zone.x + a.x, zone.z + a.z) + DECAL_SURFACE_OFFSET;
     const push = (kind: DecalKind, color: IdentityColorKey, width: number, depth: number, centre: { x: number; z: number }, baseY: number, layer: number, rotYDeg: number): void => {
@@ -419,10 +449,11 @@ export function decalPartsFor(producerId: string, level: number): DecalPart[] {
     }
 
     // hazardStripe: 5 alternating amber / graphite boxes along the front edge of the foundation.
-    const stripeY = surface(anchors.stripe);
-    for (let i = 0; i < DECAL_STRIPE.boxes; i += 1) {
-        const offset = (i - (DECAL_STRIPE.boxes - 1) / 2) * DECAL_STRIPE.boxLength;
-        push('hazardStripe', i % 2 === 0 ? 'amber' : 'graphite', DECAL_STRIPE.boxLength, DECAL_STRIPE.boxDepth, { x: anchors.stripe.x - offset, z: anchors.stripe.z }, stripeY, 0, 0);
+    for (let i = 0; i < placement.stripeBoxes; i += 1) {
+        const offset = (i - (placement.stripeBoxes - 1) / 2) * DECAL_STRIPE.boxLength;
+        // Each stripe box takes the surface height under ITSELF (the Robot Line stripe straddles a slab edge).
+        const centre = { x: anchors.stripe.x - offset, z: anchors.stripe.z };
+        push('hazardStripe', i % 2 === 0 ? 'amber' : 'graphite', DECAL_STRIPE.boxLength, DECAL_STRIPE.boxDepth, centre, surface(centre), 0, 0);
     }
 
     // zoneTag: graphite plate + 1..5 amber pips (the producer number).
@@ -614,5 +645,5 @@ export function milestoneIconSlot(tier: PresentedMilestoneTier): IconSlot {
 
 /** Founder chip (local to the chip centre): the Robot icon (off-white / amber only; gold stays on the Founder robot) at the left edge. */
 export function founderChipIconSlot(): IconSlot {
-    return Object.freeze({ slot: 'founder_chip', x: -FOUNDER_CHIP_WIDTH / 2 + 22, y: 0, size: 26 });
+    return Object.freeze({ slot: 'founder_chip', x: -FOUNDER_CHIP_WIDTH / 2 + 24, y: 0, size: 36 });
 }

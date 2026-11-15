@@ -11,6 +11,11 @@ import {
     DECAL_KINDS,
     DECAL_MAX_PARTS_PER_PRODUCER,
     DECAL_MAX_PARTS_TOTAL,
+    DECAL_OUTSIDE_MARGIN,
+    DECAL_PLACEMENT,
+    PLATE_SCALE,
+    DECAL_TAG,
+    NUMBER_PLATE,
     DECAL_THICKNESS,
     ICON_NAMES,
     ICON_SHAPES,
@@ -41,6 +46,7 @@ import {
     type IdentityBox,
 } from '../assets/scripts/presentation/AutomataIdentity.ts';
 import { aiMarkGeometry } from '../assets/scripts/presentation/PermanentUpgradeLayout.ts';
+import { floorHeightAt } from '../assets/scripts/presentation/AssemblySliceLayout.ts';
 import { ZONE_LAYOUT } from '../assets/scripts/presentation/FactoryZoneLayout.ts';
 import { CORE_HUD_LAYOUT, PRODUCER_PANEL_LAYOUT, cardRowCenterY, cardRowWidth } from '../assets/scripts/presentation/UiLayout.ts';
 import { MILESTONE_TOAST_LAYOUT } from '../assets/scripts/presentation/MilestoneToastLayout.ts';
@@ -95,9 +101,25 @@ test('decals: <= 5 merged parts per producer, <= 30 in total, 4 kinds, dims > 0 
             assert.equal(part.size.y, DECAL_THICKNESS, 'thin decals');
             assert.equal(part.face, 'top');
             const b = decalPartBoundsXZ(part);
-            assert.ok(b.minX >= -zone.width / 2 - 1e-6 && b.maxX <= zone.width / 2 + 1e-6, `${producerId}/${part.kind} x inside ${zone.width}`);
-            assert.ok(b.minZ >= -zone.depth / 2 - 1e-6 && b.maxZ <= zone.depth / 2 + 1e-6, `${producerId}/${part.kind} z inside ${zone.depth}`);
-            assert.ok(part.localPos.y > 0.1, 'above the foundation top (no z-fight)');
+            const inside = b.minX >= -zone.width / 2 - 1e-6 && b.maxX <= zone.width / 2 + 1e-6 && b.minZ >= -zone.depth / 2 - 1e-6 && b.maxZ <= zone.depth / 2 + 1e-6;
+            const margin = DECAL_OUTSIDE_MARGIN - 1e-6;
+            const clear = b.minX >= zone.width / 2 + margin || b.maxX <= -zone.width / 2 - margin || b.minZ >= zone.depth / 2 + margin || b.maxZ <= -zone.depth / 2 - margin;
+            if (part.kind === 'numberPlate' || part.kind === 'zoneTag') assert.ok(clear, `${producerId}/${part.kind} sits >= 0.15 outside the footprint (machines never cover it)`);
+            else if (part.kind === 'hazardStripe' && DECAL_PLACEMENT[identityZoneOf(producerId)!].stripeOnGround) assert.ok(!inside, `${producerId} stripe on the ground`);
+            else assert.ok(inside, `${producerId}/${part.kind} inside the footprint`);
+            // World-space: clear of every other zone, the logistics spine and inside the 20 x 16 site boundary.
+            const wx0 = zone.x + b.minX; const wx1 = zone.x + b.maxX; const wz0 = zone.z + b.minZ; const wz1 = zone.z + b.maxZ;
+            assert.ok(wx0 >= -10 && wx1 <= 10 && wz0 >= -7 && wz1 <= 9, `${producerId}/${part.kind} inside the site`);
+            if (part.kind === 'numberPlate' || part.kind === 'zoneTag') {
+                for (const [otherId, other] of Object.entries(ZONE_LAYOUT)) {
+                    if (otherId === identityZoneOf(producerId)) continue;
+                    const overlap = wx0 < other.x + other.width / 2 && wx1 > other.x - other.width / 2 && wz0 < other.z + other.depth / 2 && wz1 > other.z - other.depth / 2;
+                    assert.equal(overlap, false, `${producerId}/${part.kind} not on ${otherId}`);
+                }
+                assert.equal(wx0 < 6.7 && wx1 > -6.3 && wz0 < 0.05 && wz1 > -0.65, false, `${producerId}/${part.kind} not on the logistics spine`);
+                assert.equal(wx0 < -2.2 && wx1 > -8.2 && wz0 < -0.3 && wz1 > -5.1 && producerId !== 'fabricator', false, `${producerId}/${part.kind} not on the opening foundation`);
+            }
+            assert.ok(part.localPos.y > 0.01 && part.localPos.y >= floorHeightAt(zone.x + part.localPos.x, zone.z + part.localPos.z) + 0.01, 'above the surface under it (no z-fight)');
         }
         // A future bay (level 0) keeps the stripe + zone tag only.
         assert.deepEqual([...new Set(decalPartsFor(producerId, 0).map((p) => p.kind))].sort(), ['hazardStripe', 'zoneTag']);
@@ -113,6 +135,14 @@ test('decals: layers stack by thickness (plates under glyphs) and the zone tag s
         const plate = tag.find((p) => p.color === 'graphite')!;
         assert.ok(tag.filter((p) => p.color === 'amber').every((p) => p.localPos.y > plate.localPos.y));
     });
+});
+
+test('plates and pips are enlarged separately (2.2x) and the pips fit the tag plate; no cyan in any decal (a cyan stripe is a machine light, not a decal)', () => {
+    assert.equal(PLATE_SCALE, 2.2);
+    assert.ok(NUMBER_PLATE.digitHeight >= 0.15 && DECAL_TAG.pip >= 0.1);
+    assert.ok(4 * DECAL_TAG.pipGap + DECAL_TAG.pip <= DECAL_TAG.width);
+    for (const producerId of IDENTITY_PRODUCER_IDS) for (const part of decalPartsFor(producerId, 1)) if (part.kind === 'hazardStripe') assert.ok(part.color === 'amber' || part.color === 'graphite');
+    assert.ok(decalPartsFor('advanced_robotics_complex', 1).filter((p) => p.kind === 'hazardStripe').length === 3, 'the complex stripe is shortened');
 });
 
 test('seven-segment digits and the number plate: 01..14 produce segments, 1 has 2, 8 has 7', () => {
@@ -151,17 +181,21 @@ test('AI Core: hex shell of 6 graphite bars stacked 2 high, floating off-white d
     const diamond = AI_CORE_PARTS.find((p) => p.kind === 'diamond')!;
     const cap = AI_CORE_PARTS.find((p) => p.kind === 'cap')!;
     assert.equal(diamond.color, 'offWhite');
+    // Tuning: the upper shell layer is an off-white rim (reads on the dark pedestal), the lower layer graphite; the cyan dot is bigger.
+    assert.deepEqual([...new Set(shell.filter((p) => p.center.y > 0).map((p) => p.color))], ['offWhite']);
+    assert.deepEqual([...new Set(shell.filter((p) => p.center.y < 0).map((p) => p.color))], ['graphite']);
+    assert.ok(cap.size.x >= 0.1 && AI_CORE_ARC.width >= 0.04);
     assert.equal(cap.color, 'cyan');
     assert.ok(cap.center.y > diamond.center.y);
 });
 
-test('AI Core sizes: persistent 0.28 (scale 1) < reveal peak 0.8, the shell scales together; the old cube sizes are gone', () => {
-    assert.equal(AI_CORE_PERSISTENT_SIZE, 0.28);
+test('AI Core sizes: persistent 0.36 < reveal peak 0.8, the shell scales together; the old cube sizes are gone', () => {
+    assert.equal(AI_CORE_PERSISTENT_SIZE, 0.36);
     assert.equal(AI_CORE_PEAK_SIZE, 0.8);
     assert.ok(AI_CORE_PERSISTENT_SIZE < AI_CORE_PEAK_SIZE);
     assert.equal(REBOOT_CORE_PERSISTENT_SIZE, AI_CORE_PERSISTENT_SIZE);
     assert.equal(REBOOT_CORE_PEAK_SIZE, AI_CORE_PEAK_SIZE);
-    assert.equal(aiCoreScaleFor(AI_CORE_PERSISTENT_SIZE), 1);
+    assert.ok(Math.abs(aiCoreScaleFor(AI_CORE_PERSISTENT_SIZE) - 0.36 / 0.28) < 1e-12);
     assert.ok(Math.abs(rebootCoreCenterY(0.28) - (0.42 + AI_CORE_SHELL_HALF_HEIGHT)) < 1e-12, 'Reboot core height mirrors the AI Core shell');
     assert.ok(Math.abs(aiCoreScaleFor(AI_CORE_PEAK_SIZE) - 0.8 / 0.28) < 1e-12);
     assert.equal(aiCoreScaleFor(0), 0);
