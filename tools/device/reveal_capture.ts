@@ -34,6 +34,7 @@ import { seedAut061 } from './seed_aut061.ts';
 import { evaluateRestore, type RestoreExpectation } from './restore_checks.ts';
 import { seedAut062 } from './seed_aut062.ts';
 import { evaluateFounderRobot, type FounderRobotExpectation } from './founder_robot_checks.ts';
+import { evaluateAnalytics, type AnalyticsExpectation } from './analytics_checks.ts';
 import { BILLING_CHIP_WAIT_MS, BILLING_RESULT_WAIT_MS, BILLING_SHEET_SETTLE_MS, evaluateBilling, type BillingExpectation } from './billing_checks.ts';
 import { FOUNDER_SHOP_RELAUNCH_MARKER_EVT, evaluateFounderShop, type FounderShopExpectation } from './founder_shop_checks.ts';
 import { ADMOB_AVAILABILITY_WAIT_MS, ADMOB_RESULT_WAIT_AFTER_BACK_MS, ADMOB_RESULT_WAIT_BEFORE_BACK_MS, evaluateAdmob, type AdmobExpectation } from './admob_checks.ts';
@@ -82,6 +83,8 @@ export interface RevealCaptureOptions {
     readonly expectRestore?: RestoreExpectation;
     /** AUT-062 (Founder Robot variant, MOCK store only for mid_session): 'not_owned' = no Founder robot; 'owned_first' = tap Next Goal, the first Worker Bot reveal is the Founder robot; 'owned_many' = rank 0 + one pooled robot among 7; 'mid_session' = REAL taps chip -> BUY, the variant swaps in place; 'reload' = force-stop + relaunch WITHOUT reseeding, same Founder ranks. Objective wiring checks only (founder_robot_checks.ts); readability stays with visual QA. */
     readonly expectFounderRobot?: FounderRobotExpectation;
+    /** AUT-064 (optional, added to the AUT-055 / AUT-056 / AUT-059 success scenarios): the DEBUG `analytics` events of the same capture must be clean (valid params, one opportunity per episode, opt-in / completion / grant linkage, one opaque session id, no price text). Objective checks only (analytics_checks.ts). */
+    readonly expectAnalytics?: AnalyticsExpectation;
     /** AUT-050: 'purchase' = tap the AI chip, open the panel, buy an affordable row with a real tap, switch tab, force-stop + relaunch WITHOUT reseeding (balance / rank persisted). */
     readonly expectPermanentUpgrades?: PermanentUpgradeExpectation;
     /** AUT-052: 'toggle_persist' = tap the Settings chip, open the panel, toggle Music OFF with a real tap, close, force-stop + relaunch WITHOUT reseeding (the file survives), toggle it back ON, close. */
@@ -142,6 +145,7 @@ export interface RevealScenario {
     readonly expectRebootUi?: RebootUiExpectation;
     readonly expectRestore?: RestoreExpectation;
     readonly expectFounderRobot?: FounderRobotExpectation;
+    readonly expectAnalytics?: AnalyticsExpectation;
 }
 
 export const DEFAULT_REVEAL_SCENARIO_ID = 'aut043';
@@ -177,12 +181,12 @@ export const REVEAL_SCENARIOS: Readonly<Record<string, RevealScenario>> = Object
     // AUT-RBT-001: Reboot entry + confirmation UI. Seed: Civilization #1, reward 5 AI Cores, progress ~45%, no debug command. REAL taps: chip -> modal -> CANCEL -> chip -> REBOOT -> frames through the 4 s sequence -> force-stop + relaunch WITHOUT reseeding.
     rbt001: { id: 'rbt001', label: 'rbt001-reboot-ui', seed: (d, pkg, act) => seedRbt001(d, pkg, act), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectRebootUi: 'confirm_flow' },
     // AUT-055: Offline Double (rewarded x2, MOCK ad). The seed writes the DEBUG-only debug_ads.json (read once) with the scripted ad outcome. trigger 'none': the drive uses REAL taps at the rects `ui_layout` reports.
-    'aut055-success': { id: 'aut055-success', label: 'aut055-double-success', seed: (d, pkg, act) => seedAut055(d, pkg, act, 'ready', 'rewarded'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectOfflineDouble: 'success' },
+    'aut055-success': { id: 'aut055-success', label: 'aut055-double-success', seed: (d, pkg, act) => seedAut055(d, pkg, act, 'ready', 'rewarded'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectOfflineDouble: 'success', expectAnalytics: 'offline_double' },
     'aut055-closed': { id: 'aut055-closed', label: 'aut055-double-closed', seed: (d, pkg, act) => seedAut055(d, pkg, act, 'ready', 'closed'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectOfflineDouble: 'closed' },
     'aut055-failed': { id: 'aut055-failed', label: 'aut055-double-failed', seed: (d, pkg, act) => seedAut055(d, pkg, act, 'ready', 'failed'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectOfflineDouble: 'failed' },
     'aut055-ineligible': { id: 'aut055-ineligible', label: 'aut055-double-ineligible', seed: (d, pkg, act) => seedAut055(d, pkg, act, 'short_ineligible'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectOfflineDouble: 'ineligible' },
     // AUT-056: Extended Overclock (rewarded x2 for 10 active minutes, MOCK ad). The seed writes the DEBUG-only debug_ads.json (read once) with the scripted ad outcome. trigger 'none': the drive uses REAL taps at the rects `ui_layout` reports.
-    'aut056-success': { id: 'aut056-success', label: 'aut056-extended-success', seed: (d, pkg, act) => seedAut056(d, pkg, act, 'eligible', 'rewarded'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectExtendedOverclock: 'success' },
+    'aut056-success': { id: 'aut056-success', label: 'aut056-extended-success', seed: (d, pkg, act) => seedAut056(d, pkg, act, 'eligible', 'rewarded'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectExtendedOverclock: 'success', expectAnalytics: 'extended_overclock' },
     'aut056-free-active': { id: 'aut056-free-active', label: 'aut056-extended-free-active', seed: (d, pkg, act) => seedAut056(d, pkg, act, 'free_active', 'rewarded'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectExtendedOverclock: 'free_active' },
     'aut056-resume': { id: 'aut056-resume', label: 'aut056-extended-resume', seed: (d, pkg, act) => seedAut056(d, pkg, act, 'resume'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 70_000, intervalMs: 2_000, expectExtendedOverclock: 'resume' },
     'aut056-closed': { id: 'aut056-closed', label: 'aut056-extended-closed', seed: (d, pkg, act) => seedAut056(d, pkg, act, 'eligible', 'closed'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectExtendedOverclock: 'closed' },
@@ -194,7 +198,7 @@ export const REVEAL_SCENARIOS: Readonly<Record<string, RevealScenario>> = Object
     'aut057-extended': { id: 'aut057-extended', label: 'aut057-admob-extended', seed: (d, pkg, act) => seedAut057(d, pkg, act, 'extended'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 3_000, intervalMs: 500, expectAdmob: 'extended' },
     // AUT-059: Founder's Pack shop (MOCK store, price = test metadata). The seed writes the DEBUG-only debug_purchase.json (read once) with the product metadata + scripted outcomes. trigger 'none': REAL taps at the rects `ui_layout` reports.
     'aut059-available': { id: 'aut059-available', label: 'aut059-founder-available', seed: (d, pkg, act) => seedAut059(d, pkg, act, 'available'), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectFounderShop: 'available' },
-    'aut059-purchase-success': { id: 'aut059-purchase-success', label: 'aut059-founder-purchase-success', seed: (d, pkg, act) => seedAut059(d, pkg, act, 'available', { outcomes: ['completed'], duplicateCallback: true }), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectFounderShop: 'purchase_success' },
+    'aut059-purchase-success': { id: 'aut059-purchase-success', label: 'aut059-founder-purchase-success', seed: (d, pkg, act) => seedAut059(d, pkg, act, 'available', { outcomes: ['completed'], duplicateCallback: true }), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectFounderShop: 'purchase_success', expectAnalytics: 'founder_purchase' },
     'aut059-pending': { id: 'aut059-pending', label: 'aut059-founder-pending', seed: (d, pkg, act) => seedAut059(d, pkg, act, 'available', { outcomes: ['pending'] }), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectFounderShop: 'pending' },
     'aut059-cancel': { id: 'aut059-cancel', label: 'aut059-founder-cancel', seed: (d, pkg, act) => seedAut059(d, pkg, act, 'available', { outcomes: ['cancelled'] }), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectFounderShop: 'cancel' },
     'aut059-fail': { id: 'aut059-fail', label: 'aut059-founder-fail', seed: (d, pkg, act) => seedAut059(d, pkg, act, 'available', { outcomes: ['failed'] }), expectConstruction: null, expectFocus: false, trigger: 'none', durationMs: 2_000, intervalMs: 500, expectFounderShop: 'fail' },
@@ -225,7 +229,7 @@ export function resolveRevealScenario(id: unknown): RevealScenario | null {
 }
 
 /** Objective checks over a timeline (pure, unit-tested). `tMs` is relative to the trigger (negative = before). */
-export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectOfflineDouble?: OfflineDoubleExpectation; expectExtendedOverclock?: ExtendedOverclockExpectation; expectAdmob?: AdmobExpectation; expectFounderShop?: FounderShopExpectation; expectBilling?: BillingExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation; expectSettings?: SettingsExpectation; expectRebootUi?: RebootUiExpectation; expectRestore?: RestoreExpectation; expectFounderRobot?: FounderRobotExpectation }): RevealCheck[] {
+export function evaluateRevealTimeline(events: readonly TimelineEvent[], options: { expectConstruction: string | null; expectFocus: boolean; triggered: boolean; frameCount: number; expectBoostPhases?: readonly string[]; expectCommands?: readonly string[]; expectEraTitle?: string; expectReboot?: RebootExpectation; expectOfflineReport?: OfflineReportExpectation; expectOfflineDouble?: OfflineDoubleExpectation; expectExtendedOverclock?: ExtendedOverclockExpectation; expectAdmob?: AdmobExpectation; expectFounderShop?: FounderShopExpectation; expectBilling?: BillingExpectation; expectPermanentUpgrades?: PermanentUpgradeExpectation; expectSettings?: SettingsExpectation; expectRebootUi?: RebootUiExpectation; expectRestore?: RestoreExpectation; expectFounderRobot?: FounderRobotExpectation; expectAnalytics?: AnalyticsExpectation }): RevealCheck[] {
     const checks: RevealCheck[] = [];
     const errors = events.filter((e) => e.event.evt === 'error');
     checks.push({ id: 'no_error_events', ok: errors.length === 0, detail: `${errors.length} error events` });
@@ -264,6 +268,7 @@ export function evaluateRevealTimeline(events: readonly TimelineEvent[], options
     if (options.expectBilling !== undefined) checks.push(...evaluateBilling(events, options.expectBilling));
     if (options.expectRestore !== undefined) checks.push(...evaluateRestore(events, options.expectRestore));
     if (options.expectFounderRobot !== undefined) checks.push(...evaluateFounderRobot(events, options.expectFounderRobot));
+    if (options.expectAnalytics !== undefined) checks.push(...evaluateAnalytics(events, options.expectAnalytics));
     if (options.expectPermanentUpgrades !== undefined) checks.push(...evaluatePermanentUpgrades(events, options.expectPermanentUpgrades));
     if (options.expectSettings !== undefined) checks.push(...evaluateSettings(events, options.expectSettings));
     if (options.expectRebootUi !== undefined) checks.push(...evaluateRebootUi(events, options.expectRebootUi));
@@ -1023,7 +1028,7 @@ export async function runRevealCapture(driver: SessionDeviceDriver, options: Rev
     collect(Date.now());
     await driver.stopLogcat();
 
-    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectRestore: options.expectRestore, expectFounderRobot: options.expectFounderRobot, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport, expectOfflineDouble: options.expectOfflineDouble, expectExtendedOverclock: options.expectExtendedOverclock, expectAdmob: options.expectAdmob, expectFounderShop: options.expectFounderShop, expectBilling: options.expectBilling, expectPermanentUpgrades: options.expectPermanentUpgrades, expectSettings: options.expectSettings, expectRebootUi: options.expectRebootUi });
+    const checks = evaluateRevealTimeline(events, { expectConstruction: options.expectConstruction ?? null, expectFocus: options.expectFocus ?? false, triggered, frameCount: frames.length, expectRestore: options.expectRestore, expectFounderRobot: options.expectFounderRobot, expectAnalytics: options.expectAnalytics, expectBoostPhases: options.expectBoostPhases, expectCommands: options.expectCommands, expectEraTitle: options.expectEraTitle, expectReboot: options.expectReboot, expectOfflineReport: options.expectOfflineReport, expectOfflineDouble: options.expectOfflineDouble, expectExtendedOverclock: options.expectExtendedOverclock, expectAdmob: options.expectAdmob, expectFounderShop: options.expectFounderShop, expectBilling: options.expectBilling, expectPermanentUpgrades: options.expectPermanentUpgrades, expectSettings: options.expectSettings, expectRebootUi: options.expectRebootUi });
     checks.unshift({ id: 'ui_layout_ready', ok: layout !== null, detail: layout ? 'ui_layout received' : 'no ui_layout (app did not reach the HUD)' });
     if (options.expectPermanentUpgrades || options.expectSettings || options.expectRebootUi || options.expectOfflineDouble || options.expectExtendedOverclock || options.expectAdmob || options.expectFounderShop || options.expectBilling) checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });
     if (trigger !== 'none') checks.splice(1, 0, { id: 'trigger_sent', ok: triggered, detail: tapDetail });

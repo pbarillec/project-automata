@@ -70,6 +70,7 @@ import { DEBUG_COMMAND_FILE, parseDebugCommandFile } from './DebugCommandFile.ts
 import { DEBUG_ADS_FILE, parseDebugAdsScriptFile, type DebugAdsScript } from './DebugAdsScriptFile.ts';
 import { createBuildAdsService, createBuildAnalyticsTracker, createBuildPurchaseService } from './BuildPlatformServices.ts';
 import { AnalyticsObserver } from './AnalyticsObserver.ts';
+import { createAnalyticsStateContext } from './AnalyticsStateContext.ts';
 import { DEBUG_PURCHASE_FILE, parseDebugPurchaseScriptFile, type DebugPurchaseScript } from './DebugPurchaseScriptFile.ts';
 import { FounderShopController } from './FounderShopController';
 import { FounderShopFlow } from './FounderShopFlow.ts';
@@ -330,6 +331,11 @@ export class FactoryWorldBootstrap extends Component {
                 },
                 // AUT-051: a Reboot blocked by the pending offline report re-surfaces the card.
                 onRebootBlockedByPendingOffline: () => { this.rebootBlockedByPendingOffline = true; this.sessionWiring?.offlineReport.reportRebootBlocked(); this.showOfflineReport('reboot_blocked'); },
+            });
+            // AUT-064: read-only context for the Extended Overclock analytics (era / civilization / next goal / lifetime output); never written back.
+            this.analytics?.setStateReader(() => {
+                const snapshot = binding.getStateSnapshot();
+                return snapshot ? createAnalyticsStateContext(result.configRepository, snapshot) : null;
             });
             this.pendingBinding = { binding, status: result.startup.status, displayNames: result.configRepository };
         }).catch((error: unknown) => {

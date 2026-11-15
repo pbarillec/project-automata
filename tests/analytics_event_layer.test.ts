@@ -40,10 +40,15 @@ function makeObserver(m, options = {}) {
     const service = new m.debugModule.DebugAnalyticsService();
     const diagnostics = [];
     const tracker = new m.trackerModule.AnalyticsTracker(service, { validation: 'strict', onDiagnostic: (d) => diagnostics.push(d), ...options });
-    return { service, tracker, diagnostics, observer: new m.observerModule.AnalyticsObserver(tracker) };
+    return { service, tracker, diagnostics, observer: new m.observerModule.AnalyticsObserver(tracker, { createSessionId: () => 'sess_test' }) };
 }
 
 const ids = (service) => service.events.map((e) => e.eventId);
+/** The provider events without the observer-added opaque session id (asserted separately). */
+const plain = (service) => service.events.map((e) => {
+    const { session_id: _session, ...params } = e.params;
+    return { eventId: e.eventId, params };
+});
 
 // ---------------------------------------------------------------- catalogue
 
@@ -90,7 +95,7 @@ test('validation: valid events pass; missing, unknown, wrong type, bad value, to
     assert.deepEqual(v('era_reached', { era_id: 5 }).issues.map((i) => i.code), ['invalid_type']);
     assert.deepEqual(v('era_reached', { era_id: 'era 2' }).issues.map((i) => i.code), ['invalid_value']);
     assert.deepEqual(v('era_reached', { era_id: 'x'.repeat(65) }).issues.map((i) => i.code), ['too_long']);
-    assert.deepEqual(v('rewarded_opportunity', { placement: 'nope' }).issues.map((i) => i.code), ['invalid_value']);
+    assert.deepEqual(v('rewarded_opportunity', { placement: 'nope', opportunity_id: 'ofd_1' }).issues.map((i) => i.code), ['invalid_value']);
     assert.deepEqual(v('reboot_completed', { civilization: 0, ai_cores_granted: 1 }).issues.map((i) => i.code), ['out_of_range']);
     assert.deepEqual(v('reboot_completed', { civilization: 1.5, ai_cores_granted: 1 }).issues.map((i) => i.code), ['invalid_type']);
     assert.deepEqual(v('offline_collected', { absence_bucket: 'lt_1m', cap_applied: 'yes', doubled: false }).issues.map((i) => i.code), ['invalid_type']);
@@ -146,7 +151,9 @@ test('mapper: every in-scope domain event maps to a schema-valid analytics event
     assert.deepEqual(drafts.map((d) => d.eventId), expected);
     for (const d of drafts) assert.equal(m.validator.validateAnalyticsEvent(d.eventId, d.params).ok, true, d.eventId);
     assert.deepEqual(drafts[2].params, { era_id: 'era_2' });
-    assert.deepEqual(drafts[7].params, { product: 'founder_pack', request_id: 'founder_pack:1:1' });
+    // Without an observed unlock the time bucket is 'unknown' (AUT-064).
+    assert.deepEqual(drafts[7].params, { product: 'founder_pack', since_unlock_bucket: 'unknown', before_first_reboot: true, request_id: 'founder_pack:1:1' });
+    assert.deepEqual(drafts[8].params, { product: 'founder_pack', restore_context: 'store_query' });
 });
 
 test('mapper: unrelated domain events and replayed founder deliveries map to nothing', async () => {
@@ -171,7 +178,7 @@ test('observer: domain events reach the provider in order', async () => {
 
 // ---------------------------------------------------------------- rewarded
 
-test('rewarded: opportunity is de-duplicated, then start / complete carry the opaque request id', async () => {
+test('rewarded: opportunity is de-duplicated, then start / complete carry the opaque request id and the opportunity id', async () => {
     const m = await load();
     const { service, observer } = makeObserver(m);
     const offered = { eligible: true, reason: 'ok', adAvailable: true, blockedBy: null };
@@ -179,11 +186,12 @@ test('rewarded: opportunity is de-duplicated, then start / complete carry the op
     observer.observeRewardedPhase('offline_double', 'offer', offered);
     observer.observeRewardedPhase('offline_double', 'ad_started', { requestId: 'offline_double:1:1' });
     observer.observeRewardedPhase('offline_double', 'ad_result', { status: 'rewarded', rewardVerified: true, duplicate: false });
-    assert.deepEqual(service.events, [
-        { eventId: 'rewarded_opportunity', params: { placement: 'offline_double' } },
-        { eventId: 'rewarded_start', params: { placement: 'offline_double', request_id: 'offline_double:1:1' } },
-        { eventId: 'rewarded_complete', params: { placement: 'offline_double', request_id: 'offline_double:1:1' } },
+    assert.deepEqual(plain(service), [
+        { eventId: 'rewarded_opportunity', params: { placement: 'offline_double', opportunity_id: 'ofd_1' } },
+        { eventId: 'rewarded_start', params: { placement: 'offline_double', request_id: 'offline_double:1:1', opportunity_id: 'ofd_1' } },
+        { eventId: 'rewarded_complete', params: { placement: 'offline_double', request_id: 'offline_double:1:1', opportunity_id: 'ofd_1' } },
     ]);
+    assert.ok(service.events.every((e) => e.params.session_id === 'sess_test'));
 });
 
 test('rewarded: failed / closed / timeout / unverified -> failure; unavailable at offer and at show; per-placement state; duplicates ignored', async () => {
@@ -248,7 +256,7 @@ test('offline: report shown / collected / auto-collected with bucketed durations
     observer.observeOfflineSignal({ kind: 'collected', rawSeconds: 4000, capApplied: false, doubled: true, saveOk: null });
     observer.observeOfflineSignal({ kind: 'collected', rawSeconds: 90000, capApplied: true, doubled: false, saveOk: true });
     observer.observeOfflineSignal({ kind: 'auto_collected', rawSeconds: 30, saveOk: false });
-    assert.deepEqual(service.events, [
+    assert.deepEqual(plain(service), [
         { eventId: 'offline_report_shown', params: { reason: 'startup', absence_bucket: '30m_2h', cap_applied: false } },
         { eventId: 'offline_collected', params: { absence_bucket: '30m_2h', cap_applied: false, doubled: true } },
         { eventId: 'offline_collected', params: { absence_bucket: 'gt_8h', cap_applied: true, doubled: false, saved: true } },

@@ -396,6 +396,7 @@ async function main(): Promise<number> {
             expectBilling: scenario.expectBilling,
             expectRestore: scenario.expectRestore,
             expectFounderRobot: scenario.expectFounderRobot,
+            expectAnalytics: scenario.expectAnalytics,
             expectPermanentUpgrades: scenario.expectPermanentUpgrades,
             expectSettings: scenario.expectSettings,
             expectRebootUi: scenario.expectRebootUi,

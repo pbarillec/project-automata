@@ -120,6 +120,7 @@ export class OfflineDoubleFlow {
             adAvailable,
             blockedBy: this.state.blockedBy,
             projectedReward: this.state.projectedReward,
+            multiplier: offer?.multiplier ?? null,
             claimsInWindow: this.state.eligibility?.claimsInWindow ?? 0,
         });
         this.onChange?.();
@@ -186,6 +187,7 @@ export class OfflineDoubleFlow {
                     grantedReward: granted,
                     multiplier,
                     claimCount: result.collect.state.monetization.rewardedClaims[OFFLINE_DOUBLE_CLAIM_KEY]?.claimCount ?? 0,
+                    claimsInWindow: result.collect.state.monetization.rewardedClaims[OFFLINE_DOUBLE_CLAIM_KEY]?.recentClaimUtcMs.length ?? 0,
                     saveOk: result.save.ok,
                 });
                 return 'granted';

@@ -30,6 +30,9 @@ export const ANALYTICS_EVENTS = {
     purchaseCancel: 'purchase_cancel',
     purchaseFailure: 'purchase_failure',
     purchaseRestore: 'purchase_restore',
+    offlineBonusGranted: 'offline_bonus_granted',
+    extendedOverclockActivated: 'extended_overclock_activated',
+    extendedOverclockEnded: 'extended_overclock_ended',
 } as const;
 
 export type AnalyticsEventId = (typeof ANALYTICS_EVENTS)[keyof typeof ANALYTICS_EVENTS];
@@ -60,6 +63,16 @@ export const ANALYTICS_PRODUCTS = ['founder_pack'] as const;
 export const ANALYTICS_OFFLINE_BUCKETS = ['lt_1m', '1_5m', '5_30m', '30m_2h', '2_8h', 'gt_8h'] as const;
 export type AnalyticsOfflineBucket = (typeof ANALYTICS_OFFLINE_BUCKETS)[number];
 
+/**
+ * AUT-064 elapsed-time buckets (run age, time since the Founder offer unlocked). `unknown` = the start of the interval was not observed in this
+ * session (no timestamp is persisted for it, so the analyzer derives the exact span from the backend event timestamps instead).
+ */
+export const ANALYTICS_ELAPSED_BUCKETS = ['lt_5m', '5_15m', '15_30m', '30m_1h', '1_3h', '3_8h', 'gt_8h', 'unknown'] as const;
+export type AnalyticsElapsedBucket = (typeof ANALYTICS_ELAPSED_BUCKETS)[number];
+export const ANALYTICS_RESTORE_CONTEXTS = ['purchase_attempt', 'store_query'] as const;
+/** Upper bound of the reward magnitude (`floor(log10(reward))`) parameters. */
+export const ANALYTICS_MAX_REWARD_MAGNITUDE = 400;
+
 const id = (required = true): AnalyticsParamSpec => ({ kind: 'identifier', required });
 const opaque = (required = true): AnalyticsParamSpec => ({ kind: 'opaque_id', required });
 const oneOf = (values: readonly string[], required = true): AnalyticsParamSpec => ({ kind: 'enum', required, values });
@@ -69,8 +82,13 @@ const flag = (required = true): AnalyticsParamSpec => ({ kind: 'boolean', requir
 const placement = oneOf(ANALYTICS_REWARDED_PLACEMENTS);
 const product = oneOf(ANALYTICS_PRODUCTS);
 const offlineBucket = oneOf(ANALYTICS_OFFLINE_BUCKETS);
+const elapsedBucket = oneOf(ANALYTICS_ELAPSED_BUCKETS);
+const magnitude = (required = true): AnalyticsParamSpec => int(0, ANALYTICS_MAX_REWARD_MAGNITUDE, required);
+/** Opportunity episode id (opaque, session scoped counter; NO timestamp) tying opportunity -> start -> complete -> granted of one offer episode. */
+const opportunityId = (required = false): AnalyticsParamSpec => opaque(required);
+const claimsInWindow = int(0, 10_000);
 
-export const ANALYTICS_EVENT_SCHEMAS: Readonly<Record<AnalyticsEventId, AnalyticsEventSchema>> = Object.freeze({
+const BASE_EVENT_SCHEMAS: Readonly<Record<AnalyticsEventId, AnalyticsEventSchema>> = {
     producer_unlock: { params: { producer_id: id(), source: oneOf(['producer_purchase', 'breakthrough']) } },
     breakthrough_purchase: { params: { breakthrough_id: id() } },
     era_reached: { params: { era_id: id() } },
@@ -82,19 +100,31 @@ export const ANALYTICS_EVENT_SCHEMAS: Readonly<Record<AnalyticsEventId, Analytic
     offline_report_shown: { params: { reason: oneOf(['startup', 'resumed', 'reboot_blocked']), absence_bucket: offlineBucket, cap_applied: flag() } },
     offline_collected: { params: { absence_bucket: offlineBucket, cap_applied: flag(), doubled: flag(), saved: flag(false) } },
     offline_auto_collected: { params: { absence_bucket: offlineBucket, saved: flag(false) } },
-    rewarded_opportunity: { params: { placement } },
-    rewarded_start: { params: { placement, request_id: opaque() } },
-    rewarded_complete: { params: { placement, request_id: opaque(false) } },
-    rewarded_failure: { params: { placement, reason: oneOf(['closed', 'failed', 'timeout', 'unverified']), request_id: opaque(false) } },
-    rewarded_unavailable: { params: { placement, stage: oneOf(['offer', 'show']) } },
-    purchase_offer_shown: { params: { product } },
+    // AUT-064: opportunity = one offer EPISODE (not one offer read); opt-in = rewarded_start of the same opportunity_id.
+    rewarded_opportunity: { params: { placement, opportunity_id: opportunityId(true), absence_bucket: oneOf(ANALYTICS_OFFLINE_BUCKETS, false), base_reward_mag: magnitude(false), multiplier: int(1, 100, false) } },
+    rewarded_start: { params: { placement, request_id: opaque(), opportunity_id: opportunityId() } },
+    rewarded_complete: { params: { placement, request_id: opaque(false), opportunity_id: opportunityId() } },
+    rewarded_failure: { params: { placement, reason: oneOf(['closed', 'failed', 'timeout', 'unverified']), request_id: opaque(false), opportunity_id: opportunityId() } },
+    rewarded_unavailable: { params: { placement, stage: oneOf(['offer', 'show']), opportunity_id: opportunityId() } },
+    offline_bonus_granted: { params: { request_id: opaque(false), opportunity_id: opportunityId(), multiplier: int(1, 100), base_reward_mag: magnitude(), bonus_reward_mag: magnitude(), claims_in_window: claimsInWindow } },
+    extended_overclock_activated: { params: { request_id: opaque(false), opportunity_id: opportunityId(), claims_in_window: claimsInWindow, multiplier: int(1, 100), run_age_bucket: elapsedBucket, era_id: id(false), civilization: int(1, 10_000, false), next_goal_id: id(false) } },
+    extended_overclock_ended: { params: { request_id: opaque(false), outcome: oneOf(['expired']), production_gain_mag: magnitude(false) } },
+    purchase_offer_shown: { params: { product, since_unlock_bucket: elapsedBucket, before_first_reboot: flag() } },
     purchase_start: { params: { product, request_id: opaque() } },
-    purchase_complete: { params: { product, request_id: opaque(false) } },
+    purchase_complete: { params: { product, request_id: opaque(false), since_unlock_bucket: elapsedBucket, before_first_reboot: flag() } },
     purchase_pending: { params: { product, request_id: opaque(false) } },
     purchase_cancel: { params: { product, request_id: opaque(false) } },
     purchase_failure: { params: { product, reason: oneOf(['failed', 'timeout', 'unavailable', 'apply_rejected']), request_id: opaque(false) } },
-    purchase_restore: { params: { product } },
-});
+    purchase_restore: { params: { product, restore_context: oneOf(ANALYTICS_RESTORE_CONTEXTS) } },
+};
+
+/**
+ * AUT-064: every event may carry the opaque per-launch `session_id` (random, no timestamp, never persisted). Combined with the backend event
+ * timestamp it gives the session / rolling-day correlation without any user or device identifier.
+ */
+export const ANALYTICS_EVENT_SCHEMAS: Readonly<Record<AnalyticsEventId, AnalyticsEventSchema>> = Object.freeze(
+    Object.fromEntries(Object.entries(BASE_EVENT_SCHEMAS).map(([eventId, schema]) => [eventId, { params: { ...schema.params, session_id: opaque(false) } }])) as Record<AnalyticsEventId, AnalyticsEventSchema>,
+);
 
 export function isAnalyticsEventId(value: string): value is AnalyticsEventId {
     return Object.prototype.hasOwnProperty.call(ANALYTICS_EVENT_SCHEMAS, value);
@@ -109,4 +139,23 @@ export function bucketOfflineSeconds(seconds: number): AnalyticsOfflineBucket {
     if (s < 7200) return '30m_2h';
     if (s < 28800) return '2_8h';
     return 'gt_8h';
+}
+
+/** Buckets an elapsed duration (seconds); `null` (start not observed) -> `unknown`. */
+export function bucketElapsedSeconds(seconds: number | null): AnalyticsElapsedBucket {
+    if (seconds === null || !Number.isFinite(seconds)) return 'unknown';
+    const s = seconds > 0 ? seconds : 0;
+    if (s < 300) return 'lt_5m';
+    if (s < 900) return '5_15m';
+    if (s < 1800) return '15_30m';
+    if (s < 3600) return '30m_1h';
+    if (s < 10800) return '1_3h';
+    if (s < 28800) return '3_8h';
+    return 'gt_8h';
+}
+
+/** Order-of-magnitude bucket of a reward (`floor(log10)`, 0 for < 10): never an exact amount. */
+export function rewardMagnitude(value: number): number {
+    if (!Number.isFinite(value) || value < 10) return 0;
+    return Math.min(ANALYTICS_MAX_REWARD_MAGNITUDE, Math.floor(Math.log10(value)));
 }
