@@ -113,3 +113,7 @@ Wired through `cli.ts` (`expectQaToolkit`), `reveal_capture.ts` (`RevealCaptureO
 - A 5 s-old save leaves a sub-minute preview that the UI collects silently at startup (AUT-051b); `createPendingOffline` is rejected while a preview is still pending, hence the 4 s first delay of the scenarios.
 - `mockFounderOwned: false` cannot un-own (production reconcile policy); reset with the `founder-available` preset.
 - State patches re-sync the HUD / panels / world like a load, but big visual jumps (a new era hall) are only guaranteed after a relaunch (the patch is saved first).
+
+## Device evidence (2026-11-15)
+
+Gate APK `aut069`; `npm run check` 1446 tests green. Captures PASS (0 errors): `aut069-qa-patches`, `aut069-qa-offline` (state patches and pending-offline each applied once with source debug); regressions `aut049`, `aut055-success`. Non-player-visible tooling: no visual QA required. Open follow-up (one line): `RobotPopulationController` reads `population_benchmark.json` behind `DEBUG !== true` only (AUT-041, pre-existing); could also require diagnostics.
