@@ -195,6 +195,14 @@ export function formatAssemblyBatchText(viewModel: AssemblyBatchViewModel, catal
 
 export function formatPanelAction(action: ProducerPanelPurchaseAction | undefined, catalogue: TextCatalogue = getDefaultTextCatalogue()): string {
     if (!action) return EMPTY_VALUE_TEXT;
+    // ×MAX shows the resolved preview quantity (action.quantity, unmodified); x1/x10 keep the generic templates.
+    if (action.id === 'xMax') {
+        return catalogue.resolveText(action.isEnabled ? 'producer_panel.action.max' : 'producer_panel.action.max.unavailable', {
+            label: catalogue.resolveText(action.labelKey),
+            quantity: action.quantity,
+            cost: action.costFormatted,
+        });
+    }
     return catalogue.resolveText(action.isEnabled ? 'producer_panel.action' : 'producer_panel.action.unavailable', {
         label: catalogue.resolveText(action.labelKey),
         cost: action.costFormatted,

@@ -187,7 +187,9 @@ async function representativeStrings() {
     const maxGap = Math.max(...milestones.map((m, i) => m.threshold - (i === 0 ? 0 : milestones[i - 1].threshold)));
     const maxMultiplier = Math.max(...milestones.map((m) => m.productionMultiplier));
     const states = ['locked', 'ready', 'active', 'cooldown', 'suspended'];
-    const action = (labelKey) => c.resolveText('producer_panel.action.unavailable', { label: c.resolveText(labelKey), cost: WIDE_NUMBER });
+    const action = (labelKey) => labelKey === 'producer_panel.buy_max'
+        ? c.resolveText('producer_panel.action.max.unavailable', { label: c.resolveText(labelKey), quantity: 9999, cost: WIDE_NUMBER })
+        : c.resolveText('producer_panel.action.unavailable', { label: c.resolveText(labelKey), cost: WIDE_NUMBER });
     return {
         IndustrialOutputValue: [c.resolveText('hud.industrial_output', { value: WIDE_NUMBER })],
         ProductionPerSecondValue: [c.resolveText('hud.production_per_second', { value: WIDE_NUMBER })],

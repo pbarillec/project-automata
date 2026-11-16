@@ -126,6 +126,8 @@ goals complete") were written for this task and approved in the same review.
 | `producer_panel.buy_max` | Buy ×MAX |
 | `producer_panel.action` | {label} {cost} |
 | `producer_panel.action.unavailable` | {label} {cost} • Unavailable |
+| `producer_panel.action.max` | {label} (×{quantity}) {cost} |
+| `producer_panel.action.max.unavailable` | {label} (×{quantity}) {cost} • Unavailable |
 
 `next_goal.affordability.not_applicable` is deliberately absent. With no cost, the
 context falls back to the progress or blocking text, so that state never reaches the

@@ -77,7 +77,7 @@ function buildSlots(m) {
         S(/^producer_panel\.none_selected$/, 'panel.ProducerName', panelWidth, font(ui.PRODUCER_PANEL_LAYOUT, 'ProducerName'), body),
         S(/^producer_panel\.(level|production_per_second)$/, 'panel.ProducerLevel/Production', panelWidth, font(ui.PRODUCER_PANEL_LAYOUT, 'ProducerLevel'), body),
         S(/^producer_panel\.milestone\./, 'panel.ProducerMilestone', panelWidth, font(ui.PRODUCER_PANEL_LAYOUT, 'ProducerMilestone'), body),
-        S(/^producer_panel\.(buy_1|buy_10|buy_max|action|action\.unavailable)$/, 'panel.Action_x* (2 lines)', action.actions[0].width, action.fontSize, body, action.captionLines),
+        S(/^producer_panel\.(buy_1|buy_10|buy_max|action|action\.unavailable|action\.max|action\.max\.unavailable)$/, 'panel.Action_x* (2 lines)', action.actions[0].width, action.fontSize, body, action.captionLines),
         S(/^producer_panel\.assembly_batch\./, 'panel.AssemblyBatchAction (split half)', split, ui.PRODUCER_PANEL_LAYOUT.primaryAction.fontSize, body),
         // Offline report card.
         S(/^offline\.title$/, 'offline.title', offRow('title').w, offRow('title').fontSize, body),
@@ -147,7 +147,7 @@ function paramsFor(key, catalogue, offlineText) {
         name: longest(allNames),
         names: producers.slice(0, 3).join(', '),
         value: '99.9T', current: '99.9T', required: '99.9T', cost: '99.9T', payout: '99.9T',
-        level: 1000, threshold: 1000, remaining: 1000, count: 99, multiplier: 10, percent: 100, seconds: 59, minutes: 10, number: 9999, from: 99, to: 100,
+        level: 1000, threshold: 1000, remaining: 1000, count: 99, quantity: 9999, multiplier: 10, percent: 100, seconds: 59, minutes: 10, number: 9999, from: 99, to: 100,
         duration: offlineText.formatOfflineDuration(8 * 3600 + 59 * 60), price: 'CHF 999.99', rank: 5, max: 5,
         label: longest(['producer_panel.buy_1', 'producer_panel.buy_10', 'producer_panel.buy_max', 'hud.action.next_goal_unlock'].map((k) => catalogue.resolveText(k))),
         state: catalogue.resolveText('next_goal.affordability.unaffordable'),

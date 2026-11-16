@@ -203,8 +203,8 @@ test('coverage: every panel action labelKey, milestone key and availability reso
     const locked = text.formatPanelTexts({ ...vm(null, false), status: 'locked', actions: null }, catalogue);
     assert.equal(complete.milestone, 'All milestones reached');
     assert.equal(next.milestone, 'Next milestone Lv 25 (3 to go)');
-    assert.deepEqual(complete.actions, { x1: 'Buy ×1 10', x10: 'Buy ×10 10', xMax: 'Buy ×MAX 10' });
-    assert.deepEqual(next.actions, { x1: 'Buy ×1 10 • Unavailable', x10: 'Buy ×10 10 • Unavailable', xMax: 'Buy ×MAX 10 • Unavailable' });
+    assert.deepEqual(complete.actions, { x1: 'Buy ×1 10', x10: 'Buy ×10 10', xMax: 'Buy ×MAX (×1) 10' });
+    assert.deepEqual(next.actions, { x1: 'Buy ×1 10 • Unavailable', x10: 'Buy ×10 10 • Unavailable', xMax: 'Buy ×MAX (×1) 10 • Unavailable' });
     assert.deepEqual(locked.actions, { x1: '—', x10: '—', xMax: '—' });
     for (const texts of [complete, next, locked]) assertNoRawKey(panelStrings(texts), 'panel');
     assert.deepEqual(reports, []);
@@ -232,6 +232,8 @@ test('template params match exactly what PresentationText supplies', async () =>
         'producer_panel.milestone.production_multiplier': ['multiplier'],
         'producer_panel.action': ['label', 'cost'],
         'producer_panel.action.unavailable': ['label', 'cost'],
+        'producer_panel.action.max': ['label', 'quantity', 'cost'],
+        'producer_panel.action.max.unavailable': ['label', 'quantity', 'cost'],
         'producer_panel.assembly_batch.ready': ['payout'],
         'producer_panel.assembly_batch.running': ['percent', 'seconds'],
         // AUT-051 Offline Factory Report.

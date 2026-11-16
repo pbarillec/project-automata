@@ -84,6 +84,11 @@ export function createProducerPanelViewModel(
 
 export const buildProducerPanelViewModel = createProducerPanelViewModel;
 
+/** Native Button eligibility: only an existing, enabled action that carries a command; absent actions are disabled. */
+export function isProducerPanelActionInteractable(action: ProducerPanelPurchaseAction | null | undefined): boolean {
+    return !!action && action.isEnabled === true && action.command !== null;
+}
+
 function createActions(
     repository: GameConfigRepository,
     state: GameState,
