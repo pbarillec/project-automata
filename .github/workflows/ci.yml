@@ -1,0 +1,38 @@
+# AUT-074 — mandatory PR/main gate. Engine-free: needs only Node 24 + Windows PowerShell
+# (tools/ci/*.ps1 invoke powershell.exe, so this runs on windows-latest).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: npm run check
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+      # Config validation, Android Ads/Billing config checks, all tests, pacing regression.
+      - name: Gate
+        run: npm run check
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-reports
+          path: temp/ci/*.json
+          if-no-files-found: ignore
+          retention-days: 14

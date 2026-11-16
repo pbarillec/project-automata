@@ -1,0 +1,74 @@
+# AUT-074 — Android artifact build. Cocos Creator 3.8.8 is a local editor install that GitHub-hosted
+# runners do not have, so this job targets a self-hosted Windows runner labelled `cocos`
+# (Cocos Creator at the default path or COCOS_CREATOR_EXE, Android SDK/NDK, JDK, Gradle cache).
+# Runs only after the gate itself passes; never runs for pull requests from forks.
+name: Android Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Build signed release AAB+APK instead of debug APK
+        type: boolean
+        default: false
+
+concurrency:
+  group: android-build-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Android ${{ inputs.release && 'release' || 'debug' }}
+    runs-on: [self-hosted, windows, cocos]
+    timeout-minutes: 90
+    env:
+      # RELEASE_STORE_FILE (keystore path) is a runner-local env var on the self-hosted machine, never committed.
+      # Optional release inputs (repository secrets). Absent => unsigned release, reported by the checks.
+      RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+      RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+      RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+      ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
+      ADMOB_UNIT_OFFLINE_DOUBLE: ${{ secrets.ADMOB_UNIT_OFFLINE_DOUBLE }}
+      ADMOB_UNIT_EXTENDED_OVERCLOCK: ${{ secrets.ADMOB_UNIT_EXTENDED_OVERCLOCK }}
+    steps:
+      # Full history: versionCode is the git commit count.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+      - name: Gate
+        run: npm run check
+      - name: Debug APK
+        if: ${{ !inputs.release }}
+        run: npm run android:build
+      - name: Release AAB + APK
+        if: ${{ inputs.release }}
+        run: npm run android:release -- --apk
+      - name: Upload artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-${{ inputs.release && 'release' || 'debug' }}-${{ github.sha }}
+          path: |
+            build/android/proj/build/ProjectAutomata/outputs/apk/**/*.apk
+            build/android/proj/build/ProjectAutomata/outputs/bundle/**/*.aab
+            build/android/proj/build/ProjectAutomata/outputs/mapping/**/mapping.txt
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-logs-${{ github.sha }}
+          path: |
+            temp/ci/*.log
+            temp/ci/*.json
+          if-no-files-found: ignore
+          retention-days: 7
