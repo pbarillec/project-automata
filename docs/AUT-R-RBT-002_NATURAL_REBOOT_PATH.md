@@ -13,6 +13,12 @@ What was missing was proof that a **normally played** run actually reaches that 
 - afterwards the AI chip is visible and at least one upgrade row is `affordable` with a command, so the AI Upgrades UI is reachable naturally;
 - a fresh game does not offer the Reboot.
 
-## Not verified here
+## Device result (2026-11-16, NE2215)
 
-See the device section appended after the device run, if any. Subjective items (confirmation clarity, chip discoverability, feel) remain human review, as in AUT-RBT-001.
+Gate DEBUG APK `ProjectAutomata-rbt002-44c7e70-factoryworld.apk` (SHA-256 7ed26639...0edfa). The existing `rbt001` scenario (real taps: chip, CANCEL, chip, REBOOT, force-stop, relaunch) PASSED 16/16 with 0 errors: chip "REBOOT +5", modal (+5 AI CORES, Civilization #1 to #2, 5 RESETS / 5 KEEPS, buttons >= 64 units), cancel submits nothing, confirm grants the announced 5 Cores and saves, one 4 s sequence, chip hidden, AI chip "AI x5", persisted after relaunch (`temp/reveal/rbt001-reboot-ui-2026-11-16T104609/`). Afterwards, a real tap on the AI chip opened the AI UPGRADES panel with Optimized Fabrication affordable ("1 AI") and the dependent rows LOCKED (`temp/rev-verify/RBT002_ai_upgrades_panel.png`).
+
+The device state is seeded to the eligibility threshold (the harness cannot play 4 to 7 h of progression); that a played run reaches the same threshold is covered by the headless test above.
+
+## Pending human review
+
+Subjective: clarity and calm of the confirmation, chip discoverability, felt pacing of the first Reboot (4 to 7 h target). Documented AUT-RBT-001 gap unchanged: no concrete permanent-benefit preview in the modal (GAME_DESIGN section 12).
