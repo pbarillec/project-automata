@@ -367,3 +367,19 @@ test('npm scripts and build wrapper expose the release flow', () => {
     const ignore = read('.gitignore');
     for (const pattern of ['*.keystore', '*.jks', '*.aab', '*.apk', '/temp/']) assert.ok(ignore.includes(pattern), `.gitignore covers ${pattern}`);
 });
+
+// AUT-R-073-01: permission allow-list + AD_ID disclosure reminder.
+test('safety evaluation: permissions must stay on the allow-list; AD_ID adds a Data Safety reminder', () => {
+    const expectations = { packageName: 'com.example.game', versionCode: 42, targetSdk: 36, minSdk: 23, requireProductionIds: false, allowSampleIds: true };
+    const base = { debuggable: false, appId: SAMPLE_APP, unit: SAMPLE_UNIT };
+    const evaluate = (permissions: string[]) => support.evaluateManifestSafety({ ...support.summarizeManifest(support.decodeProtoManifest(buildProtoManifest(base))), permissions }, expectations);
+    const ok = evaluate([...support.RELEASE_PERMISSION_ALLOWLIST, 'com.example.game.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION']);
+    assert.equal(ok.find((f: any) => f.id === 'permissions').status, 'PASS');
+    assert.equal(ok.find((f: any) => f.id === 'ad_id_permission').status, 'INFO');
+    const bad = evaluate(['android.permission.INTERNET', 'android.permission.READ_PHONE_STATE', 'android.permission.ACCESS_FINE_LOCATION']);
+    const finding = bad.find((f: any) => f.id === 'permissions');
+    assert.equal(finding.status, 'FAIL');
+    assert.match(finding.message, /READ_PHONE_STATE.*ACCESS_FINE_LOCATION/);
+    assert.equal(bad.some((f: any) => f.id === 'ad_id_permission'), false);
+    assert.equal(support.RELEASE_PERMISSION_ALLOWLIST.every((name: string) => !/READ_|WRITE_|LOCATION|CAMERA|RECORD_AUDIO|CONTACTS/.test(name)), true);
+});
