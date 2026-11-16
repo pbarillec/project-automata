@@ -1,6 +1,6 @@
 # AUT-R-037-01 Producer Panel Action State
 
-Corrective task on AUT-037 (Producer Panel), baseline `main` `d1ea98f`. Presentation only: no economy, progression, layout, camera or save changes.
+Corrective task on AUT-037 (Producer Panel), baseline `main` `d086d5d`. Presentation only: no economy, progression, layout, camera or save changes.
 
 ## What was built
 
