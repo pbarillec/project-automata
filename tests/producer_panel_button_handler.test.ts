@@ -89,3 +89,63 @@ test('both HUD and panel click handlers take (event, customEventData)', async ()
         assert.doesNotMatch(source, /onActionPressed\(actionId: string\)/, rel);
     }
 });
+
+// AUT-R-037-01: native Button.interactable mirrors the latest snapshot; ×MAX caption shows the resolved quantity.
+test('panel Buttons: applyActionStates (real body) maps each action to interactable; no snapshot / locked / pending is all disabled', async () => {
+    const source = await read(PANEL);
+    const { isProducerPanelActionInteractable } = await imp('assets/scripts/presentation/ProducerPanelViewModel.ts');
+    const apply = new Function('isProducerPanelActionInteractable', `return function () {${methodBody(source, 'private applyActionStates(): void {')}};`)(isProducerPanelActionInteractable);
+    const buttons = new Map(['x1', 'x10', 'xMax'].map((id) => [id, { interactable: true }]));
+    const host = { buttons, latest: null };
+    const states = () => Object.fromEntries([...buttons].map(([id, b]) => [id, b.interactable]));
+    const run = () => apply.call(host);
+
+    run(); // startup / pending selection: no snapshot
+    assert.deepEqual(states(), { x1: false, x10: false, xMax: false });
+
+    host.latest = await panelModel(1e6); // affordable
+    run();
+    assert.deepEqual(states(), { x1: true, x10: true, xMax: true });
+
+    host.latest = await panelModel(0); // insufficient funds / zero MAX
+    assert.equal(host.latest.actions.xMax.quantity, 0);
+    run();
+    assert.deepEqual(states(), { x1: false, x10: false, xMax: false });
+
+    const partial = await panelModel(1e6);
+    host.latest = { ...partial, actions: { ...partial.actions, x10: { ...partial.actions.x10, isEnabled: false, command: null } } }; // each action independent
+    run();
+    assert.deepEqual(states(), { x1: true, x10: false, xMax: true });
+
+    host.latest = { ...partial, status: 'locked', actions: null }; // locked: actions null
+    run();
+    assert.deepEqual(states(), { x1: false, x10: false, xMax: false });
+
+    host.latest = partial; // a refresh restores
+    run();
+    assert.deepEqual(states(), { x1: true, x10: true, xMax: true });
+    host.latest = null; // replaceSelection invalidates
+    run();
+    assert.deepEqual(states(), { x1: false, x10: false, xMax: false });
+    assert.equal(isProducerPanelActionInteractable({ isEnabled: true, command: null }), false);
+});
+
+test('panel controller wires Button sync on layout, refresh and replaceSelection', async () => {
+    const source = await read(PANEL);
+    assert.match(methodBody(source, 'public refresh(viewModel: ProducerPanelViewModel): void {'), /this\.applyActionStates\(\);/);
+    assert.match(methodBody(source, 'public replaceSelection(selectedProducerId: string | null): void {'), /this\.latest = null;[\s\S]*this\.applyActionStates\(\);/);
+    assert.match(source, /this\.buttons\.set\(key\.slice\('Action_'\.length\) as ProducerPanelActionId, button\);/);
+});
+
+test('×MAX caption shows the resolved quantity and cost; zero MAX stays disabled; ×1/×10 captions unchanged', async () => {
+    const { formatPanelTexts } = await imp('assets/scripts/presentation/PresentationText.ts');
+    const rich = await panelModel(1e6);
+    const texts = formatPanelTexts(rich);
+    assert.equal(texts.actions.xMax, `Buy ×MAX (×${rich.actions.xMax.quantity}) ${rich.actions.xMax.costFormatted}`);
+    assert.match(texts.actions.x10, /^Buy ×10 \S+$/);
+    const zero = await panelModel(0);
+    assert.equal(zero.actions.xMax.quantity, 0);
+    assert.equal(zero.actions.xMax.isEnabled, false);
+    assert.equal(zero.actions.xMax.command, null);
+    assert.equal(formatPanelTexts(zero).actions.xMax, `Buy ×MAX (×0) ${zero.actions.xMax.costFormatted} • Unavailable`);
+});

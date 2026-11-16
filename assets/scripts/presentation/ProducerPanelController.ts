@@ -1,6 +1,6 @@
 import { _decorator, Button, Color, Component, EventHandler, EventTouch, Graphics, Label, Layers, Node, Sprite, UITransform, Vec3 } from 'cc';
 import type { GameCommand } from '../domain/Commands.ts';
-import type { ProducerPanelActionId, ProducerPanelViewModel } from './ProducerPanelViewModel.ts';
+import { isProducerPanelActionInteractable, type ProducerPanelActionId, type ProducerPanelViewModel } from './ProducerPanelViewModel.ts';
 import { defaultPanelTexts, formatPanelTexts, pendingSelectionPanelTexts, type DisplayNameSource, type PanelTexts } from './PresentationText.ts';
 import { fitLabel } from './LabelFit.ts';
 import { producerHeaderIconSlot, producerIconFor, type IconName } from './AutomataIdentity.ts';
@@ -17,6 +17,7 @@ export class ProducerPanelController extends Component {
     /** AUT-LOC-001: same narrow name source as the HUD; panel names come from the view model's displayNameKey. */
     public displayNames: DisplayNameSource | null = null;
     private labels = new Map<string, Label>();
+    private buttons = new Map<ProducerPanelActionId, Button>();
     private latest: ProducerPanelViewModel | null = null;
     private selectedProducerId: string | null = null;
     private touchBlockRegistered = false;
@@ -31,6 +32,7 @@ export class ProducerPanelController extends Component {
         this.latest = viewModel;
         this.selectedProducerId = viewModel.selectedProducerId;
         this.applyTexts(formatPanelTexts(viewModel));
+        this.applyActionStates();
     }
 
     public purchase(id: ProducerPanelActionId): void {
@@ -43,6 +45,7 @@ export class ProducerPanelController extends Component {
         this.selectedProducerId = selectedProducerId;
         this.latest = null;
         this.applyTexts(pendingSelectionPanelTexts(selectedProducerId));
+        this.applyActionStates();
     }
 
     private ensureLayout(): void {
@@ -69,7 +72,9 @@ export class ProducerPanelController extends Component {
             const button = node.addComponent(Button);
             const event = new EventHandler(); event.target = this.node; event.component = 'ProducerPanelController'; event.handler = 'onActionPressed'; event.customEventData = key.slice('Action_'.length);
             button.clickEvents = [event];
+            this.buttons.set(key.slice('Action_'.length) as ProducerPanelActionId, button);
         }
+        this.applyActionStates();
         const transform = this.node.getComponent(UITransform) ?? this.node.addComponent(UITransform); transform.setContentSize(layout.width, cardHeight(layout));
         if (!this.touchBlockRegistered) {
             this.touchBlockRegistered = true;
@@ -92,6 +97,11 @@ export class ProducerPanelController extends Component {
         this.setText('ProducerProduction', texts.production);
         this.setText('ProducerMilestone', texts.milestone);
         for (const id of ['x1', 'x10', 'xMax'] as const) this.setText(`Action_${id}`, texts.actions[id]);
+    }
+
+    /** Native Button.interactable mirrors the latest snapshot per action; no snapshot (startup/pending/locked) means disabled. */
+    private applyActionStates(): void {
+        for (const [id, button] of this.buttons) button.interactable = isProducerPanelActionInteractable(this.latest?.actions?.[id]);
     }
 
     private drawHeaderIcon(): void {
