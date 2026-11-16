@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { readFile } = require('node:fs/promises');
+const { access, readFile } = require('node:fs/promises');
 const path = require('node:path');
 
 const repoRoot = path.resolve(path.dirname(__filename), '..');
@@ -16,6 +16,29 @@ const {
     isAcceptableCocosExit,
     isAcceptableCocosGenerationEvidence,
 } = require(androidBuildWrapperPath);
+
+const BASE64_KEYS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+// Cocos Creator's compressed UUID: keep the first 5 hex digits, base64-encode the remaining 27 (3 hex digits -> 2 chars).
+function compressCocosUuid(uuid: string): string {
+    const hex = uuid.replaceAll('-', '').toLowerCase();
+    assert.match(hex, /^[0-9a-f]{32}$/, `Invalid UUID ${uuid}`);
+    let out = hex.slice(0, 5);
+    for (let i = 5; i < 32; i += 3) {
+        const value = parseInt(hex.slice(i, i + 3), 16);
+        out += BASE64_KEYS[value >> 6] + BASE64_KEYS[value & 63];
+    }
+    return out;
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+    try {
+        await access(filePath);
+        return true;
+    } catch {
+        return false;
+    }
+}
 
 async function readGeneratedComponentRegistration(scriptPath: string, scriptUuid: string) {
     const importMap = JSON.parse(await readFile(bootstrapGeneratedImportMapPath, 'utf8'));
@@ -50,14 +73,19 @@ test('camera spike scene has the expected bootstrap component and is included in
     assert.equal(typeof serializedComponentId, 'number');
     const serializedComponent = scene[serializedComponentId];
     assert.ok(serializedComponent, 'CameraSpikeRoot component record is missing');
-    const registration = await readGeneratedComponentRegistration(
-        'assets/scripts/presentation/CameraSpikeBootstrap.ts',
-        bootstrapMeta.uuid,
-    );
-    assert.equal(registration.fileName, 'CameraSpikeBootstrap');
-    assert.match(registration.source, /ccclass\('CameraSpikeBootstrap'\)/);
-    assert.match(registration.source, /class CameraSpikeBootstrap extends Component/);
-    assert.equal(serializedComponent.__type__, registration.classId, `Scene class ID does not match generated registration in ${registration.chunkPath}`);
+    // Deterministic, CI-safe check: Cocos serializes a script component's __type__ as the compressed script UUID.
+    assert.equal(serializedComponent.__type__, compressCocosUuid(bootstrapMeta.uuid), 'Scene component __type__ does not match the CameraSpikeBootstrap script UUID');
+    // Stronger check when a local Cocos editor/build has generated the preview import map (absent on clean CI runners).
+    if (await fileExists(bootstrapGeneratedImportMapPath)) {
+        const registration = await readGeneratedComponentRegistration(
+            'assets/scripts/presentation/CameraSpikeBootstrap.ts',
+            bootstrapMeta.uuid,
+        );
+        assert.equal(registration.fileName, 'CameraSpikeBootstrap');
+        assert.match(registration.source, /ccclass\('CameraSpikeBootstrap'\)/);
+        assert.match(registration.source, /class CameraSpikeBootstrap extends Component/);
+        assert.equal(serializedComponent.__type__, registration.classId, `Scene class ID does not match generated registration in ${registration.chunkPath}`);
+    }
     assert.equal(buildConfig.startScene, scene[1]._id);
     assert.deepEqual(buildConfig.scenes.map((entry) => entry.uuid), [scene[1]._id]);
     assert.ok(buildConfig.scenes.some((entry) => entry.uuid === scene[1]._id && /CameraSpike\.scene$/.test(entry.url)));
