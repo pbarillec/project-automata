@@ -483,6 +483,20 @@ function findForbiddenPackedFiles(entryNames) {
   return entryNames.filter((name) => FORBIDDEN_PACKED_FILES.some((pattern) => pattern.test(name)));
 }
 
+/** Permissions seen in the verified release manifest (INTERNET/network state from the engine, BILLING, AD_ID + ADSERVICES from AdMob, WAKE_LOCK/FOREGROUND_SERVICE from SDK work). */
+const RELEASE_PERMISSION_ALLOWLIST = Object.freeze([
+  'android.permission.INTERNET',
+  'android.permission.ACCESS_NETWORK_STATE',
+  'android.permission.ACCESS_WIFI_STATE',
+  'com.android.vending.BILLING',
+  'com.google.android.gms.permission.AD_ID',
+  'android.permission.ACCESS_ADSERVICES_AD_ID',
+  'android.permission.ACCESS_ADSERVICES_ATTRIBUTION',
+  'android.permission.ACCESS_ADSERVICES_TOPICS',
+  'android.permission.WAKE_LOCK',
+  'android.permission.FOREGROUND_SERVICE',
+]);
+
 /**
  * Evaluates a manifest summary against the release expectations. Returns [{ id, status: PASS|FAIL|WARN|INFO, message }].
  * expectations: { packageName, versionCode, versionName?, targetSdk, minSdk, requireProductionIds, allowSampleIds }.
@@ -504,6 +518,13 @@ function evaluateManifestSafety(summary, expectations) {
   const policy = evaluateAdmobPolicy(classes, expectations);
   add('admob_ids', policy.ok ? 'PASS' : 'FAIL', policy.ok ? `ads mode: ${policy.adsMode} (${Object.entries(classes).map(([key, value]) => `${key}=${value}`).join(', ')})` : policy.problems.join('; '));
   if (policy.ok && policy.adsMode === 'not-configured') add('ads_mode', 'WARN', 'ADMOB_* not supplied: rewarded ads stay hidden (x2 / Extended Overclock not offered)');
+  // AUT-R-073-01: the merged manifest may only declare permissions the game and its pinned SDKs (AdMob/UMP, Play Billing) are known to need.
+  const permissions = summary.permissions ?? [];
+  const unexpected = permissions.filter((name) => !RELEASE_PERMISSION_ALLOWLIST.includes(name) && name !== `${summary.packageName}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`); // androidx's own-package receiver permission
+  add('permissions', unexpected.length === 0 ? 'PASS' : 'FAIL', unexpected.length === 0
+    ? `${permissions.length} declared permissions, all on the release allow-list`
+    : `unexpected permissions: ${unexpected.join(', ')} (review, then extend RELEASE_PERMISSION_ALLOWLIST in release_support.js if intended)`);
+  if (permissions.includes('com.google.android.gms.permission.AD_ID')) add('ad_id_permission', 'INFO', 'declares com.google.android.gms.permission.AD_ID: the Play Console Advertising ID declaration and Data Safety answers must match (owner/privacy)');
   if (summary.allowBackup) add('allow_backup', 'INFO', 'android:allowBackup is true (unchanged baseline value; product/privacy decision)');
   return findings;
 }
@@ -530,6 +551,7 @@ module.exports = {
   decodeProtoManifest,
   evaluateAdmobPolicy,
   evaluateManifestSafety,
+  RELEASE_PERMISSION_ALLOWLIST,
   extractZipEntry,
   findForbiddenPackedFiles,
   findLocalEndpoint,

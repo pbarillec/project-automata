@@ -39,3 +39,7 @@ Known weak check: `debug_flag_off` is a placeholder pass (the debuggable flag it
 2. Play Console app + in-app product `founder_pack`; upload keystore or Play App Signing enrolment (real keystore + passwords supplied via the env variables above).
 3. Production AdMob app id and two rewarded unit ids; UMP messages (AUT-065); privacy policy URL; Data Safety / AD_ID; `allowBackup` decision.
 4. Upload the signed AAB to an internal testing track and install through the opt-in link.
+
+## AUT-R-073-01 release permission audit (2026-11-16)
+
+`release_checks` now evaluates the merged manifest's `uses-permission` set (it was collected but never judged): `permissions` FAILs on anything outside `RELEASE_PERMISSION_ALLOWLIST` (`tools/ci/release_support.js`: INTERNET, ACCESS_NETWORK_STATE, ACCESS_WIFI_STATE, `com.android.vending.BILLING`, AD_ID, three ACCESS_ADSERVICES_*, WAKE_LOCK, FOREGROUND_SERVICE, plus the app's own `<package>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`), and `ad_id_permission` adds an INFO reminder that the Play Advertising ID declaration and Data Safety answers must match (owner/privacy). Verified against the existing throwaway-signed versionCode 190 AAB and APK (11 permissions, all allowed, overall PASS); that earlier `temp/release/release_checks.json` predates the checker fixes and is stale. Test added in `tests/android_release_config.test.ts`; `npm run check` green (1587 tests). No release rebuilt, no credentials touched.
