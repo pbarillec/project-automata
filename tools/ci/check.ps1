@@ -1,43 +1,66 @@
+# AUT-075 — authoritative automated pre-merge gate.
+# Runs every stage (no fail-fast, so one run reports all regressions), prints a summary, writes
+# temp/ci/check_report.json and exits 0 only if every stage passed. Exit code on failure is the
+# first failing stage's code (never 0). Subjective/manual gates are NOT covered (see docs/AUT-075_REGRESSION_GATE.md).
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..')
-$TestScript = Join-Path $RepoRoot 'tools\ci\test.ps1'
-$ValidateConfigScript = Join-Path $RepoRoot 'tools\ci\validate_config.ps1'
-$SimulationScript = Join-Path $RepoRoot 'tools\ci\simulate.ps1'
-$AndroidAdsConfigScript = Join-Path $RepoRoot 'tools\ci\check_android_ads_config.ps1'
-$AndroidBillingConfigScript = Join-Path $RepoRoot 'tools\ci\check_android_billing_config.ps1'
+$CiDir = Join-Path $RepoRoot 'temp\ci'
+$ReportPath = Join-Path $CiDir 'check_report.json'
+$PacingReportPath = Join-Path $CiDir 'pacing_regression_check_report.json'
+
+$Stages = @(
+    @{ Id = 'config';  Title = 'AUT-CX-003 Config validation';               Script = 'validate_config.ps1';            Args = @() },
+    @{ Id = 'ads';     Title = 'AUT-CX-005 Android Ads startup configuration'; Script = 'check_android_ads_config.ps1'; Args = @() },
+    @{ Id = 'billing'; Title = 'AUT-060 Android Play Billing configuration';  Script = 'check_android_billing_config.ps1'; Args = @() },
+    @{ Id = 'tests';   Title = 'AUT-CX-002 TypeScript tests (unit/integration/scene)'; Script = 'test.ps1';              Args = @() },
+    @{ Id = 'pacing';  Title = 'AUT-022 Pacing regression';                   Script = 'simulate.ps1';                   Args = @('--out', $PacingReportPath) }
+)
+
+New-Item -ItemType Directory -Force -Path $CiDir | Out-Null
+$results = @()
+$firstFailure = 0
+$started = Get-Date
 
 Push-Location $RepoRoot
 try {
-    Write-Host 'AUT-CX-003 check: Config validation'
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ValidateConfigScript
-    if ($LASTEXITCODE -ne 0) {
-        exit $LASTEXITCODE
+    foreach ($stage in $Stages) {
+        Write-Host "==> [$($stage.Id)] $($stage.Title)"
+        $t0 = Get-Date
+        $scriptPath = Join-Path $RepoRoot ('tools\ci\' + $stage.Script)
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $scriptPath @($stage.Args)
+        $code = $LASTEXITCODE
+        if ($null -eq $code) { $code = 1 }
+        $results += [ordered]@{
+            id = $stage.Id
+            title = $stage.Title
+            exitCode = $code
+            status = $(if ($code -eq 0) { 'PASS' } else { 'FAIL' })
+            seconds = [math]::Round(((Get-Date) - $t0).TotalSeconds, 1)
+        }
+        if ($code -ne 0 -and $firstFailure -eq 0) { $firstFailure = $code }
     }
-
-    Write-Host 'AUT-CX-005 check: Android Ads startup configuration'
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $AndroidAdsConfigScript
-    if ($LASTEXITCODE -ne 0) {
-        exit $LASTEXITCODE
-    }
-
-    Write-Host 'AUT-060 check: Android Play Billing configuration'
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $AndroidBillingConfigScript
-    if ($LASTEXITCODE -ne 0) {
-        exit $LASTEXITCODE
-    }
-
-    Write-Host 'AUT-CX-002 check: TypeScript tests'
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $TestScript
-    if ($LASTEXITCODE -ne 0) {
-        exit $LASTEXITCODE
-    }
-
-    Write-Host 'AUT-022 check: Pacing regression'
-    $PacingReportPath = Join-Path $RepoRoot 'temp\ci\pacing_regression_check_report.json'
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $SimulationScript --out $PacingReportPath
-    exit $LASTEXITCODE
 }
 finally {
     Pop-Location
 }
+
+$report = [ordered]@{
+    gate = 'AUT-075'
+    status = $(if ($firstFailure -eq 0) { 'PASS' } else { 'FAIL' })
+    startedAt = $started.ToUniversalTime().ToString('o')
+    totalSeconds = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
+    stages = $results
+}
+$report | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $ReportPath -Encoding utf8
+
+Write-Host ''
+Write-Host 'Gate summary:'
+foreach ($r in $results) { Write-Host ('  {0,-4} {1,-8} {2}' -f $r.status, $r.id, $r.title) }
+Write-Host "Report: $ReportPath"
+if ($firstFailure -ne 0) {
+    Write-Host 'GATE FAIL'
+    exit $firstFailure
+}
+Write-Host 'GATE PASS'
+exit 0
